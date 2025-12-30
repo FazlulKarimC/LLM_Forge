@@ -43,6 +43,53 @@ A config-driven, reproducible LLM experimentation platform for studying:
 
 ---
 
+## Reference Projects & Inspiration
+
+> This project is a **"Config-driven LLM Experimentation & Evaluation Platform"** - combining elements of LLMOps, ML benchmarking, and AI research infrastructure.
+
+### LLM Evaluation Frameworks (Most Similar)
+
+| Project | GitHub | Stars | Description |
+|---------|--------|-------|-------------|
+| **lm-evaluation-harness** | [EleutherAI/lm-evaluation-harness](https://github.com/EleutherAI/lm-evaluation-harness) | 12k+ | Industry standard for LLM evaluation. Config-driven, supports 200+ tasks. Study their task YAML structure. |
+| **RAGAS** | [explodinggradients/ragas](https://github.com/explodinggradients/ragas) | 7k+ | RAG evaluation with faithfulness, context precision/recall metrics. Use for Phase 5/6 metric ideas. |
+| **DeepEval** | [confident-ai/deepeval](https://github.com/confident-ai/deepeval) | 3k+ | Pytest-like LLM testing, 14+ metrics, CI/CD integration. Good for testing patterns. |
+| **Opik** | [comet-ml/opik](https://github.com/comet-ml/opik) | 2k+ | Open-source LLM evaluation, tracing, debugging. Study their trace visualization. |
+
+### MLOps & Experiment Tracking
+
+| Project | GitHub | Stars | Description |
+|---------|--------|-------|-------------|
+| **MLflow** | [mlflow/mlflow](https://github.com/mlflow/mlflow) | 20k+ | General ML experiment tracking with recent LLM support. Good for experiment logging patterns. |
+| **Langfuse** | [langfuse/langfuse](https://github.com/langfuse/langfuse) | 7k+ | Open-source LLM observability, tracing, prompt management. Great UI inspiration for traces. |
+| **Arize Phoenix** | [Arize-ai/phoenix](https://github.com/Arize-ai/phoenix) | 4k+ | AI observability, LLM-as-a-judge evaluation. Study their evaluation patterns. |
+| **W&B Weave** | [wandb/weave](https://github.com/wandb/weave) | 1k+ | LLM tracing and evaluation from Weights & Biases. |
+
+### Agent & Reasoning Frameworks
+
+| Project | GitHub | Stars | Description |
+|---------|--------|-------|-------------|
+| **LangChain** | [langchain-ai/langchain](https://github.com/langchain-ai/langchain) | 100k+ | Build LLM apps with chains, RAG, agents. Reference for ReAct implementation patterns. |
+| **LangSmith** | [smith.langchain.com](https://smith.langchain.com/) | N/A | Debugging & tracing for LangChain (commercial, free tier available). |
+
+### What Makes LlmForge Different
+
+1. **Research-focused** - Compares methods (CoT vs RAG vs Agent) rather than just running benchmarks
+2. **Full-stack with UI** - Most frameworks are CLI-only; we have a Next.js dashboard
+3. **DPO alignment included** - Few projects cover fine-tuning with preference learning
+4. **Portfolio-oriented** - Designed to demonstrate ML engineering skills for interviews
+
+### Key Repos to Study
+
+| For Phase | Study This Repo | Learn |
+|-----------|-----------------|-------|
+| Phase 3 (Metrics) | lm-evaluation-harness | Task config YAML structure |
+| Phase 5 (RAG) | RAGAS | Faithfulness/hallucination metrics |
+| Phase 6 (Agent) | Langfuse | Trace visualization UI |
+| Phase 7 (DPO) | TRL library docs | DPO training loop patterns |
+
+---
+
 ## Hardware Constraints & Strategy
 
 ### Your Hardware
