@@ -1,59 +1,111 @@
+"use client";
+
 /**
  * New Experiment Page
  * 
  * Form for creating a new experiment configuration.
- * 
- * TODO (Iteration 1): Implement form submission
- * TODO (Iteration 2): Add config validation
- * TODO (Iteration 3): Add config templates
+ * Uses TanStack Query for mutation.
+ * Styled with DESIGN_SYSTEM.md.
  */
 
-'use client';
-
-import { useState } from 'react';
-import Link from 'next/link';
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import Link from "next/link";
+import { createExperiment, ExperimentConfig, CreateExperimentRequest } from "@/lib/api";
 
 export default function NewExperimentPage() {
-    const [formData, setFormData] = useState({
-        name: '',
-        description: '',
-        model_name: 'microsoft/phi-2',
-        reasoning_method: 'naive',
-        dataset_name: 'trivia_qa',
+    const router = useRouter();
+    const queryClient = useQueryClient();
+
+    const [formData, setFormData] = useState<{
+        name: string;
+        description: string;
+        model_name: string;
+        reasoning_method: "naive" | "cot" | "react";
+        dataset_name: string;
+        temperature: number;
+        max_tokens: number;
+        num_samples: number;
+        retrieval_method: "none" | "naive" | "hybrid" | "reranked";
+    }>({
+        name: "",
+        description: "",
+        model_name: "microsoft/phi-2",
+        reasoning_method: "naive",
+        dataset_name: "trivia_qa",
         temperature: 0.7,
         max_tokens: 256,
         num_samples: 100,
-        retrieval_method: 'none',
+        retrieval_method: "none",
     });
 
-    const handleSubmit = async (e: React.FormEvent) => {
+    const mutation = useMutation({
+        mutationFn: createExperiment,
+        onSuccess: (experiment) => {
+            queryClient.invalidateQueries({ queryKey: ["experiments"] });
+            queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
+            router.push(`/experiments/${experiment.id}`);
+        },
+    });
+
+    const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        // TODO (Iteration 1): Submit to API
-        console.log('Submitting experiment:', formData);
-        alert('Not implemented: Iteration 1');
+
+        const config: ExperimentConfig = {
+            model_name: formData.model_name,
+            reasoning_method: formData.reasoning_method,
+            dataset_name: formData.dataset_name,
+            hyperparameters: {
+                temperature: formData.temperature,
+                max_tokens: formData.max_tokens,
+            },
+            num_samples: formData.num_samples,
+        };
+
+        if (formData.retrieval_method !== "none") {
+            config.rag = { retrieval_method: formData.retrieval_method };
+        }
+
+        const request: CreateExperimentRequest = {
+            name: formData.name,
+            description: formData.description || undefined,
+            config,
+        };
+
+        mutation.mutate(request);
     };
 
     return (
-        <div className="min-h-screen bg-gray-50">
-            <header className="bg-white shadow">
+        <div className="min-h-screen bg-(--bg-page)">
+            <header className="bg-(--bg-card) shadow-sm border-b border-border">
                 <div className="max-w-3xl mx-auto px-4 py-6">
-                    <Link href="/experiments" className="text-blue-600 hover:underline text-sm">
+                    <Link href="/experiments" className="text-primary hover:underline text-sm">
                         ← Back to Experiments
                     </Link>
-                    <h1 className="text-2xl font-bold text-gray-900 mt-1">
+                    <h1 className="text-2xl font-serif text-(--text-heading) mt-1">
                         New Experiment
                     </h1>
                 </div>
             </header>
 
             <main className="max-w-3xl mx-auto px-4 py-8">
-                <form onSubmit={handleSubmit} className="bg-white rounded-lg shadow p-6 space-y-6">
+                <form onSubmit={handleSubmit} className="card p-6 space-y-6">
+                    {/* Error Display */}
+                    {mutation.error && (
+                        <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+                            <p className="text-(--error)">
+                                {mutation.error instanceof Error ? mutation.error.message : "Failed to create experiment"}
+                            </p>
+                        </div>
+                    )}
+
                     {/* Basic Info */}
-                    <div>
-                        <h2 className="text-lg font-semibold mb-4">Basic Information</h2>
+                    <section>
+                        <h2 className="text-lg font-serif text-(--text-heading) mb-4">Basic Information</h2>
                         <div className="space-y-4">
                             <div>
-                                <label className="block text-sm font-medium text-gray-700">
+                                <label className="block text-sm font-medium text-(--text-body)">
                                     Experiment Name *
                                 </label>
                                 <input
@@ -61,51 +113,47 @@ export default function NewExperimentPage() {
                                     required
                                     value={formData.name}
                                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                                    className="mt-1 block w-full border rounded-md px-3 py-2"
+                                    className="mt-1 block w-full border border-border rounded-lg px-3 py-2 bg-(--bg-card) text-(--text-body) focus:outline-none focus:ring-2 focus:ring-primary"
                                     placeholder="e.g., naive_vs_cot_comparison"
                                 />
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-gray-700">
+                                <label className="block text-sm font-medium text-(--text-body)">
                                     Description
                                 </label>
                                 <textarea
                                     value={formData.description}
                                     onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                                    className="mt-1 block w-full border rounded-md px-3 py-2"
+                                    className="mt-1 block w-full border border-border rounded-lg px-3 py-2 bg-(--bg-card) text-(--text-body) focus:outline-none focus:ring-2 focus:ring-primary"
                                     rows={2}
                                     placeholder="Optional description..."
                                 />
                             </div>
                         </div>
-                    </div>
+                    </section>
 
                     {/* Model Configuration */}
-                    <div>
-                        <h2 className="text-lg font-semibold mb-4">Model Configuration</h2>
+                    <section>
+                        <h2 className="text-lg font-serif text-(--text-heading) mb-4">Model Configuration</h2>
                         <div className="grid grid-cols-2 gap-4">
                             <div>
-                                <label className="block text-sm font-medium text-gray-700">
-                                    Model
-                                </label>
+                                <label className="block text-sm font-medium text-(--text-body)">Model</label>
                                 <select
                                     value={formData.model_name}
                                     onChange={(e) => setFormData({ ...formData, model_name: e.target.value })}
-                                    className="mt-1 block w-full border rounded-md px-3 py-2"
+                                    className="mt-1 block w-full border border-border rounded-lg px-3 py-2 bg-(--bg-card) text-(--text-body)"
                                 >
                                     <option value="microsoft/phi-2">Phi-2 (2.7B)</option>
                                     <option value="TinyLlama/TinyLlama-1.1B-Chat-v1.0">TinyLlama (1.1B)</option>
-                                    <option value="mistralai/Mistral-7B-Instruct-v0.2">Mistral-7B (Colab)</option>
+                                    <option value="mistralai/Mistral-7B-Instruct-v0.2">Mistral-7B</option>
                                 </select>
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-gray-700">
-                                    Reasoning Method
-                                </label>
+                                <label className="block text-sm font-medium text-(--text-body)">Reasoning Method</label>
                                 <select
                                     value={formData.reasoning_method}
-                                    onChange={(e) => setFormData({ ...formData, reasoning_method: e.target.value })}
-                                    className="mt-1 block w-full border rounded-md px-3 py-2"
+                                    onChange={(e) => setFormData({ ...formData, reasoning_method: e.target.value as "naive" | "cot" | "react" })}
+                                    className="mt-1 block w-full border border-border rounded-lg px-3 py-2 bg-(--bg-card) text-(--text-body)"
                                 >
                                     <option value="naive">Naive</option>
                                     <option value="cot">Chain of Thought</option>
@@ -113,16 +161,14 @@ export default function NewExperimentPage() {
                                 </select>
                             </div>
                         </div>
-                    </div>
+                    </section>
 
                     {/* Hyperparameters */}
-                    <div>
-                        <h2 className="text-lg font-semibold mb-4">Hyperparameters</h2>
+                    <section>
+                        <h2 className="text-lg font-serif text-(--text-heading) mb-4">Hyperparameters</h2>
                         <div className="grid grid-cols-3 gap-4">
                             <div>
-                                <label className="block text-sm font-medium text-gray-700">
-                                    Temperature
-                                </label>
+                                <label className="block text-sm font-medium text-(--text-body)">Temperature</label>
                                 <input
                                     type="number"
                                     step="0.1"
@@ -130,50 +176,44 @@ export default function NewExperimentPage() {
                                     max="2"
                                     value={formData.temperature}
                                     onChange={(e) => setFormData({ ...formData, temperature: parseFloat(e.target.value) })}
-                                    className="mt-1 block w-full border rounded-md px-3 py-2"
+                                    className="mt-1 block w-full border border-border rounded-lg px-3 py-2 bg-(--bg-card) text-(--text-body)"
                                 />
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-gray-700">
-                                    Max Tokens
-                                </label>
+                                <label className="block text-sm font-medium text-(--text-body)">Max Tokens</label>
                                 <input
                                     type="number"
                                     min="1"
                                     max="4096"
                                     value={formData.max_tokens}
                                     onChange={(e) => setFormData({ ...formData, max_tokens: parseInt(e.target.value) })}
-                                    className="mt-1 block w-full border rounded-md px-3 py-2"
+                                    className="mt-1 block w-full border border-border rounded-lg px-3 py-2 bg-(--bg-card) text-(--text-body)"
                                 />
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-gray-700">
-                                    Samples
-                                </label>
+                                <label className="block text-sm font-medium text-(--text-body)">Samples</label>
                                 <input
                                     type="number"
                                     min="1"
                                     max="10000"
                                     value={formData.num_samples}
                                     onChange={(e) => setFormData({ ...formData, num_samples: parseInt(e.target.value) })}
-                                    className="mt-1 block w-full border rounded-md px-3 py-2"
+                                    className="mt-1 block w-full border border-border rounded-lg px-3 py-2 bg-(--bg-card) text-(--text-body)"
                                 />
                             </div>
                         </div>
-                    </div>
+                    </section>
 
                     {/* Dataset & Retrieval */}
-                    <div>
-                        <h2 className="text-lg font-semibold mb-4">Dataset & Retrieval</h2>
+                    <section>
+                        <h2 className="text-lg font-serif text-(--text-heading) mb-4">Dataset & Retrieval</h2>
                         <div className="grid grid-cols-2 gap-4">
                             <div>
-                                <label className="block text-sm font-medium text-gray-700">
-                                    Dataset
-                                </label>
+                                <label className="block text-sm font-medium text-(--text-body)">Dataset</label>
                                 <select
                                     value={formData.dataset_name}
                                     onChange={(e) => setFormData({ ...formData, dataset_name: e.target.value })}
-                                    className="mt-1 block w-full border rounded-md px-3 py-2"
+                                    className="mt-1 block w-full border border-border rounded-lg px-3 py-2 bg-(--bg-card) text-(--text-body)"
                                 >
                                     <option value="trivia_qa">TriviaQA</option>
                                     <option value="hotpot_qa">HotpotQA</option>
@@ -181,13 +221,11 @@ export default function NewExperimentPage() {
                                 </select>
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-gray-700">
-                                    Retrieval Method
-                                </label>
+                                <label className="block text-sm font-medium text-(--text-body)">Retrieval Method</label>
                                 <select
                                     value={formData.retrieval_method}
-                                    onChange={(e) => setFormData({ ...formData, retrieval_method: e.target.value })}
-                                    className="mt-1 block w-full border rounded-md px-3 py-2"
+                                    onChange={(e) => setFormData({ ...formData, retrieval_method: e.target.value as "none" | "naive" | "hybrid" | "reranked" })}
+                                    className="mt-1 block w-full border border-border rounded-lg px-3 py-2 bg-(--bg-card) text-(--text-body)"
                                 >
                                     <option value="none">No RAG</option>
                                     <option value="naive">Naive RAG</option>
@@ -196,21 +234,19 @@ export default function NewExperimentPage() {
                                 </select>
                             </div>
                         </div>
-                    </div>
+                    </section>
 
                     {/* Submit */}
-                    <div className="flex justify-end gap-4 pt-4 border-t">
-                        <Link
-                            href="/experiments"
-                            className="px-4 py-2 text-gray-700 hover:text-gray-900"
-                        >
+                    <div className="flex justify-end gap-4 pt-4 border-t border-border">
+                        <Link href="/experiments" className="px-4 py-2 text-(--text-body) hover:underline">
                             Cancel
                         </Link>
                         <button
                             type="submit"
-                            className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700"
+                            disabled={mutation.isPending}
+                            className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                            Create Experiment
+                            {mutation.isPending ? "Creating..." : "Create Experiment"}
                         </button>
                     </div>
                 </form>

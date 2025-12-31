@@ -3,12 +3,9 @@ Database Connection and Session Management
 
 Uses SQLAlchemy async with PostgreSQL (NeonDB).
 Provides session dependency for FastAPI routes.
-
-TODO (Iteration 1): Implement connection pooling
-TODO (Iteration 2): Add query logging for debugging
-TODO (Iteration 3): Add read replica support for scaling
 """
 
+import re
 from typing import AsyncGenerator
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
@@ -25,11 +22,31 @@ class Base(DeclarativeBase):
     pass
 
 
-# TODO (Iteration 1): Initialize engine with proper connection string
-# For now, we use a placeholder that will fail gracefully
-_database_url = settings.DATABASE_URL.replace(
-    "postgresql://", "postgresql+asyncpg://"
-) if settings.DATABASE_URL else "sqlite+aiosqlite:///./test.db"
+def _get_async_database_url() -> str:
+    """
+    Convert DATABASE_URL to async-compatible format for asyncpg.
+    
+    NeonDB URLs contain query params (sslmode, channel_binding) that
+    asyncpg doesn't understand, so we strip them.
+    """
+    url = settings.DATABASE_URL
+    
+    if not url:
+        # Fallback for local development
+        return "sqlite+aiosqlite:///./test.db"
+    
+    # Strip query parameters (asyncpg handles SSL automatically for neon.tech)
+    if "?" in url:
+        url = url.split("?")[0]
+    
+    # Convert to async driver
+    url = re.sub(r'^postgresql:', 'postgresql+asyncpg:', url)
+    
+    return url
+
+
+# Create async engine
+_database_url = _get_async_database_url()
 
 engine = create_async_engine(
     _database_url,
@@ -72,9 +89,7 @@ async def init_db() -> None:
     Initialize database tables.
     
     Called on application startup.
-    Creates all tables defined in models.
-    
-    TODO (Iteration 1): Add migration support with Alembic
+    Note: We use Alembic migrations, so this is mainly for testing.
     """
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

@@ -28,12 +28,17 @@
 ### What We Built
 - [x] Project folder structure (backend/frontend/configs)
 - [x] FastAPI backend scaffold with proper layering
-- [x] Next.js 15 frontend with TypeScript
+- [x] Next.js 16 frontend with TypeScript & React 19
 - [x] SQLAlchemy models (Experiment, Result, Run)
 - [x] Pydantic schemas with validation
 - [x] Service interfaces with TODOs
 - [x] Docker Compose for Qdrant
 - [x] Example experiment config
+- [x] Frontend Design System (DESIGN_SYSTEM.md)
+  - 4-color palette (Dark Brown, Off-White, Taupe Gray, Light Gray)
+  - Typography system (Instrument Serif + Inter)
+  - shadcn/ui component patterns
+  - Tailwind CSS v4 configuration
 
 ### Files Created
 ```
@@ -47,6 +52,8 @@ backend/app/
 frontend/src/
 ├── app/         → Dashboard, Experiments pages
 └── lib/         → api.ts, types.ts
+
+DESIGN_SYSTEM.md  → Frontend design guidelines & component patterns
 ```
 
 ---
@@ -83,6 +90,12 @@ frontend/src/
   - Verify it appears in list
   - View experiment details
 
+- [ ] **1.6 Apply Design System**
+  - Install shadcn/ui components (button, card, badge, table, tabs, form, input, skeleton)
+  - Configure Tailwind with DESIGN_SYSTEM.md color palette
+  - Apply 4-color system to all pages
+  - Use Instrument Serif for headings, Inter for body
+
 ### Deliverables
 - ✅ Create experiment → appears in database
 - ✅ List experiments with pagination
@@ -94,6 +107,8 @@ frontend/src/
 - [ ] Error handling works (test with invalid config)
 - [ ] Pagination works (create 20+ experiments, test navigation)
 - [ ] Can view experiment details without errors
+- [ ] UI follows DESIGN_SYSTEM.md guidelines (4-color palette, typography, spacing)
+- [ ] All shadcn/ui components styled per design system
 
 ### Technical Notes
 ```python
@@ -864,6 +879,9 @@ Every phase must pass these gates before proceeding:
 - [ ] Health endpoint: `GET /health` returns 200
 - [ ] Create experiment via UI → appears in database
 - [ ] Filter/pagination works correctly
+- [ ] UI uses 4-color palette from DESIGN_SYSTEM.md
+- [ ] Typography: Instrument Serif (headings), Inter (body)
+- [ ] shadcn/ui components installed and styled
 
 ### Phase 2: Basic Inference
 - [ ] Model loads without OOM error
@@ -921,6 +939,7 @@ Every phase must pass these gates before proceeding:
 - [ ] 10+ tests pass
 - [ ] Demo video published
 - [ ] Deployed and accessible online
+- [ ] UI fully compliant with DESIGN_SYSTEM.md
 
 ---
 

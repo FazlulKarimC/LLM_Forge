@@ -1,26 +1,93 @@
 @import "tailwindcss";
 
+/* LlmForge Design System - Based on DESIGN_SYSTEM.md */
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* 4-Color Palette */
+  --primary: #37322F;          /* Dark Brown - headings, buttons, primary text */
+  --background: #F7F5F3;       /* Off-White - page background */
+  --muted-foreground: #605A57; /* Taupe Gray - body text, descriptions */
+  --border: #E0DEDB;           /* Light Gray - borders, dividers */
+  
+  /* Semantic Colors */
+  --foreground: #37322F;
+  --text-heading: #37322F;
+  --text-body: #605A57;
+  --text-muted: rgba(55, 50, 47, 0.80);
+  --text-on-dark: #FBFAF9;
+  
+  --bg-page: #F7F5F3;
+  --bg-card: #FFFFFF;
+  --bg-primary: #37322F;
+  
+  --border-standard: rgba(55, 50, 47, 0.12);
+  --border-subtle: rgba(55, 50, 47, 0.06);
+  
+  /* Status Colors */
+  --success: #22c55e;
+  --warning: #eab308;
+  --error: #ef4444;
+  --info: #3b82f6;
+  
+  /* Fonts */
+  --font-serif: 'Instrument Serif', Georgia, serif;
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-primary: var(--primary);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --font-sans: var(--font-sans);
+  --font-serif: var(--font-serif);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg-page);
+  color: var(--text-body);
+  font-family: var(--font-sans);
 }
+
+/* Typography */
+h1, h2, h3 {
+  color: var(--text-heading);
+  font-family: var(--font-serif);
+}
+
+/* Utility classes for design system */
+.text-heading { color: var(--text-heading); }
+.text-body { color: var(--text-body); }
+.text-muted { color: var(--text-muted); }
+.bg-page { background: var(--bg-page); }
+.bg-card { background: var(--bg-card); }
+.border-standard { border-color: var(--border-standard); }
+
+/* Button primary style */
+.btn-primary {
+  background: var(--bg-primary);
+  color: var(--text-on-dark);
+  border-radius: 9999px;
+  padding: 0.5rem 1.5rem;
+  font-weight: 500;
+  transition: opacity 0.2s ease;
+}
+
+.btn-primary:hover {
+  opacity: 0.9;
+}
+
+/* Card style */
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+}
+
+/* Status badges */
+.badge-pending { background: #fef3c7; color: #92400e; }
+.badge-running { background: #dbeafe; color: #1e40af; }
+.badge-completed { background: #dcfce7; color: #166534; }
+.badge-failed { background: #fee2e2; color: #991b1b; }

@@ -31,8 +31,8 @@ __pycache__/
 .DS_Store
 Thumbs.db
 
-# Models (large files)
-models/
+# Models (large files - ML weights only)
+/models/
 *.bin
 *.safetensors
 *.gguf

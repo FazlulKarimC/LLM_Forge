@@ -3,17 +3,14 @@ Experiment Service
 
 Business logic for experiment management.
 Handles CRUD operations and experiment execution orchestration.
-
-TODO (Iteration 1): Implement CRUD operations
-TODO (Iteration 2): Add execution orchestration
-TODO (Iteration 3): Add experiment cloning and versioning
 """
 
-from typing import Optional, List
+from datetime import datetime, timezone
+from typing import Optional
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func, and_
 
 from app.models.experiment import Experiment
 from app.schemas.experiment import (
@@ -21,6 +18,7 @@ from app.schemas.experiment import (
     ExperimentResponse,
     ExperimentListResponse,
     ExperimentStatus,
+    ExperimentConfig,
 )
 
 
@@ -45,6 +43,20 @@ class ExperimentService:
         """
         self.db = db
     
+    def _to_response(self, experiment: Experiment) -> ExperimentResponse:
+        """Convert database model to response schema."""
+        return ExperimentResponse(
+            id=experiment.id,
+            name=experiment.name,
+            description=experiment.description,
+            config=ExperimentConfig(**experiment.config),
+            status=experiment.status,
+            created_at=experiment.created_at,
+            started_at=experiment.started_at,
+            completed_at=experiment.completed_at,
+            error_message=experiment.error_message,
+        )
+    
     async def create(self, data: ExperimentCreate) -> ExperimentResponse:
         """
         Create a new experiment.
@@ -54,23 +66,20 @@ class ExperimentService:
         
         Returns:
             Created experiment with generated ID
-        
-        TODO (Iteration 1): Implement database persistence
         """
-        # TODO: Implement
-        # experiment = Experiment(
-        #     name=data.name,
-        #     description=data.description,
-        #     config=data.config.model_dump(),
-        #     method=data.config.reasoning_method.value,
-        #     model_name=data.config.model_name,
-        #     dataset_name=data.config.dataset_name,
-        #     status=ExperimentStatus.PENDING,
-        # )
-        # self.db.add(experiment)
-        # await self.db.flush()
-        # return ExperimentResponse.model_validate(experiment)
-        raise NotImplementedError("Iteration 1: Implement create")
+        experiment = Experiment(
+            name=data.name,
+            description=data.description,
+            config=data.config.model_dump(),
+            method=data.config.reasoning_method.value,
+            model_name=data.config.model_name,
+            dataset_name=data.config.dataset_name,
+            status=ExperimentStatus.PENDING,
+        )
+        self.db.add(experiment)
+        await self.db.flush()
+        await self.db.refresh(experiment)
+        return self._to_response(experiment)
     
     async def get(self, experiment_id: UUID) -> Optional[ExperimentResponse]:
         """
@@ -80,19 +89,20 @@ class ExperimentService:
             experiment_id: UUID of experiment
         
         Returns:
-            Experiment or None if not found
-        
-        TODO (Iteration 1): Implement database lookup
+            Experiment or None if not found (excludes soft-deleted)
         """
-        # TODO: Implement
-        # result = await self.db.execute(
-        #     select(Experiment).where(Experiment.id == experiment_id)
-        # )
-        # experiment = result.scalar_one_or_none()
-        # if experiment:
-        #     return ExperimentResponse.model_validate(experiment)
-        # return None
-        raise NotImplementedError("Iteration 1: Implement get")
+        result = await self.db.execute(
+            select(Experiment).where(
+                and_(
+                    Experiment.id == experiment_id,
+                    Experiment.deleted_at.is_(None)  # Exclude soft-deleted
+                )
+            )
+        )
+        experiment = result.scalar_one_or_none()
+        if experiment:
+            return self._to_response(experiment)
+        return None
     
     async def list(
         self,
@@ -114,12 +124,40 @@ class ExperimentService:
         
         Returns:
             Paginated list of experiments
-        
-        TODO (Iteration 1): Implement basic listing
-        TODO (Iteration 2): Add sorting options
         """
-        # TODO: Implement
-        raise NotImplementedError("Iteration 1: Implement list")
+        # Build base query (exclude soft-deleted)
+        conditions = [Experiment.deleted_at.is_(None)]
+        
+        # Apply filters
+        if status:
+            conditions.append(Experiment.status == status)
+        if method:
+            conditions.append(Experiment.method == method)
+        if model:
+            conditions.append(Experiment.model_name.ilike(f"%{model}%"))
+        
+        # Count total matching
+        count_query = select(func.count(Experiment.id)).where(and_(*conditions))
+        total_result = await self.db.execute(count_query)
+        total = total_result.scalar() or 0
+        
+        # Fetch paginated results
+        query = (
+            select(Experiment)
+            .where(and_(*conditions))
+            .order_by(Experiment.created_at.desc())
+            .offset(skip)
+            .limit(limit)
+        )
+        result = await self.db.execute(query)
+        experiments = result.scalars().all()
+        
+        return ExperimentListResponse(
+            total=total,
+            experiments=[self._to_response(exp) for exp in experiments],
+            skip=skip,
+            limit=limit,
+        )
     
     async def update_status(
         self,
@@ -136,27 +174,66 @@ class ExperimentService:
             error_message: Error details if failed
         
         Returns:
-            Updated experiment
-        
-        TODO (Iteration 1): Implement status update
+            Updated experiment or None if not found
         """
-        # TODO: Implement
-        raise NotImplementedError("Iteration 1: Implement update_status")
+        result = await self.db.execute(
+            select(Experiment).where(
+                and_(
+                    Experiment.id == experiment_id,
+                    Experiment.deleted_at.is_(None)
+                )
+            )
+        )
+        experiment = result.scalar_one_or_none()
+        
+        if not experiment:
+            return None
+        
+        # Update status
+        experiment.status = status
+        
+        # Set timestamps based on status
+        now = datetime.now(timezone.utc)
+        if status == ExperimentStatus.RUNNING and experiment.started_at is None:
+            experiment.started_at = now
+        elif status in (ExperimentStatus.COMPLETED, ExperimentStatus.FAILED):
+            experiment.completed_at = now
+        
+        # Set error message if provided
+        if error_message:
+            experiment.error_message = error_message
+        
+        await self.db.flush()
+        await self.db.refresh(experiment)
+        return self._to_response(experiment)
     
     async def delete(self, experiment_id: UUID) -> bool:
         """
-        Delete an experiment.
+        Soft delete an experiment.
         
         Args:
             experiment_id: UUID of experiment
         
         Returns:
             True if deleted, False if not found
-        
-        TODO (Iteration 1): Implement soft delete
         """
-        # TODO: Implement
-        raise NotImplementedError("Iteration 1: Implement delete")
+        result = await self.db.execute(
+            select(Experiment).where(
+                and_(
+                    Experiment.id == experiment_id,
+                    Experiment.deleted_at.is_(None)
+                )
+            )
+        )
+        experiment = result.scalar_one_or_none()
+        
+        if not experiment:
+            return False
+        
+        # Soft delete: set deleted_at timestamp
+        experiment.deleted_at = datetime.now(timezone.utc)
+        await self.db.flush()
+        return True
     
     async def execute(self, experiment_id: UUID) -> None:
         """
@@ -173,7 +250,6 @@ class ExperimentService:
         
         Should be run as a background task.
         
-        TODO (Iteration 2): Implement execution orchestration
+        TODO (Phase 2): Implement execution orchestration
         """
-        # TODO: Implement
-        raise NotImplementedError("Iteration 2: Implement execute")
+        raise NotImplementedError("Phase 2: Implement execute")

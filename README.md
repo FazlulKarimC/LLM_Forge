@@ -348,7 +348,7 @@ LlmForge/
 | Layer | Technology | Why |
 |-------|------------|-----|
 | **Backend** | FastAPI | Async, auto-docs, ML ecosystem |
-| **Frontend** | Next.js 15 + shadcn/ui | SSR, great DX, elegant UI |
+| **Frontend** | Next.js 16 + shadcn/ui | SSR, great DX, elegant UI |
 | **Database** | PostgreSQL (NeonDB) | Serverless, free tier |
 | **Vector DB** | Qdrant | Best OSS performance |
 | **ML** | Transformers, vLLM | Industry standard |

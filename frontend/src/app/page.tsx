@@ -1,75 +1,97 @@
+"use client";
+
 /**
  * LLM Research Platform - Dashboard
  * 
- * Main dashboard showing:
- * - Summary statistics
- * - Recent experiments
- * - Quick actions
- * 
- * TODO (Iteration 1): Fetch real data from API
- * TODO (Iteration 2): Add charts and visualizations
- * TODO (Iteration 3): Add real-time updates
+ * Main dashboard showing stats, recent experiments, and quick actions.
+ * Uses TanStack Query for data fetching.
+ * Styled with DESIGN_SYSTEM.md (4-color palette, Instrument Serif headings).
  */
 
-import Link from 'next/link';
-
-// Placeholder data - will be replaced with API calls
-const MOCK_STATS = {
-  totalExperiments: 0,
-  completedExperiments: 0,
-  averageAccuracy: 0,
-  totalRuns: 0,
-};
+import { useQuery } from "@tanstack/react-query";
+import Link from "next/link";
+import { getDashboardStats, listExperiments, Experiment, DashboardStats } from "@/lib/api";
 
 export default function DashboardPage() {
+  const statsQuery = useQuery({
+    queryKey: ["dashboard-stats"],
+    queryFn: getDashboardStats,
+  });
+
+  const experimentsQuery = useQuery({
+    queryKey: ["experiments", "recent"],
+    queryFn: () => listExperiments({ limit: 5 }),
+  });
+
+  const stats = statsQuery.data;
+  const recentExperiments = experimentsQuery.data?.experiments ?? [];
+  const loading = statsQuery.isLoading || experimentsQuery.isLoading;
+  const error = statsQuery.error || experimentsQuery.error;
+
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-(--bg-page)">
       {/* Header */}
-      <header className="bg-white shadow">
+      <header className="bg-(--bg-card) shadow-sm border-b border-border">
         <div className="max-w-7xl mx-auto px-4 py-6">
-          <h1 className="text-3xl font-bold text-gray-900">
+          <h1 className="text-3xl font-serif text-(--text-heading)">
             LLM Research Platform
           </h1>
-          <p className="mt-1 text-gray-600">
+          <p className="mt-1 text-(--text-body)">
             Config-driven experimentation for reasoning, retrieval, and alignment
           </p>
         </div>
       </header>
 
       <main className="max-w-7xl mx-auto px-4 py-8">
+        {/* Error State */}
+        {error && (
+          <div className="mb-8 bg-red-50 border border-red-200 rounded-xl p-4">
+            <p className="text-red-700">
+              <strong>Error:</strong> {error instanceof Error ? error.message : 'Failed to load'}
+            </p>
+            <p className="text-sm text-red-600 mt-1">
+              Make sure the backend is running at http://localhost:8000
+            </p>
+          </div>
+        )}
+
         {/* Stats Grid */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
           <StatCard
             title="Total Experiments"
-            value={MOCK_STATS.totalExperiments}
+            value={loading ? "..." : stats?.totalExperiments ?? 0}
+            loading={loading}
           />
           <StatCard
             title="Completed"
-            value={MOCK_STATS.completedExperiments}
+            value={loading ? "..." : stats?.completedExperiments ?? 0}
+            loading={loading}
           />
           <StatCard
-            title="Avg Accuracy"
-            value={`${(MOCK_STATS.averageAccuracy * 100).toFixed(1)}%`}
+            title="Running"
+            value={loading ? "..." : stats?.runningExperiments ?? 0}
+            loading={loading}
           />
           <StatCard
-            title="Total Runs"
-            value={MOCK_STATS.totalRuns}
+            title="Pending"
+            value={loading ? "..." : stats?.pendingExperiments ?? 0}
+            loading={loading}
           />
         </div>
 
         {/* Quick Actions */}
-        <div className="bg-white rounded-lg shadow p-6 mb-8">
-          <h2 className="text-xl font-semibold mb-4">Quick Actions</h2>
+        <div className="card p-6 mb-8">
+          <h2 className="text-xl font-serif text-(--text-heading) mb-4">Quick Actions</h2>
           <div className="flex gap-4">
             <Link
               href="/experiments/new"
-              className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+              className="btn-primary"
             >
               New Experiment
             </Link>
             <Link
               href="/experiments"
-              className="bg-gray-100 text-gray-700 px-4 py-2 rounded hover:bg-gray-200"
+              className="px-6 py-2 rounded-full border border-border text-(--text-body) hover:bg-(--bg-page) transition-colors"
             >
               View All Experiments
             </Link>
@@ -77,26 +99,80 @@ export default function DashboardPage() {
         </div>
 
         {/* Recent Experiments */}
-        <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-xl font-semibold mb-4">Recent Experiments</h2>
-          {/* TODO (Iteration 1): Fetch and display real experiments */}
-          <p className="text-gray-500 text-center py-8">
-            No experiments yet. Create your first experiment to get started.
-          </p>
+        <div className="card p-6">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-serif text-(--text-heading)">Recent Experiments</h2>
+            <Link href="/experiments" className="text-primary hover:underline text-sm">
+              View all →
+            </Link>
+          </div>
+
+          {loading ? (
+            <div className="space-y-3">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="animate-pulse h-16 bg-(--bg-page) rounded-lg" />
+              ))}
+            </div>
+          ) : recentExperiments.length === 0 ? (
+            <p className="text-(--text-muted) text-center py-8">
+              No experiments yet. Create your first experiment to get started.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {recentExperiments.map((exp) => (
+                <ExperimentRow key={exp.id} experiment={exp} />
+              ))}
+            </div>
+          )}
         </div>
       </main>
     </div>
   );
 }
 
-/**
- * Stat card component for dashboard metrics.
- */
-function StatCard({ title, value }: { title: string; value: string | number }) {
+function StatCard({
+  title,
+  value,
+  loading,
+}: {
+  title: string;
+  value: string | number;
+  loading?: boolean;
+}) {
   return (
-    <div className="bg-white rounded-lg shadow p-6">
-      <dt className="text-sm font-medium text-gray-500">{title}</dt>
-      <dd className="mt-1 text-3xl font-semibold text-gray-900">{value}</dd>
+    <div className="card p-6">
+      <dt className="text-sm font-medium text-(--text-muted)">{title}</dt>
+      <dd className={`mt-1 text-3xl font-serif text-(--text-heading) ${loading ? "animate-pulse" : ""}`}>
+        {value}
+      </dd>
     </div>
+  );
+}
+
+function ExperimentRow({ experiment }: { experiment: Experiment }) {
+  const statusClasses: Record<string, string> = {
+    pending: "badge-pending",
+    running: "badge-running",
+    completed: "badge-completed",
+    failed: "badge-failed",
+  };
+
+  return (
+    <Link
+      href={`/experiments/${experiment.id}`}
+      className="block border border-border rounded-lg p-4 hover:bg-(--bg-page) transition-colors"
+    >
+      <div className="flex justify-between items-start">
+        <div>
+          <h3 className="font-medium text-(--text-heading)">{experiment.name}</h3>
+          <p className="text-sm text-(--text-muted)">
+            {experiment.config.model_name} • {experiment.config.reasoning_method}
+          </p>
+        </div>
+        <span className={`text-xs px-2 py-1 rounded-full ${statusClasses[experiment.status]}`}>
+          {experiment.status}
+        </span>
+      </div>
+    </Link>
   );
 }
