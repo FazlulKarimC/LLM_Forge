@@ -62,7 +62,7 @@ class Settings(BaseSettings):
     DEFAULT_TEMPERATURE: float = 0.7
     
     # ----- Inference -----
-    # TODO (Iteration 2): Add batching configuration
+    INFERENCE_ENGINE: str = "mock"  # mock or hf_api
     INFERENCE_BATCH_SIZE: int = 1
     INFERENCE_TIMEOUT_SECONDS: int = 60
     

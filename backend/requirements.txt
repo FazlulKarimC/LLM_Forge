@@ -18,10 +18,9 @@ alembic>=1.13.0
 # accelerate>=0.25.0
 # bitsandbytes>=0.41.0  # For 4-bit quantization
 
-## Embeddings & Vector DB
-# TODO (Iteration 2): Uncomment for RAG
-# sentence-transformers>=2.2.0
-# qdrant-client>=1.7.0
+## ML & Inference (NO PyTorch!)
+# huggingface-hub: Lightweight API client for HF Inference API
+huggingface-hub>=0.20.0
 
 ## Evaluation
 # TODO (Iteration 2): Uncomment for faithfulness metrics

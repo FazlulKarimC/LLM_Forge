@@ -146,10 +146,6 @@ async def run_experiment(
     
     Returns:
         Updated experiment with 'running' status
-    
-    TODO (Iteration 1): Implement synchronous execution
-    TODO (Iteration 2): Add background task processing
-    TODO (Iteration 3): Add job queue (Redis/RabbitMQ)
     """
     service = ExperimentService(db)
     experiment = await service.get(experiment_id)
@@ -160,10 +156,155 @@ async def run_experiment(
     if experiment.status == ExperimentStatus.RUNNING:
         raise HTTPException(status_code=409, detail="Experiment already running")
     
-    # TODO: Queue background task
-    # background_tasks.add_task(service.execute, experiment_id)
+    # Queue background task with standalone execution function
+    # This creates its own database session to avoid session lifecycle issues
+    background_tasks.add_task(execute_experiment_background, experiment_id)
     
-    return await service.update_status(experiment_id, ExperimentStatus.RUNNING)
+    updated_experiment = await service.update_status(experiment_id, ExperimentStatus.RUNNING)
+    await db.commit()  # Ensure status change is persisted before returning
+    
+    return updated_experiment
+
+
+async def execute_experiment_background(experiment_id: UUID):
+    """
+    Background task execution function.
+    
+    Creates its own database session to avoid lifecycle issues.
+    
+    DEBUGGING: Enhanced logging to track execution flow.
+    """
+    import logging
+    import traceback
+    import sys
+    
+    # Configure logging to ensure output is visible
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[logging.StreamHandler(sys.stdout)]
+    )
+    logger = logging.getLogger(__name__)
+    
+    logger.info(f"="*60)
+    logger.info(f"🚀 BACKGROUND TASK STARTED")
+    logger.info(f"   Experiment ID: {experiment_id}")
+    logger.info(f"="*60)
+    print(f"\n{'='*60}")
+    print(f"🚀 BACKGROUND TASK STARTED")
+    print(f"   Experiment ID: {experiment_id}")
+    print(f"{'='*60}")
+    
+    from app.core.database import async_session_maker
+    
+    try:
+        logger.info(f"[STEP 1] Creating database session...")
+        print(f"[STEP 1] Creating database session...")
+        
+        async with async_session_maker() as db:
+            logger.info(f"✓ Database session created successfully")
+            print(f"✓ Database session created successfully")
+            
+            logger.info(f"[STEP 2] Creating ExperimentService...")
+            print(f"[STEP 2] Creating ExperimentService...")
+            service = ExperimentService(db)
+            logger.info(f"✓ ExperimentService created")
+            print(f"✓ ExperimentService created")
+            
+            logger.info(f"[STEP 3] Calling service.execute()...")
+            print(f"[STEP 3] Calling service.execute()...")
+            
+            await service.execute(experiment_id)
+            
+            logger.info(f"[STEP 4] Committing database changes...")
+            print(f"[STEP 4] Committing database changes...")
+            await db.commit()
+            
+            logger.info(f"="*60)
+            logger.info(f"✅ BACKGROUND TASK COMPLETED SUCCESSFULLY!")
+            logger.info(f"="*60)
+            print(f"{'='*60}")
+            print(f"✅ BACKGROUND TASK COMPLETED SUCCESSFULLY!")
+            print(f"{'='*60}")
+            
+    except Exception as e:
+        error_type = type(e).__name__
+        error_msg = str(e)
+        
+        logger.error(f"="*60)
+        logger.error(f"❌ BACKGROUND TASK FAILED!")
+        logger.error(f"   Error Type: {error_type}")
+        logger.error(f"   Error Message: {error_msg}")
+        logger.error(f"="*60)
+        print(f"{'='*60}")
+        print(f"❌ BACKGROUND TASK FAILED!")
+        print(f"   Error Type: {error_type}")
+        print(f"   Error Message: {error_msg}")
+        print(f"{'='*60}")
+        
+        # Print full traceback
+        logger.error(f"Full Traceback:")
+        traceback.print_exc()
+        
+        # Update status to failed in a NEW session (important!)
+        logger.info(f"[RECOVERY] Updating experiment status to FAILED...")
+        print(f"[RECOVERY] Updating experiment status to FAILED...")
+        
+        try:
+            async with async_session_maker() as db:
+                service = ExperimentService(db)
+                await service.update_status(
+                    experiment_id,
+                    ExperimentStatus.FAILED,
+                    error_message=f"{error_type}: {error_msg}"
+                )
+                await db.commit()  # CRITICAL: Commit the failed status!
+                
+                logger.info(f"✓ Status updated to FAILED and committed")
+                print(f"✓ Status updated to FAILED and committed")
+                
+        except Exception as update_error:
+            logger.error(f"❌ CRITICAL: Could not update status to FAILED: {update_error}")
+            print(f"❌ CRITICAL: Could not update status to FAILED: {update_error}")
+            traceback.print_exc()
+
+
+@router.post("/{experiment_id}/execute", status_code=202)
+async def execute_experiment_alias(
+    experiment_id: UUID,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Alias endpoint for /run.
+    
+    Some frontends may call /execute instead of /run.
+    This provides compatibility for both conventions.
+    
+    Returns:
+        202 Accepted with message indicating background execution started
+    """
+    service = ExperimentService(db)
+    experiment = await service.get(experiment_id)
+    
+    if not experiment:
+        raise HTTPException(status_code=404, detail="Experiment not found")
+    
+    if experiment.status == ExperimentStatus.RUNNING:
+        raise HTTPException(status_code=409, detail="Experiment already running")
+    
+    # Queue background task
+    background_tasks.add_task(execute_experiment_background, experiment_id)
+    
+    # Update status to running
+    await service.update_status(experiment_id, ExperimentStatus.RUNNING)
+    await db.commit()
+    
+    return {
+        "message": "Experiment execution started in background",
+        "experiment_id": str(experiment_id),
+        "status": "running"
+    }
 
 
 @router.delete("/{experiment_id}", status_code=204)

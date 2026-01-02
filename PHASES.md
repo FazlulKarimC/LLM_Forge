@@ -9,7 +9,7 @@
 | Phase | Name | Status | Key Deliverable |
 |-------|------|--------|-----------------|
 | 0 | Infrastructure Foundation | ✅ Complete | Project scaffold |
-| 1 | Core Platform | 🔲 Pending | Working CRUD + API |
+| 1 | Core Platform | ✅ Complete | Working CRUD + API |
 | 2 | Basic Inference | 🔲 Pending | LLM generates text |
 | 3 | Evaluation & Metrics | 🔲 Pending | Metrics dashboard |
 | 4 | Chain-of-Thought | 🔲 Pending | First comparison |
@@ -58,39 +58,47 @@ DESIGN_SYSTEM.md  → Frontend design guidelines & component patterns
 
 ---
 
-## Phase 1: Core Platform
+## Phase 1: Core Platform ✅
 
-**Goal**: Make the platform functional with database operations
+**Status**: Complete
+
+### What We Accomplished
+- [x] Database connection with NeonDB (PostgreSQL)
+- [x] Alembic migrations setup
+- [x] Full CRUD API for experiments (create, read, list, delete)
+- [x] Frontend integration with TanStack Query
+- [x] Design system applied with DESIGN_SYSTEM.md guidelines
+- [x] Working end-to-end flow from UI to database
 
 ### Tasks
-- [ ] **1.1 Database Connection**
+- [x] **1.1 Database Connection**
   - Configure NeonDB connection string
   - Test async SQLAlchemy connection
   - Create database tables
 
-- [ ] **1.2 Alembic Migrations**
+- [x] **1.2 Alembic Migrations**
   - Initialize Alembic
   - Create initial migration
   - Set up auto-migration workflow
 
-- [ ] **1.3 Implement Experiment CRUD**
+- [x] **1.3 Implement Experiment CRUD**
   - `create()` - Save experiment config to DB
   - `get()` - Retrieve by ID
   - `list()` - Paginated listing with filters
   - `delete()` - Soft delete
 
-- [ ] **1.4 Frontend API Integration**
+- [x] **1.4 Frontend API Integration**
   - Connect Dashboard to real stats
   - Connect Experiments list to API
   - Connect New Experiment form
   - Handle loading/error states
 
-- [ ] **1.5 End-to-End Test**
+- [x] **1.5 End-to-End Test**
   - Create experiment via UI
   - Verify it appears in list
   - View experiment details
 
-- [ ] **1.6 Apply Design System**
+- [x] **1.6 Apply Design System**
   - Install shadcn/ui components (button, card, badge, table, tabs, form, input, skeleton)
   - Configure Tailwind with DESIGN_SYSTEM.md color palette
   - Apply 4-color system to all pages
@@ -102,13 +110,13 @@ DESIGN_SYSTEM.md  → Frontend design guidelines & component patterns
 - ✅ Filter by status, method
 
 ### Exit Criteria
-- [ ] Create experiment via UI → appears in database within 2 seconds
-- [ ] Filter experiments by status returns correct subset
-- [ ] Error handling works (test with invalid config)
-- [ ] Pagination works (create 20+ experiments, test navigation)
-- [ ] Can view experiment details without errors
-- [ ] UI follows DESIGN_SYSTEM.md guidelines (4-color palette, typography, spacing)
-- [ ] All shadcn/ui components styled per design system
+- [x] Create experiment via UI → appears in database within 2 seconds
+- [x] Filter experiments by status returns correct subset
+- [x] Error handling works (test with invalid config)
+- [x] Pagination works (create 20+ experiments, test navigation)
+- [x] Can view experiment details without errors
+- [x] UI follows DESIGN_SYSTEM.md guidelines (4-color palette, typography, spacing)
+- [x] All shadcn/ui components styled per design system
 
 ### Technical Notes
 ```python
@@ -127,40 +135,44 @@ DATABASE_URL=postgresql://user:pass@ep-xxx.region.neon.tech/dbname?sslmode=requi
 
 ## Phase 2: Basic Inference Engine
 
-**Goal**: Run actual LLM inference locally on GTX 1650
+**Goal**: Run actual LLM inference via HuggingFace Inference API (no local GPU)
+
+> **Architecture Change**: Using remote inference instead of local models. No PyTorch installation needed.
 
 ### Tasks
-- [ ] **2.1 Model Loading**
-  - Install transformers, torch
-  - Load Phi-2 (2.7B) - fits in 4GB VRAM
-  - Implement `load_model()` in TransformersEngine
-  - Handle GPU memory errors gracefully
+- [ ] **2.1 Inference Abstraction Layer**
+  - Create `InferenceEngine` interface
+  - Implement `HFAPIEngine` for HuggingFace API
+  - Implement `MockEngine` for local development
+  - Add API key configuration
 
-- [ ] **2.2 Text Generation**
-  - Implement `generate()` method
-  - Track input/output tokens
-  - Measure latency
+- [ ] **2.2 HuggingFace API Integration**
+  - Install `huggingface-hub` (lightweight, no PyTorch)
+  - Configure HF API token in environment
+  - Implement text generation via API
+  - Handle rate limiting and errors
+
+- [ ] **2.3 Text Generation**
+  - Implement `generate()` method for remote calls
+  - Track input/output tokens from API response
+  - Measure end-to-end latency (including network)
   - Return GenerationResult
 
-- [ ] **2.3 Naive Prompting**
+- [ ] **2.4 Naive Prompting**
   - Format: `Question: {q}\nAnswer:`
   - Parse generated response
-  - Handle edge cases (empty, too long)
+  - Handle edge cases (empty, too long, API errors)
 
-- [ ] **2.4 Run Logging**
+- [ ] **2.5 Run Logging**
   - Save each LLM call to `runs` table
   - Log: input, output, tokens, latency
   - Associate runs with experiments
 
-- [ ] **2.5 Execution Pipeline**
+- [ ] **2.6 Execution Pipeline**
   - Implement `ExperimentService.execute()`
-  - Load config → Load model → Run inference → Save results
-
-- [ ] **2.6 GPU Memory Management**
-  - Log GPU memory before/after model load
-  - Implement `torch.cuda.empty_cache()` after runs
-  - Add warning if memory >90% used
-  - Create automatic fallback to CPU if OOM
+  - Load config → Call API → Run inference → Save results
+  - Add retry logic for API failures
+  - Implement rate limiting (respect API quotas)
 
 ### Deliverables
 - ✅ Hit Phi-2 with a prompt, get response
@@ -170,26 +182,130 @@ DATABASE_URL=postgresql://user:pass@ep-xxx.region.neon.tech/dbname?sslmode=requi
 ### Exit Criteria
 - [ ] Run 10 consecutive inferences without crashes
 - [ ] Token counts match expected (input + output = total)
-- [ ] Latency is reasonable (<2s GPU, <10s CPU)
+- [ ] Latency is reasonable (<5s including network)
 - [ ] Runs table has 10 entries with all non-null required fields
-- [ ] GPU memory clears properly between runs
+- [ ] API error handling works (test with invalid tokens)
 
 ### Technical Notes
 ```python
-# Phi-2 fits on GTX 1650 with float16
-model = AutoModelForCausalLM.from_pretrained(
-    "microsoft/phi-2",
-    torch_dtype=torch.float16,
-    device_map="auto",
+# HuggingFace Inference API (no local model loading)
+from huggingface_hub import InferenceClient
+
+client = InferenceClient(token=os.getenv("HF_TOKEN"))
+response = client.text_generation(
+    "Question: What is the capital of France?\nAnswer:",
+    model="microsoft/phi-2",
+    max_new_tokens=256,
+    temperature=0.7,
 )
+```
+
+### Local Dependencies (NO PyTorch!)
+```txt
+# requirements.txt - lightweight only!
+fastapi>=0.109.0
+huggingface-hub>=0.20.0  # ~50MB
+httpx>=0.26.0
+# NO torch, transformers, or accelerate
 ```
 
 ### Common Pitfalls & Solutions
 | Issue | Solution |
 |-------|----------|
-| OOM errors | Use `torch_dtype=torch.float16`, `device_map="auto"`, auto-fallback to CPU |
-| Slow CPU generation | Expected locally; use small batches (1-5), reserve large runs for Colab |
-| Token count mismatch | Use `tokenizer.encode()`, count prompt + generated separately |
+| API rate limits | Implement exponential backoff, respect 30K chars/month free tier |
+| Network timeouts | Set timeout=60s, add retry logic with tenacity |
+| Token count mismatch | Parse from API response metadata, not local tokenization |
+| Invalid API key | Check environment variable, validate token at startup |
+
+### Background Task Architecture
+
+> **Key Decision**: Use RQ (Redis Queue) with Upstash cloud Redis instead of FastAPI BackgroundTasks for reliable experiment execution.
+
+#### Why RQ + Upstash?
+
+| FastAPI BackgroundTasks | RQ + Upstash |
+|-------------------------|--------------|
+| Tied to API process | Independent worker process |
+| Silent failures | Explicit failure handling |
+| No retry mechanism | Built-in retry support |
+| In-memory queue | Persistent Redis queue (survives restarts) |
+
+#### Cloud Redis Provider: Upstash
+
+| Feature | Details |
+|---------|---------|
+| Free Tier | 10,000 commands/day, 256MB |
+| Connection | REST API or Redis protocol |
+| Setup | Create account → Get `REDIS_URL` |
+
+#### Architecture Flow
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         API Layer                                │
+│  POST /experiments/{id}/run  →  Validate  →  Enqueue to RQ     │
+│                               →  Return 202 Accepted            │
+└─────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                     Upstash Redis Queue                         │
+│              (Persistent, survives restarts)                    │
+└─────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                        RQ Worker                                 │
+│  1. Pick job from queue                                         │
+│  2. Create DB session                                           │
+│  3. Call ExperimentService.execute()                            │
+│  4. Service owns commits/rollbacks                              │
+│  5. Log success or persist failure                              │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+#### Transaction Ownership Rules
+
+| Layer | Responsibility |
+|-------|----------------|
+| API | Validation + enqueue ONLY |
+| RQ Worker | Session creation + wrapper |
+| **Service** | **OWNS all commits/rollbacks** |
+| Database | Source of truth |
+
+#### Status State Machine
+
+```
+PENDING → RUNNING → COMPLETED
+                 ↘ FAILED
+```
+
+**Rules**:
+- No skipping states
+- No backward transitions  
+- Transition = `update_status()` + `commit()`
+
+#### Implementation Files
+
+```
+backend/
+├── app/
+│   ├── api/experiments.py     # Enqueue job (no execution)
+│   ├── tasks/
+│   │   └── experiment_tasks.py # RQ task wrapper
+│   ├── services/
+│   │   └── experiment_service.py # Business logic (owns commits)
+│   └── core/
+│       └── redis.py           # Redis connection
+```
+
+#### Worker Command
+
+```bash
+# Start RQ worker (in separate terminal)
+cd backend
+rq worker experiments --with-scheduler
+```
 
 ---
 
@@ -357,6 +473,8 @@ def compute_significance(naive_correct: list, cot_correct: list):
 
 **Goal**: Build retrieval-augmented generation system
 
+> **Architecture Note**: Embeddings (`sentence-transformers`) and NLI models (`bart-large-mnli`) can run **locally** (CPU-friendly). Only final text generation uses HF Inference API or Colab.
+
 ### Tasks
 - [ ] **5.1 Document Ingestion**
   - Download Simple Wikipedia from HuggingFace (`wikipedia/20220301.simple`)
@@ -514,17 +632,20 @@ Answer: Paris was founded in the 3rd century BC.
 
 **Goal**: Fine-tune model with preference learning
 
-### Colab-Specific Setup
+> **Architecture: Config-Driven Training in Colab**
+> - All training runs **ONLY in Colab** (never locally)
+> - Use **standalone Python scripts** (not interactive notebooks)
+> - **YAML configs** define all experiments
+> - Models saved to **HuggingFace Hub** (not local disk)
+> - Lightweight LoRA adapters only (~100MB vs 15GB full model)
 
-> All training happens in Colab - never locally.
+### Colab-Specific Setup
 
 **Initial Setup (First Session):**
 1. Open new Colab notebook
 2. Mount Google Drive: `from google.colab import drive; drive.mount('/content/drive')`
-3. Create project folder: `/content/drive/MyDrive/llmforge-training/`
-4. Install dependencies: `!pip install transformers trl peft accelerate datasets`
-5. Download dataset once, save to Drive
-6. Download base model once, save to Drive
+3. Clone repo: `!git clone https://github.com/your-username/LlmForge`
+4. Install heavy dependencies (ONLY in Colab): `!pip install torch transformers trl peft accelerate`
 
 **Checkpoint Strategy:**
 - Save checkpoint every 100 training steps → Google Drive
@@ -532,55 +653,68 @@ Answer: Paris was founded in the 3rd century BC.
 - Final model: upload to HuggingFace Hub (private repo)
 
 ### Tasks
-- [ ] **7.1 Preference Dataset Preparation**
-  - Download Anthropic HH-RLHF (helpfulness subset)
+- [ ] **7.1 Create Training Config (YAML)**
+  - Write `configs/training/dpo_mistral_v1.yaml`
+  - Define: model, dataset, hyperparameters, LoRA config
+  - Version control in Git
+  - Config is the source of truth
+
+- [ ] **7.2 Write Standalone Training Script**
+  - Create `training/train_dpo.py` (runs in Colab)
+  - Reads config from YAML file
+  - No hardcoded values
+  - Can run as: `python train_dpo.py --config configs/training/dpo_mistral_v1.yaml`
+
+- [ ] **7.3 Preference Dataset Preparation**
+  - Download Anthropic HH-RLHF (helpfulness subset) in Colab
   - Format: prompt + chosen_response + rejected_response
   - Split: 800 train / 100 validation / 100 test
-  - Save to Google Drive as `.parquet` or `.json`
-  - Manually review 20 pairs to ensure quality
+  - Load via config, no manual download locally
 
-- [ ] **7.2 Training Configuration**
+- [ ] **7.4 Training Configuration**
   - Base model: `mistralai/Mistral-7B-Instruct-v0.2` (Colab T4 only)
   - Use LoRA for efficiency (don't full fine-tune)
   - LoRA config: `rank=16, target_modules=["q_proj", "v_proj"]`
   - DPO config: `beta=0.1, learning_rate=5e-7`
   - Training: 1 epoch, `batch_size=4`, `gradient_accumulation=4`
 
-- [ ] **7.3 Training Execution in Colab**
+- [ ] **7.5 Training Execution in Colab**
+  - Run training script in Colab
   - Load base model with 4-bit quantization (fits in 16GB)
   - Initialize DPOTrainer from `trl` library
   - Train for ~2 hours on T4 GPU
   - Monitor loss curves (should decrease steadily)
   - Save checkpoints to Google Drive every 100 steps
 
-- [ ] **7.4 Model Upload**
-  - Merge LoRA weights with base model
-  - Upload to HuggingFace Hub: `your-username/mistral-7b-dpo-v1`
+- [ ] **7.6 Model Upload to HuggingFace Hub**
+  - Merge LoRA weights with base model (optional)
+  - Upload LoRA adapter to HF Hub: `your-username/mistral-7b-dpo-lora-v1`
   - Set repository to private during development
-  - Save model card with training details
+  - Save model card with training details and config link
 
-- [ ] **7.5 Evaluation Setup**
-  - Download fine-tuned model from HF Hub
+- [ ] **7.7 Evaluation Setup (Back to Platform)**
+  - Use fine-tuned model from HF Hub via Inference API or Colab
   - Compare: Base model vs DPO-tuned model
   - Use same evaluation infrastructure from Phase 3
+  - No local model loading needed
 
-- [ ] **7.6 Helpfulness Evaluation**
+- [ ] **7.8 Helpfulness Evaluation**
   - Use Anthropic HH test set (100 prompts)
   - Generate responses from both models
   - Human evaluation: judge 50 pairs (which is more helpful?)
   - Expected: DPO model preferred 60-70% of time
 
-- [ ] **7.7 Factuality Evaluation**
+- [ ] **7.9 Factuality Evaluation**
   - Use TriviaQA (200 questions)
   - Measure exact match accuracy for both models
   - Expected: DPO model slightly worse (2-8% drop)
 
-- [ ] **7.8 Verbosity Analysis**
+- [ ] **7.10 Verbosity Analysis**
   - Measure average response length (tokens)
   - Compare: base vs DPO on same prompts
   - Expected: DPO model 10-20% longer responses
 
-- [ ] **7.9 Ablation Studies**
+- [ ] **7.11 Ablation Studies**
   - Ablation 1 - Beta: Train with `beta = 0.05, 0.1, 0.2`
   - Ablation 2 - Data: Train with 200, 500, 800 pairs
   - Measure: Helpfulness score vs Factuality accuracy
@@ -599,15 +733,41 @@ Answer: Paris was founded in the 3rd century BC.
 - [ ] At least 1 ablation study completed
 - [ ] README updated with alignment findings
 
-### Training Config
-```python
-training_args = DPOConfig(
-    beta=0.1,
-    learning_rate=5e-7,
-    per_device_train_batch_size=4,
-    gradient_accumulation_steps=4,
-    num_train_epochs=1,
-)
+### Example Training Config (YAML)
+```yaml
+# configs/training/dpo_mistral_v1.yaml
+training:
+  model_name: "mistralai/Mistral-7B-Instruct-v0.2"
+  dataset: "Anthropic/hh-rlhf"
+  dataset_subset: "helpful-base"
+  dataset_size: 1000
+  
+  method: "dpo"
+  
+  hyperparameters:
+    beta: 0.1
+    learning_rate: 5e-7
+    num_train_epochs: 1
+    per_device_train_batch_size: 4
+    gradient_accumulation_steps: 4
+  
+  lora:
+    rank: 16
+    alpha: 32
+    target_modules: ["q_proj", "v_proj"]
+  
+  output:
+    checkpoint_dir: "/content/drive/MyDrive/llmforge/checkpoints"
+    push_to_hub: true
+    hub_model_id: "your-username/mistral-7b-dpo-lora-v1"
+  
+  seed: 42
+```
+
+### Colab Execution
+```bash
+# In Colab, run training script with config
+!python training/train_dpo.py --config configs/training/dpo_mistral_v1.yaml
 ```
 
 ### Colab Session Management
@@ -630,6 +790,8 @@ training_args = DPOConfig(
 ## Phase 8: Inference Optimization
 
 **Goal**: Production-grade performance
+
+> **Architecture Note**: vLLM optimization runs **only in Colab** (requires GPU). Batching and caching can be tested with HF Inference API or mock data locally.
 
 ### Tasks
 - [ ] **8.1 Batching Implementation**

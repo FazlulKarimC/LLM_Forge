@@ -26,8 +26,10 @@ A config-driven, reproducible LLM experimentation platform for studying:
 | **Backend** | FastAPI (Python 3.11+) | Async, auto-docs, ML ecosystem |
 | **Frontend** | Next.js 16 (TypeScript) | SSR, modern React, great DX |
 | **Database** | PostgreSQL (NeonDB) | Serverless, free tier, reliable |
+| **Task Queue** | RQ + Upstash Redis | Simple, reliable background jobs |
 | **Vector DB** | Qdrant Cloud | 1GB free, excellent performance |
-| **ML Framework** | Transformers, vLLM | Industry standard |
+| **Inference** | HuggingFace Inference API | Free tier, no local GPU needed |
+| **ML Training** | Transformers, TRL (Colab only) | Industry standard, cloud compute |
 | **Embeddings** | sentence-transformers | Fast, reliable |
 | **Containerization** | Docker | Qdrant local dev |
 
@@ -92,18 +94,31 @@ A config-driven, reproducible LLM experimentation platform for studying:
 
 ## Hardware Constraints & Strategy
 
-### Your Hardware
-| Device | Specs | Capability |
-|--------|-------|------------|
-| **GTX 1650** | 4GB VRAM | 3B models (4-bit quantized) |
-| **Colab Free** | T4 16GB | 7B models, limited sessions |
+### Architecture: Remote Inference + Cloud Training
+
+> **Key Decision**: No local GPU dependencies. All inference and training via cloud services.
+
+| Component | Environment | Technology |
+|-----------|-------------|------------|
+| **Development** | Local PC (no GPU) | FastAPI, Next.js, lightweight deps only |
+| **Inference** | HuggingFace API | Remote API calls (Phases 2-4) |
+| **Training** | Google Colab (T4 GPU) | Transformers, TRL (Phase 7) |
+| **Model Storage** | HuggingFace Hub | Trained models, LoRA adapters |
 
 ### Model Strategy by Phase
-| Phase | Environment | Models |
-|-------|-------------|--------|
-| 1-2 (Weeks 1-4) | Local GTX 1650 | Phi-2 (2.7B), TinyLlama (1.1B) |
-| 3-5 (Weeks 5-10) | Colab | Mistral-7B, LLaMA-3-8B |
-| 6 (Weeks 11-12) | Colab | Final benchmarks |
+| Phase | Inference Method | Models |
+|-------|------------------|--------|
+| 1-2 (Weeks 1-4) | HF Inference API (free tier) | Phi-2 (2.7B), TinyLlama (1.1B) |
+| 3-5 (Weeks 5-10) | HF API or Colab inference server | Mistral-7B, LLaMA-3-8B |
+| 6 (Week 11) | Colab inference server | Agent evaluation |
+| 7 (Week 12) | Colab training + HF Hub | DPO fine-tuning |
+
+### Why Remote Inference?
+- ✅ No local disk space needed (saves 10-15GB)
+- ✅ Works on any computer (no GPU required)
+- ✅ Faster development setup (5 min vs 2 hours)
+- ✅ Production-ready architecture
+- ✅ Matches industry practices (development ≠ training)
 
 ---
 
@@ -472,6 +487,87 @@ lora_rank: 16
 - Avoid cherry-picking outcomes
 
 ---
+
+## Architecture Principles
+
+> These principles were established after debugging background task failures. They ensure reliability in async experiment execution.
+
+### 1. Status Is a Persisted State Machine
+
+`ExperimentStatus` is a database-backed state machine, not an in-memory flag.
+
+**State Transitions**:
+```
+PENDING → RUNNING → COMPLETED
+                 ↘ FAILED
+```
+
+**Rules**:
+- No skipping states (PENDING cannot go directly to COMPLETED)
+- No backward transitions (COMPLETED cannot go back to RUNNING)
+- A transition is not real until it is **committed**
+
+```python
+# Correct pattern
+await update_status(experiment_id, COMPLETED)
+await db.commit()  # Transition is now permanent
+```
+
+### 2. One Layer Owns Transactions
+
+Exactly one layer owns `commit()` and `rollback()`:
+
+| Layer | Responsibility |
+|-------|----------------|
+| API | Request validation, enqueue job |
+| Background Task (RQ) | Execution wrapper, session creation |
+| **Service** | **OWNS transactions + business logic** |
+| Database | Source of truth |
+
+**Anti-patterns**:
+- ❌ Commit in API routes
+- ❌ Commit in background task wrapper
+- ❌ Commit in helper functions like `update_status()`
+
+### 3. Background Tasks Are Fire-and-Forget Workers
+
+We use RQ (Redis Queue) with Upstash for reliable background execution.
+
+**Why RQ over FastAPI BackgroundTasks**:
+| FastAPI BackgroundTasks | RQ Workers |
+|-------------------------|------------|
+| Tied to API process lifecycle | Independent process |
+| Silent failures possible | Explicit failure handling |
+| No retry mechanism | Built-in retry support |
+| In-memory queue | Persistent Redis queue |
+
+**Worker Rules**:
+- Catch all exceptions
+- Persist failure state to database
+- Log aggressively
+- Never crash silently
+
+### 4. Think in Execution Phases
+
+Each experiment execution has distinct phases:
+
+```
+1. Load inputs (experiment config, questions)
+2. Validate config
+3. Prepare execution context (engine, services)
+4. Run inference loop
+5. Persist outputs (runs to database)
+6. Finalize experiment (update status)
+```
+
+Each phase:
+- Logs start/completion
+- Can fail independently
+- Commits only at defined boundaries
+
+---
+
+
 
 ## Success Metrics
 

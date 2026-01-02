@@ -242,14 +242,177 @@ class ExperimentService:
         This is the main orchestration method:
         1. Load experiment config
         2. Initialize inference engine
-        3. Load dataset
+        3. Load sample questions
         4. Run inference for each sample
-        5. Log results
-        6. Compute metrics
-        7. Update status
+        5. Log runs to database
+        6. Update status
         
         Should be run as a background task.
         
-        TODO (Phase 2): Implement execution orchestration
+        DEBUGGING: Enhanced logging to track failures.
         """
-        raise NotImplementedError("Phase 2: Implement execute")
+        import json
+        import os
+        import logging
+        from pathlib import Path
+        
+        logger = logging.getLogger(__name__)
+        
+        from app.schemas.experiment import ExperimentStatus
+        from app.services.inference.base import GenerationConfig
+        from app.services.inference.hf_api_engine import HFAPIEngine
+        from app.services.inference.mock_engine import MockEngine
+        from app.services.inference.prompting import NaivePromptTemplate
+        from app.services.run_service import RunService
+        
+        logger.info(f"[EXECUTE] Starting execution for experiment: {experiment_id}")
+        print(f"[EXECUTE] Starting execution for experiment: {experiment_id}")
+        
+        # Step 1: Get experiment
+        logger.info(f"[EXECUTE STEP 1] Getting experiment from database...")
+        print(f"[EXECUTE STEP 1] Getting experiment from database...")
+        experiment_response = await self.get(experiment_id)
+        if not experiment_response:
+            error = f"Experiment {experiment_id} not found"
+            logger.error(f"[EXECUTE] ❌ {error}")
+            print(f"[EXECUTE] ❌ {error}")
+            raise ValueError(error)
+        logger.info(f"[EXECUTE STEP 1] ✓ Found experiment: {experiment_response.name}")
+        print(f"[EXECUTE STEP 1] ✓ Found experiment: {experiment_response.name}")
+        
+        # Note: Don't update status to RUNNING here - API endpoint already did that
+        # await self.update_status(experiment_id, ExperimentStatus.RUNNING)
+        
+        try:
+            # Step 2: Initialize inference engine
+            logger.info(f"[EXECUTE STEP 2] Initializing inference engine...")
+            print(f"[EXECUTE STEP 2] Initializing inference engine...")
+            engine_type = os.getenv("INFERENCE_ENGINE", "mock")  # mock or hf_api
+            logger.info(f"[EXECUTE STEP 2] Engine type: {engine_type}")
+            print(f"[EXECUTE STEP 2] Engine type: {engine_type}")
+            
+            if engine_type == "hf_api":
+                engine = HFAPIEngine(model_name=experiment_response.config.model_name)
+            else:
+                engine = MockEngine()
+            
+            engine.load_model(experiment_response.config.model_name)
+            logger.info(f"[EXECUTE STEP 2] ✓ Engine loaded: {experiment_response.config.model_name}")
+            print(f"[EXECUTE STEP 2] ✓ Engine loaded: {experiment_response.config.model_name}")
+            
+            # Step 3: Load sample questions
+            logger.info(f"[EXECUTE STEP 3] Loading sample questions...")
+            print(f"[EXECUTE STEP 3] Loading sample questions...")
+            questions_path = Path(__file__).parent.parent.parent.parent / "configs" / "sample_questions.json"
+            logger.info(f"[EXECUTE STEP 3] Path: {questions_path}")
+            print(f"[EXECUTE STEP 3] Path: {questions_path}")
+            logger.info(f"[EXECUTE STEP 3] Path exists: {questions_path.exists()}")
+            print(f"[EXECUTE STEP 3] Path exists: {questions_path.exists()}")
+            
+            if not questions_path.exists():
+                raise FileNotFoundError(f"Sample questions file not found: {questions_path}")
+            
+            with open(questions_path, "r") as f:
+                questions = json.load(f)
+            logger.info(f"[EXECUTE STEP 3] ✓ Loaded {len(questions)} questions")
+            print(f"[EXECUTE STEP 3] ✓ Loaded {len(questions)} questions")
+            
+            # Step 4: Prepare generation config
+            logger.info(f"[EXECUTE STEP 4] Preparing generation config...")
+            print(f"[EXECUTE STEP 4] Preparing generation config...")
+            gen_config = GenerationConfig(
+                max_tokens=experiment_response.config.hyperparameters.max_tokens,
+                temperature=experiment_response.config.hyperparameters.temperature,
+                top_p=experiment_response.config.hyperparameters.top_p,
+            )
+            logger.info(f"[EXECUTE STEP 4] ✓ Config: max_tokens={gen_config.max_tokens}, temp={gen_config.temperature}")
+            print(f"[EXECUTE STEP 4] ✓ Config: max_tokens={gen_config.max_tokens}, temp={gen_config.temperature}")
+            
+            # Step 5: Initialize run service
+            logger.info(f"[EXECUTE STEP 5] Initializing RunService...")
+            print(f"[EXECUTE STEP 5] Initializing RunService...")
+            run_service = RunService(self.db)
+            logger.info(f"[EXECUTE STEP 5] ✓ RunService ready")
+            print(f"[EXECUTE STEP 5] ✓ RunService ready")
+            
+            # Step 6: Run inference for each question
+            logger.info(f"[EXECUTE STEP 6] Running inference for {len(questions)} questions...")
+            print(f"[EXECUTE STEP 6] Running inference for {len(questions)} questions...")
+            
+            for i, item in enumerate(questions):
+                logger.info(f"[EXECUTE STEP 6] Processing question {i+1}/{len(questions)}: {item['id']}")
+                print(f"[EXECUTE STEP 6] Processing question {i+1}/{len(questions)}: {item['id']}")
+                
+                # Format prompt using naive template
+                prompt = NaivePromptTemplate.format(item["question"])
+                
+                # Generate response
+                result = engine.generate(prompt, gen_config)
+                
+                # Parse response
+                parsed_answer = NaivePromptTemplate.parse_response(result.text)
+                
+                # Check correctness (simple exact match for Phase 2)
+                is_correct = parsed_answer.lower().strip() == item["answer"].lower().strip()
+                
+                # Log run to database
+                await run_service.create_run(
+                    experiment_id=experiment_id,
+                    example_id=item["id"],
+                    input_text=prompt,
+                    output_text=parsed_answer,
+                    expected_output=item["answer"],
+                    is_correct=is_correct,
+                    score=1.0 if is_correct else 0.0,
+                    tokens_input=result.tokens_input,
+                    tokens_output=result.tokens_output,
+                    latency_ms=result.latency_ms,
+                    gpu_memory_mb=result.gpu_memory_mb,
+                )
+                logger.info(f"[EXECUTE STEP 6] ✓ Run logged for question {item['id']}")
+                print(f"[EXECUTE STEP 6] ✓ Run logged for question {item['id']}")
+            
+            # Step 7: Commit all runs
+            logger.info(f"[EXECUTE STEP 7] Committing all runs to database...")
+            print(f"[EXECUTE STEP 7] Committing all runs to database...")
+            await self.db.commit()
+            logger.info(f"[EXECUTE STEP 7] ✓ Runs committed")
+            print(f"[EXECUTE STEP 7] ✓ Runs committed")
+            
+            # Step 8: Cleanup
+            logger.info(f"[EXECUTE STEP 8] Cleanup...")
+            print(f"[EXECUTE STEP 8] Cleanup...")
+            engine.unload_model()
+            logger.info(f"[EXECUTE STEP 8] ✓ Engine unloaded")
+            print(f"[EXECUTE STEP 8] ✓ Engine unloaded")
+            
+            # Step 9: Update status to COMPLETED
+            logger.info(f"[EXECUTE STEP 9] Updating status to COMPLETED...")
+            print(f"[EXECUTE STEP 9] Updating status to COMPLETED...")
+            await self.update_status(experiment_id, ExperimentStatus.COMPLETED)
+            await self.db.commit()  # IMPORTANT: Commit the status change!
+            logger.info(f"[EXECUTE STEP 9] ✓ Status updated and committed")
+            print(f"[EXECUTE STEP 9] ✓ Status updated and committed")
+            
+            logger.info(f"[EXECUTE] ✅ EXECUTION COMPLETED SUCCESSFULLY")
+            print(f"[EXECUTE] ✅ EXECUTION COMPLETED SUCCESSFULLY")
+            
+        except Exception as e:
+            # Log error and update status to FAILED
+            logger.error(f"[EXECUTE] ❌ EXECUTION FAILED: {type(e).__name__}: {str(e)}")
+            print(f"[EXECUTE] ❌ EXECUTION FAILED: {type(e).__name__}: {str(e)}")
+            
+            import traceback
+            traceback.print_exc()
+            
+            error_message = f"Execution failed: {type(e).__name__}: {str(e)}"
+            await self.update_status(
+                experiment_id,
+                ExperimentStatus.FAILED,
+                error_message=error_message
+            )
+            await self.db.commit()  # IMPORTANT: Commit the failed status!
+            logger.info(f"[EXECUTE] Status updated to FAILED and committed")
+            print(f"[EXECUTE] Status updated to FAILED and committed")
+            
+            raise

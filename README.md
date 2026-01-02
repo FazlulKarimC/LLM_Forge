@@ -386,3 +386,4 @@ MIT License - See [LICENSE](./LICENSE) for details.
 <p align="center">
   <i>Config-driven experimentation. Reproducibility by default.</i>
 </p>
+.\venv\Scripts\python.exe -m uvicorn app.main:app --reload
