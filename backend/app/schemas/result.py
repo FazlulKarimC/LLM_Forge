@@ -19,6 +19,7 @@ class QualityMetrics(BaseModel):
     """Quality-related metrics."""
     accuracy_exact: Optional[float] = Field(None, ge=0, le=1)
     accuracy_f1: Optional[float] = Field(None, ge=0, le=1)
+    accuracy_substring: Optional[float] = Field(None, ge=0, le=1)
     faithfulness: Optional[float] = Field(None, ge=0, le=1)
     hallucination_rate: Optional[float] = Field(None, ge=0, le=1)
 
@@ -41,6 +42,21 @@ class CostMetrics(BaseModel):
     @property
     def total_tokens(self) -> int:
         return self.total_tokens_input + self.total_tokens_output
+
+
+class RunSummary(BaseModel):
+    """Lightweight per-run data for grid view."""
+    id: UUID
+    example_id: Optional[str] = None
+    is_correct: Optional[bool] = None
+    score: Optional[float] = None
+    latency_ms: Optional[float] = None
+    input_text: str = ""
+    output_text: Optional[str] = None
+    expected_output: Optional[str] = None
+
+    class Config:
+        from_attributes = True
 
 
 class MetricsResponse(BaseModel):

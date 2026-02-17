@@ -102,6 +102,7 @@ export interface Metrics {
     quality: {
         accuracy_exact?: number;
         accuracy_f1?: number;
+        accuracy_substring?: number;
         faithfulness?: number;
         hallucination_rate?: number;
     };
@@ -115,7 +116,20 @@ export interface Metrics {
         total_tokens_input: number;
         total_tokens_output: number;
         total_runs: number;
+        gpu_time_seconds?: number;
     };
+    computed_at: string;
+}
+
+export interface RunSummary {
+    id: string;
+    example_id?: string;
+    is_correct?: boolean;
+    score?: number;
+    latency_ms?: number;
+    input_text: string;
+    output_text?: string;
+    expected_output?: string;
 }
 
 export interface DashboardStats {
@@ -178,11 +192,36 @@ export async function deleteExperiment(id: string): Promise<void> {
 
 /**
  * Get metrics for an experiment.
- * 
- * TODO (Phase 3): Implement when metrics endpoints are ready
  */
 export async function getMetrics(experimentId: string): Promise<Metrics> {
     return fetchAPI<Metrics>(`/results/${experimentId}/metrics`);
+}
+
+/**
+ * Get run summaries for an experiment (for correctness grid).
+ */
+export async function getRunSummaries(experimentId: string): Promise<RunSummary[]> {
+    return fetchAPI<RunSummary[]>(`/results/${experimentId}/runs`);
+}
+
+/**
+ * Export results as JSON download.
+ */
+export async function exportResults(experimentId: string): Promise<void> {
+    const url = `${API_BASE_URL}/results/${experimentId}/export`;
+    const response = await fetch(url);
+    if (!response.ok) throw new Error('Export failed');
+
+    const data = await response.json();
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const downloadUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = downloadUrl;
+    a.download = `experiment_results.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(downloadUrl);
 }
 
 /**

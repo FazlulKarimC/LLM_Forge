@@ -291,8 +291,8 @@ Navigate to `http://localhost:3000/experiments/{id}` to see:
 
 ### Phase 1-3: Foundation (Current)
 - [x] Project scaffold
-- [ ] Database CRUD operations
-- [ ] Basic inference with Phi-2
+- [x] Database CRUD operations
+- [x] Basic inference with Phi-2
 - [ ] Evaluation metrics pipeline
 
 ### Phase 4-6: Research Core

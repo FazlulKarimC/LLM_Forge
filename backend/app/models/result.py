@@ -65,6 +65,7 @@ class Result(Base):
     # ----- Quality Metrics -----
     accuracy_exact: Mapped[float] = mapped_column(Float, nullable=True)
     accuracy_f1: Mapped[float] = mapped_column(Float, nullable=True)
+    accuracy_substring: Mapped[float] = mapped_column(Float, nullable=True)
     faithfulness: Mapped[float] = mapped_column(Float, nullable=True)
     hallucination_rate: Mapped[float] = mapped_column(Float, nullable=True)
     
