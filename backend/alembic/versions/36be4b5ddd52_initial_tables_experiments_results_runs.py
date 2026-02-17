@@ -29,7 +29,7 @@ def upgrade() -> None:
     sa.Column('method', sa.String(length=50), nullable=False),
     sa.Column('model_name', sa.String(length=255), nullable=False),
     sa.Column('dataset_name', sa.String(length=255), nullable=False),
-    sa.Column('status', sa.Enum('PENDING', 'RUNNING', 'COMPLETED', 'FAILED', name='experimentstatus'), nullable=False),
+    sa.Column('status', sa.Enum('PENDING', 'QUEUED', 'RUNNING', 'COMPLETED', 'FAILED', name='experimentstatus'), nullable=False),
     sa.Column('error_message', sa.Text(), nullable=True),
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.Column('started_at', sa.DateTime(timezone=True), nullable=True),

@@ -280,10 +280,15 @@ class ExperimentService:
         logger.info(f"[EXECUTE STEP 1] ✓ Found experiment: {experiment_response.name}")
         print(f"[EXECUTE STEP 1] ✓ Found experiment: {experiment_response.name}")
         
-        # Note: Don't update status to RUNNING here - API endpoint already did that
-        # await self.update_status(experiment_id, ExperimentStatus.RUNNING)
-        
         try:
+            # Step 1.5: Update status to RUNNING (inside try for error handling)
+            logger.info(f"[EXECUTE] Updating status to RUNNING...")
+            print(f"[EXECUTE] Updating status to RUNNING...")
+            await self.update_status(experiment_id, ExperimentStatus.RUNNING)
+            await self.db.commit()
+            logger.info(f"[EXECUTE] ✓ Status: RUNNING")
+            print(f"[EXECUTE] ✓ Status: RUNNING")
+            
             # Step 2: Initialize inference engine
             logger.info(f"[EXECUTE STEP 2] Initializing inference engine...")
             print(f"[EXECUTE STEP 2] Initializing inference engine...")

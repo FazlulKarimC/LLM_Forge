@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field, field_validator
 class ExperimentStatus(str, Enum):
     """Experiment execution status."""
     PENDING = "pending"
+    QUEUED = "queued"  # Set by API before enqueue (prevents race condition)
     RUNNING = "running"
     COMPLETED = "completed"
     FAILED = "failed"

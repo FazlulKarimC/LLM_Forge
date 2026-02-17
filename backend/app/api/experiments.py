@@ -7,16 +7,13 @@ CRUD operations for experiments:
 - Get experiment details
 - Run experiment (trigger inference)
 - Delete experiment
-
-TODO (Iteration 1): Implement create and list
-TODO (Iteration 2): Implement run with background tasks
-TODO (Iteration 3): Add experiment comparison endpoint
 """
 
+import logging
 from typing import List, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -28,7 +25,45 @@ from app.schemas.experiment import (
 )
 from app.services.experiment_service import ExperimentService
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter()
+
+
+async def _execute_inline(experiment_id: UUID) -> None:
+    """
+    Execute experiment inline using a fresh DB session.
+    Used as fallback when Redis/RQ is unavailable.
+    """
+    from app.core.database import async_session_maker
+    
+    logger.info(f"[INLINE] Running experiment {experiment_id} inline (no Redis)")
+    async with async_session_maker() as session:
+        svc = ExperimentService(session)
+        await svc.execute(experiment_id)
+
+
+def _enqueue_or_fallback(
+    background_tasks: BackgroundTasks,
+    experiment_id: UUID,
+) -> str:
+    """
+    Try to enqueue via RQ (Redis). If Redis is unavailable,
+    fall back to FastAPI BackgroundTasks (async inline execution).
+    
+    Returns:
+        'rq' if enqueued to Redis, 'inline' if using BackgroundTasks
+    """
+    try:
+        from app.core.redis import get_queue
+        from app.tasks.experiment_tasks import run_experiment_task
+        queue = get_queue()
+        queue.enqueue(run_experiment_task, str(experiment_id))
+        return "rq"
+    except Exception as e:
+        logger.warning(f"Redis unavailable ({e}), falling back to inline execution")
+        background_tasks.add_task(_execute_inline, experiment_id)
+        return "inline"
 
 
 @router.post("/", response_model=ExperimentResponse, status_code=201)
@@ -36,25 +71,7 @@ async def create_experiment(
     experiment: ExperimentCreate,
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Create a new experiment from configuration.
-    
-    The experiment config defines:
-    - Model to use (e.g., microsoft/phi-2)
-    - Reasoning method (naive, cot, react)
-    - Dataset for evaluation
-    - Hyperparameters (temperature, max_tokens, etc.)
-    - Random seed for reproducibility
-    
-    Args:
-        experiment: Experiment configuration
-    
-    Returns:
-        Created experiment with generated ID
-    
-    TODO (Iteration 1): Implement with database persistence
-    TODO (Iteration 2): Add config validation against model capabilities
-    """
+    """Create a new experiment from configuration."""
     service = ExperimentService(db)
     return await service.create(experiment)
 
@@ -68,25 +85,7 @@ async def list_experiments(
     limit: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    List experiments with optional filtering.
-    
-    Filters:
-        - status: pending, running, completed, failed
-        - method: naive, cot, react, rag
-        - model: model identifier
-    
-    Pagination:
-        - skip: offset for pagination
-        - limit: max results (1-100)
-    
-    Returns:
-        Paginated list of experiments
-    
-    TODO (Iteration 1): Implement basic listing
-    TODO (Iteration 2): Add sorting options
-    TODO (Iteration 3): Add date range filtering
-    """
+    """List experiments with optional filtering and pagination."""
     service = ExperimentService(db)
     return await service.list(
         status=status,
@@ -102,17 +101,7 @@ async def get_experiment(
     experiment_id: UUID,
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Get experiment details by ID.
-    
-    Returns:
-        Full experiment config and results if available
-    
-    Raises:
-        404: Experiment not found
-    
-    TODO (Iteration 1): Implement with database lookup
-    """
+    """Get experiment details by ID."""
     service = ExperimentService(db)
     experiment = await service.get(experiment_id)
     
@@ -131,21 +120,8 @@ async def run_experiment(
     """
     Trigger experiment execution.
     
-    This endpoint:
-    1. Validates experiment exists and is runnable
-    2. Updates status to 'running'
-    3. Queues inference job in background
-    4. Returns immediately with updated status
-    
-    The actual inference runs asynchronously.
-    Poll GET /experiments/{id} for completion.
-    
-    Args:
-        experiment_id: UUID of experiment to run
-        background_tasks: FastAPI background task manager
-    
-    Returns:
-        Updated experiment with 'running' status
+    Tries RQ (Redis) first for production-grade background processing.
+    Falls back to FastAPI BackgroundTasks if Redis is unavailable.
     """
     service = ExperimentService(db)
     experiment = await service.get(experiment_id)
@@ -153,136 +129,26 @@ async def run_experiment(
     if not experiment:
         raise HTTPException(status_code=404, detail="Experiment not found")
     
-    if experiment.status == ExperimentStatus.RUNNING:
-        raise HTTPException(status_code=409, detail="Experiment already running")
+    if experiment.status in [ExperimentStatus.QUEUED, ExperimentStatus.RUNNING]:
+        raise HTTPException(status_code=409, detail="Experiment already queued or running")
     
-    # Queue background task with standalone execution function
-    # This creates its own database session to avoid session lifecycle issues
-    background_tasks.add_task(execute_experiment_background, experiment_id)
+    await service.update_status(experiment_id, ExperimentStatus.QUEUED)
+    await db.commit()
     
-    updated_experiment = await service.update_status(experiment_id, ExperimentStatus.RUNNING)
-    await db.commit()  # Ensure status change is persisted before returning
+    _enqueue_or_fallback(background_tasks, experiment_id)
     
-    return updated_experiment
-
-
-async def execute_experiment_background(experiment_id: UUID):
-    """
-    Background task execution function.
-    
-    Creates its own database session to avoid lifecycle issues.
-    
-    DEBUGGING: Enhanced logging to track execution flow.
-    """
-    import logging
-    import traceback
-    import sys
-    
-    # Configure logging to ensure output is visible
-    logging.basicConfig(
-        level=logging.DEBUG,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        handlers=[logging.StreamHandler(sys.stdout)]
-    )
-    logger = logging.getLogger(__name__)
-    
-    logger.info(f"="*60)
-    logger.info(f"🚀 BACKGROUND TASK STARTED")
-    logger.info(f"   Experiment ID: {experiment_id}")
-    logger.info(f"="*60)
-    print(f"\n{'='*60}")
-    print(f"🚀 BACKGROUND TASK STARTED")
-    print(f"   Experiment ID: {experiment_id}")
-    print(f"{'='*60}")
-    
-    from app.core.database import async_session_maker
-    
-    try:
-        logger.info(f"[STEP 1] Creating database session...")
-        print(f"[STEP 1] Creating database session...")
-        
-        async with async_session_maker() as db:
-            logger.info(f"✓ Database session created successfully")
-            print(f"✓ Database session created successfully")
-            
-            logger.info(f"[STEP 2] Creating ExperimentService...")
-            print(f"[STEP 2] Creating ExperimentService...")
-            service = ExperimentService(db)
-            logger.info(f"✓ ExperimentService created")
-            print(f"✓ ExperimentService created")
-            
-            logger.info(f"[STEP 3] Calling service.execute()...")
-            print(f"[STEP 3] Calling service.execute()...")
-            
-            await service.execute(experiment_id)
-            
-            logger.info(f"[STEP 4] Committing database changes...")
-            print(f"[STEP 4] Committing database changes...")
-            await db.commit()
-            
-            logger.info(f"="*60)
-            logger.info(f"✅ BACKGROUND TASK COMPLETED SUCCESSFULLY!")
-            logger.info(f"="*60)
-            print(f"{'='*60}")
-            print(f"✅ BACKGROUND TASK COMPLETED SUCCESSFULLY!")
-            print(f"{'='*60}")
-            
-    except Exception as e:
-        error_type = type(e).__name__
-        error_msg = str(e)
-        
-        logger.error(f"="*60)
-        logger.error(f"❌ BACKGROUND TASK FAILED!")
-        logger.error(f"   Error Type: {error_type}")
-        logger.error(f"   Error Message: {error_msg}")
-        logger.error(f"="*60)
-        print(f"{'='*60}")
-        print(f"❌ BACKGROUND TASK FAILED!")
-        print(f"   Error Type: {error_type}")
-        print(f"   Error Message: {error_msg}")
-        print(f"{'='*60}")
-        
-        # Print full traceback
-        logger.error(f"Full Traceback:")
-        traceback.print_exc()
-        
-        # Update status to failed in a NEW session (important!)
-        logger.info(f"[RECOVERY] Updating experiment status to FAILED...")
-        print(f"[RECOVERY] Updating experiment status to FAILED...")
-        
-        try:
-            async with async_session_maker() as db:
-                service = ExperimentService(db)
-                await service.update_status(
-                    experiment_id,
-                    ExperimentStatus.FAILED,
-                    error_message=f"{error_type}: {error_msg}"
-                )
-                await db.commit()  # CRITICAL: Commit the failed status!
-                
-                logger.info(f"✓ Status updated to FAILED and committed")
-                print(f"✓ Status updated to FAILED and committed")
-                
-        except Exception as update_error:
-            logger.error(f"❌ CRITICAL: Could not update status to FAILED: {update_error}")
-            print(f"❌ CRITICAL: Could not update status to FAILED: {update_error}")
-            traceback.print_exc()
+    return await service.get(experiment_id)
 
 
 @router.post("/{experiment_id}/execute", status_code=202)
-async def execute_experiment_alias(
+async def execute_experiment(
     experiment_id: UUID,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Alias endpoint for /run.
-    
-    Some frontends may call /execute instead of /run.
-    This provides compatibility for both conventions.
-    
-    Returns:
-        202 Accepted with message indicating background execution started
+    Trigger experiment execution (alias for /run).
+    Returns 202 Accepted immediately.
     """
     service = ExperimentService(db)
     experiment = await service.get(experiment_id)
@@ -290,20 +156,19 @@ async def execute_experiment_alias(
     if not experiment:
         raise HTTPException(status_code=404, detail="Experiment not found")
     
-    if experiment.status == ExperimentStatus.RUNNING:
-        raise HTTPException(status_code=409, detail="Experiment already running")
+    if experiment.status in [ExperimentStatus.QUEUED, ExperimentStatus.RUNNING]:
+        raise HTTPException(status_code=409, detail="Experiment already queued or running")
     
-    # Queue background task
-    background_tasks.add_task(execute_experiment_background, experiment_id)
-    
-    # Update status to running
-    await service.update_status(experiment_id, ExperimentStatus.RUNNING)
+    await service.update_status(experiment_id, ExperimentStatus.QUEUED)
     await db.commit()
     
+    mode = _enqueue_or_fallback(background_tasks, experiment_id)
+    
     return {
-        "message": "Experiment execution started in background",
+        "message": "Experiment execution started",
         "experiment_id": str(experiment_id),
-        "status": "running"
+        "status": "queued",
+        "mode": mode,
     }
 
 
@@ -312,14 +177,7 @@ async def delete_experiment(
     experiment_id: UUID,
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Delete an experiment.
-    
-    Also deletes associated results and run logs.
-    
-    TODO (Iteration 1): Implement soft delete
-    TODO (Iteration 2): Add cascade delete for results
-    """
+    """Delete an experiment (soft delete)."""
     service = ExperimentService(db)
     deleted = await service.delete(experiment_id)
     

@@ -27,6 +27,7 @@ class Settings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=True,
+        extra="ignore",  # Allow extra env vars (e.g., UPSTASH_REDIS_REST_TOKEN)
     )
     
     # ----- Application -----
@@ -65,6 +66,11 @@ class Settings(BaseSettings):
     INFERENCE_ENGINE: str = "mock"  # mock or hf_api
     INFERENCE_BATCH_SIZE: int = 1
     INFERENCE_TIMEOUT_SECONDS: int = 60
+    
+    # ----- Redis (Upstash) -----
+    # Optional: Only required when using RQ background tasks
+    # Validated at runtime in redis.py when connection is requested
+    REDIS_URL: str = ""
     
     # ----- Logging -----
     LOG_LEVEL: str = "INFO"
