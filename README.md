@@ -29,10 +29,9 @@ This platform investigates four core hypotheses:
 
 | # | Hypothesis | Method |
 |---|------------|--------|
-| **H1** | Chain-of-Thought improves accuracy on reasoning tasks at the cost of higher latency | Compare Naive vs CoT on TriviaQA/HotpotQA |
+| **H1** | Chain-of-Thought improves accuracy on reasoning tasks at the cost of higher latency | Compare Naive vs CoT on TriviaQA |
 | **H2** | Reranking in RAG reduces hallucinations compared to naive retrieval | Measure faithfulness across RAG variants |
 | **H3** | Tool-using agents achieve higher accuracy but at 3-5× token cost | Compare ReAct vs CoT vs RAG on multi-hop QA |
-| **H4** | DPO alignment improves helpfulness but reduces factual accuracy | Evaluate base vs fine-tuned on both metrics |
 
 ### What We Measure
 
@@ -60,16 +59,16 @@ This platform investigates four core hypotheses:
 │   Experiment    │   Inference     │      Evaluation             │
 │   Service       │   Engine        │      Pipeline               │
 │                 │                 │                             │
-│ • CRUD ops      │ • TransformersEngine  │ • Accuracy metrics   │
-│ • Config mgmt   │ • vLLM Engine   │ • Faithfulness (NLI)       │
+│ • CRUD ops      │ • HF API Engine │ • Accuracy metrics           │
+│ • Config mgmt   │ • Mock Engine   │ • Faithfulness (NLI)         │
 │ • Run logging   │ • Prompt strategies   │ • Latency percentiles │
 └────────┬────────┴────────┬────────┴────────┬────────────────────┘
          │                 │                 │
          ▼                 ▼                 ▼
 ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
-│ PostgreSQL  │    │   Qdrant    │    │  HuggingFace│
-│ (NeonDB)    │    │ (Vectors)   │    │  Hub        │
-│ Experiments │    │ RAG Chunks  │    │ Models/Data │
+│ PostgreSQL  │    │  ChromaDB   │    │  HuggingFace│
+│ (NeonDB)    │    │ (Embedded) │    │  Inference  │
+│ Experiments │    │ RAG Chunks  │    │  API        │
 └─────────────┘    └─────────────┘    └─────────────┘
 ```
 
@@ -93,8 +92,7 @@ This platform investigates four core hypotheses:
 
 | Environment | Model | Parameters | Use Case |
 |-------------|-------|------------|----------|
-| Local (GTX 1650) | Phi-2 | 2.7B | Development, Phase 1-3 |
-| Colab (T4) | Mistral-7B-Instruct | 7B | Research experiments, DPO |
+| Local / HF Spaces | Phi-2 | 2.7B | Development, all phases (via HF Inference API) |
 
 ### Baselines
 
@@ -111,17 +109,18 @@ This platform investigates four core hypotheses:
 
 | Dataset | Task | Size | Source |
 |---------|------|------|--------|
-| TriviaQA | Factual QA | 100-500 samples | HuggingFace |
-| HotpotQA | Multi-hop reasoning | 100-500 samples | HuggingFace |
-| Simple Wikipedia | RAG knowledge base | ~200K articles | HuggingFace |
-| Anthropic HH-RLHF | DPO training | 800 train / 100 test | HuggingFace |
+| TriviaQA | Factual QA | 100 samples | Curated local JSON |
+| HotpotQA | Multi-hop reasoning | 50 samples | Curated local JSON |
+| GSM8K | Math word problems | 50 samples | Curated local JSON |
+| Wikipedia subset | RAG knowledge base | ~500 articles | Curated local JSON |
 
 ### Why These Choices?
 
 - **Phi-2**: Fits in 4GB VRAM, sufficient for methodology validation
 - **TriviaQA**: Standard factual QA benchmark with clear ground truth
-- **Simple Wikipedia**: Smaller than full Wikipedia, faster to embed
+- **Curated Wikipedia**: Relevant articles aligned with TriviaQA topics for effective RAG
 - **Cross-encoder reranking**: Industry standard for RAG quality improvement
+- **ChromaDB**: Embedded vector DB, no Docker or external service needed
 
 ---
 
@@ -159,15 +158,6 @@ This platform investigates four core hypotheses:
 
 **Expected Finding**: Agents achieve +7-12% accuracy but at 4× token cost.
 
-### Hypothesis 4: Alignment Trade-off
-
-| Model | Helpfulness | Factuality |
-|-------|-------------|------------|
-| Base Mistral-7B | Baseline | ~62% |
-| DPO-tuned | +15% preferred | ~56% |
-
-**Expected Finding**: DPO improves helpfulness by 15% but reduces factuality by 6%.
-
 ---
 
 ## Quick Start
@@ -176,8 +166,7 @@ This platform investigates four core hypotheses:
 
 - Python 3.11+
 - Node.js 18+
-- Docker (for Qdrant)
-- NVIDIA GPU with 4GB+ VRAM (or CPU fallback)
+- PostgreSQL (NeonDB free tier recommended)
 
 ### 1. Clone & Setup Backend
 
@@ -209,18 +198,10 @@ npm install
 npm run dev
 ```
 
-### 3. Start Vector Database
-
-```bash
-cd ..
-docker compose up -d qdrant
-```
-
-### 4. Verify Installation
+### 3. Verify Installation
 
 - Backend API: http://localhost:8000/docs
 - Frontend: http://localhost:3000
-- Qdrant: http://localhost:6333/dashboard
 
 ---
 
@@ -261,11 +242,10 @@ Navigate to `http://localhost:3000/experiments/{id}` to see:
 | Decision | Rationale | Trade-off |
 |----------|-----------|-----------|
 | **Config-driven experiments** | Reproducibility, version control | More setup for simple tests |
-| **Phi-2 for local dev** | Fits in 4GB VRAM | Limited capability vs 7B+ |
+| **Phi-2 via HF Inference API** | Free, no local GPU needed | Rate-limited, higher latency |
 | **PostgreSQL over SQLite** | Production-ready, NeonDB free tier | More complex setup |
-| **Qdrant over pgvector** | Better vector search performance | Additional service to manage |
-| **Float16 inference** | Fits larger models in VRAM | Minor precision loss |
-| **Automatic CPU fallback** | Graceful degradation | Slower inference |
+| **ChromaDB over Qdrant** | Embedded (no Docker), zero-cost | Less feature-rich than Qdrant |
+| **HF Spaces over Railway** | Free tier, ML ecosystem | Cold starts after 48h idle |
 
 ---
 
@@ -273,10 +253,10 @@ Navigate to `http://localhost:3000/experiments/{id}` to see:
 
 ### Current
 
-- **Single model at a time**: No parallel model comparison (memory constraint)
-- **Local GPU limited**: 4GB VRAM restricts model size
-- **Colab session limits**: Larger experiments require session management
-- **No production deployment yet**: Focus on research, not serving
+- **Single model at a time**: No parallel model comparison
+- **HF Inference API rate limits**: Free tier has throttling
+- **HF Spaces cold starts**: Backend sleeps after 48h inactivity (30-60s wake-up)
+- **No local GPU needed**: All inference via HF API
 
 ### Methodological
 
@@ -289,25 +269,27 @@ Navigate to `http://localhost:3000/experiments/{id}` to see:
 
 ## Roadmap
 
-### Phase 1-3: Foundation (Current)
+### Phase 1-3: Foundation (✅ Complete)
 - [x] Project scaffold
 - [x] Database CRUD operations
-- [x] Basic inference with Phi-2
-- [ ] Evaluation metrics pipeline
+- [x] Basic inference with HF Inference API
+- [x] Evaluation metrics pipeline
 
 ### Phase 4-6: Research Core
 - [ ] Chain-of-Thought implementation
-- [ ] RAG pipeline (3 variants)
+- [ ] RAG pipeline with ChromaDB (3 variants)
 - [ ] ReAct agent with tools
 
-### Phase 7-8: Advanced
-- [ ] DPO fine-tuning (Colab)
-- [ ] Inference optimization (vLLM, batching)
+### Phase 7: DPO Alignment — Skipped
+- Not viable on free tier (requires GPU for training/serving)
+
+### Phase 8: Optimization
+- [ ] Inference batching and caching
 
 ### Phase 9: Polish
 - [ ] Comprehensive README with results
-- [ ] Demo video
-- [ ] Deployment (Vercel + Railway)
+- [ ] Demo video/GIF
+- [ ] Deployment (Vercel + HuggingFace Spaces)
 
 ---
 
@@ -348,11 +330,12 @@ LlmForge/
 | Layer | Technology | Why |
 |-------|------------|-----|
 | **Backend** | FastAPI | Async, auto-docs, ML ecosystem |
-| **Frontend** | Next.js 16 + shadcn/ui | SSR, great DX, elegant UI |
+| **Frontend** | Next.js 15 + shadcn/ui | SSR, great DX, elegant UI |
 | **Database** | PostgreSQL (NeonDB) | Serverless, free tier |
-| **Vector DB** | Qdrant | Best OSS performance |
-| **ML** | Transformers, vLLM | Industry standard |
-| **Embeddings** | sentence-transformers | Fast, reliable |
+| **Vector DB** | ChromaDB (embedded) | No Docker, zero-cost |
+| **Inference** | HuggingFace Inference API | Free tier, no GPU needed |
+| **Embeddings** | sentence-transformers | Fast, reliable, runs on CPU |
+| **Hosting** | Vercel + HF Spaces | Fully free deployment |
 
 ---
 

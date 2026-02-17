@@ -15,9 +15,9 @@
 | 4 | Chain-of-Thought | 🔲 Pending | First comparison |
 | 5 | RAG Pipeline | 🔲 Pending | Retrieval system |
 | 6 | ReAct Agent | 🔲 Pending | Tool-using agent |
-| 7 | DPO Alignment | 🔲 Pending | Fine-tuned model |
-| 8 | Inference Optimization | 🔲 Pending | Performance benchmarks |
-| 9 | Polish & Deployment | 🔲 Pending | Live demo |
+| 7 | DPO Alignment | ⏭️ Skipped | Not free-tier viable |
+| 8 | Inference Optimization | 🔲 Pending | 2-3× speedup |
+| 9 | Polish & Deployment | 🔲 Pending | Portfolio ready |
 
 ---
 
@@ -402,9 +402,11 @@ def compute_f1(prediction: str, ground_truth: str) -> float:
 
 ### Tasks
 - [ ] **4.1 CoT Prompt Template**
+  - Create `CoTPromptTemplate` class extending existing `PromptTemplate` base
   - Add "Let's think step by step" trigger
   - Format reasoning chain
-  - Extract final answer
+  - Extract final answer from model output
+  - Add `statsmodels` to `requirements.txt` (for McNemar's test)
 
 - [ ] **4.2 Few-Shot Examples**
   - Create 3-5 high-quality CoT examples manually
@@ -418,9 +420,9 @@ def compute_f1(prediction: str, ground_truth: str) -> float:
   - Fallback to last sentence if no pattern found
 
 - [ ] **4.4 Ablation: Naive vs CoT**
-  - Run same 100 samples with both methods
+  - Run same 100 TriviaQA samples with both methods
   - Use identical seed for reproducibility
-  - Compare accuracy and latency
+  - Compare accuracy and latency using existing metrics infrastructure
 
 - [ ] **4.5 Statistical Validation**
   - Compute confidence intervals using bootstrap
@@ -428,6 +430,7 @@ def compute_f1(prediction: str, ground_truth: str) -> float:
   - Document: Is improvement statistically significant?
 
 - [ ] **4.6 Experiment Comparison View**
+  - Implement comparison page in frontend using existing `/results/compare` API
   - Side-by-side metrics table
   - Highlight improvements (green) and regressions (red)
   - Show per-example differences
@@ -457,15 +460,14 @@ def compute_f1(prediction: str, ground_truth: str) -> float:
 ### Technical Notes
 ```python
 # McNemar's test for paired accuracy comparison
+# Requires: pip install statsmodels
 from statsmodels.stats.contingency_tables import mcnemar
 import numpy as np
 
 def compute_significance(naive_correct: list, cot_correct: list):
     """Compare two methods on same examples."""
-    # Build contingency table
-    # [both correct, naive only, cot only, both wrong]
-    b = sum(n and not c for n, c in zip(naive_correct, cot_correct))  # naive correct, cot wrong
-    c = sum(c and not n for n, c in zip(naive_correct, cot_correct))  # cot correct, naive wrong
+    b = sum(n and not c for n, c in zip(naive_correct, cot_correct))
+    c = sum(c and not n for n, c in zip(naive_correct, cot_correct))
     
     result = mcnemar([[0, b], [c, 0]], exact=True)
     return {"p_value": result.pvalue, "significant": result.pvalue < 0.05}
@@ -474,9 +476,9 @@ def compute_significance(naive_correct: list, cot_correct: list):
 ### Common Pitfalls & Solutions
 | Issue | Solution |
 |-------|----------|
-| CoT doesn't improve accuracy | Try few-shot instead of zero-shot, test on reasoning-heavy dataset (HotpotQA) |
-| Answer parsing fails | Model doesn't follow format; add explicit examples, use regex fallbacks |
-| Results too similar | Need larger sample size (200+), try harder dataset |
+| CoT doesn't improve accuracy | Try few-shot instead of zero-shot |
+| Answer parsing fails | Add explicit examples in prompt, use regex fallbacks |
+| Results too similar | Need larger sample size (200+) |
 
 ---
 
@@ -484,23 +486,25 @@ def compute_significance(naive_correct: list, cot_correct: list):
 
 **Goal**: Build retrieval-augmented generation system
 
-> **Architecture Note**: Embeddings (`sentence-transformers`) and NLI models (`bart-large-mnli`) can run **locally** (CPU-friendly). Only final text generation uses HF Inference API or Colab.
+> **Architecture Note**: Embeddings (`sentence-transformers`) and NLI models (`bart-large-mnli`) run **locally** (CPU-friendly). ChromaDB runs **embedded** inside the backend (no Docker needed). Only final text generation uses HF Inference API.
 
 ### Tasks
-- [ ] **5.1 Document Ingestion**
-  - Download Simple Wikipedia from HuggingFace (`wikipedia/20220301.simple`)
+- [ ] **5.1 Knowledge Base Preparation**
+  - Curate ~500 Wikipedia articles covering TriviaQA question topics
+  - Store as JSON in `data/knowledge_base/articles.json`
   - Chunk into 256-token segments with 50-token overlap
-  - Store chunks with metadata (title, section, URL)
-  - Save processed chunks to `data/knowledge_base/`
+  - Store chunks with metadata (title, section)
+  - Total download: ~5MB (curated subset, not full Wikipedia)
 
 - [ ] **5.2 Embedding Pipeline**
-  - Use `sentence-transformers/all-MiniLM-L6-v2` (384 dims)
+  - Use `sentence-transformers/all-MiniLM-L6-v2` (80MB download, 384 dims)
   - Batch embed all chunks (`batch_size=100`)
-  - Monitor progress (print every 1000 chunks)
-  - Upload to Qdrant collection with metadata
+  - Store in ChromaDB collection (embedded, no separate server)
+  - ChromaDB persists to `data/chromadb/` on disk
+  - Add `chromadb` and `sentence-transformers` to `requirements.txt`
 
 - [ ] **5.3 Naive RAG**
-  - Query → Embed → Top-5 retrieval
+  - Query → Embed → Top-5 retrieval from ChromaDB
   - Concatenate chunks as context
   - Generate with context prepended
 
@@ -511,12 +515,12 @@ def compute_significance(naive_correct: list, cot_correct: list):
   - Merge results (deduplicate, keep top-5)
 
 - [ ] **5.5 Reranked RAG**
-  - Use cross-encoder `cross-encoder/ms-marco-MiniLM-L-6-v2`
+  - Use cross-encoder `cross-encoder/ms-marco-MiniLM-L-6-v2` (80MB download)
   - After hybrid retrieval (top-10 candidates)
   - Score each (query, chunk) pair, rerank, select top-5
 
 - [ ] **5.6 Faithfulness Metric**
-  - Use NLI model `facebook/bart-large-mnli`
+  - Use NLI model `facebook/bart-large-mnli` (~1.6GB download)
   - Format input: `{context} </s> {answer}`
   - Compute faithfulness score (0-1)
   - Hallucination rate = % with faithfulness < 0.5
@@ -533,8 +537,7 @@ def compute_significance(naive_correct: list, cot_correct: list):
 - ✅ Finding: "Reranking reduces hallucinations by 18%"
 
 ### Exit Criteria
-- [ ] Qdrant running and accessible (test with simple query)
-- [ ] All chunks embedded and uploaded successfully
+- [ ] ChromaDB collection created with all chunks embedded
 - [ ] Retrieval returns relevant documents (manual spot-check 10 queries)
 - [ ] All 3 RAG variants implemented and working
 - [ ] Faithfulness metric validated on known entailment pairs
@@ -542,17 +545,17 @@ def compute_significance(naive_correct: list, cot_correct: list):
 
 ### Architecture
 ```
-Query → [Embed] → [Vector Search] → [BM25 Search] → [Merge] → [Rerank] → [Generate]
+Query → [Embed] → [ChromaDB Search] → [BM25 Search] → [Merge] → [Rerank] → [Generate]
 ```
 
 ### Common Pitfalls & Solutions
 | Issue | Solution |
 |-------|----------|
-| Qdrant connection fails | Check `docker ps`, restart with `docker-compose restart qdrant` |
-| Embeddings take forever | Use batch processing, expected 1-2 hours for 100K chunks on CPU |
+| Embeddings take too long | Use batch processing, expect ~5 min for 5K chunks on CPU |
 | Retrieval returns irrelevant docs | Check chunk quality, adjust similarity threshold (0.3-0.7) |
 | NLI always returns 1.0 or 0.0 | Check input format: must be `premise </s> hypothesis` |
 | BM25 index errors | Ensure chunks are tokenized, handle empty chunks |
+| Knowledge base missing answers | Curate more articles covering TriviaQA topics |
 
 ---
 
@@ -565,11 +568,13 @@ Query → [Embed] → [Vector Search] → [BM25 Search] → [Merge] → [Rerank]
   - Define `Tool` base class with name, description, execute()
   - Tools return: result string, success boolean, execution time
   - Add error handling for tool failures
+  - Add `numexpr` to `requirements.txt` (for safe calculator)
 
 - [ ] **6.2 Implement Tools**
   - `wikipedia_search(query)` → First paragraph via Wikipedia API
   - `calculator(expression)` → Safe eval using `numexpr` (NOT `eval()`)
-  - `retrieval(query, k)` → Search Qdrant, return chunks
+  - `retrieval(query, k)` → Search ChromaDB, return chunks
+  - Add local disk cache for Wikipedia API calls (avoid rate limiting on reruns)
 
 - [ ] **6.3 Tool Unit Tests**
   - Test wikipedia_search with known queries
@@ -590,9 +595,9 @@ Query → [Embed] → [Vector Search] → [BM25 Search] → [Merge] → [Rerank]
   - Add to metrics: % of runs that got stuck
 
 - [ ] **6.6 Agent Tracing**
+  - Add `trace` JSONB column to the `Run` model (new Alembic migration)
   - Log full trace: every thought, action, observation
   - Count: successful tool calls, failed calls, total iterations
-  - Store traces in JSONB column in database
   - Create trace visualization in frontend (formatted text log with highlights)
 
 - [ ] **6.7 Error Handling**
@@ -603,7 +608,10 @@ Query → [Embed] → [Vector Search] → [BM25 Search] → [Merge] → [Rerank]
 
 - [ ] **6.8 Agent Evaluation**
   - Compare: Naive vs CoT vs RAG vs ReAct Agent
-  - Datasets: HotpotQA (multi-hop), GSM8K (math)
+  - Create curated local datasets:
+    - `data/datasets/hotpotqa/hotpot_qa.json` (~50 multi-hop questions)
+    - `data/datasets/gsm8k/gsm8k.json` (~50 math word problems)
+  - Add loaders for these datasets in `DatasetService`
   - Metrics: Success rate, tool efficiency, cost proxy, latency
 
 ### Deliverables
@@ -633,249 +641,90 @@ Answer: Paris was founded in the 3rd century BC.
 |-------|----------|
 | Agent gets stuck in loops | Implement loop detection (same action 3× → terminate) |
 | Tool parsing fails constantly | Add explicit examples in prompt, use regex fallbacks |
-| Wikipedia API rate limiting | Add 0.5s delays, cache results locally, retry with backoff |
+| Wikipedia API rate limiting | Cache API results to disk, add 0.5s delays, retry with backoff |
 | Calculator security concerns | Use `numexpr` library (safe), never use `eval()` |
 | Agent too expensive | Expected (3-5× more tokens); document cost-benefit trade-off |
 
 ---
 
-## Phase 7: DPO Alignment
+## Phase 7: DPO Alignment — ⏭️ SKIPPED
 
-**Goal**: Fine-tune model with preference learning
+**Reason**: DPO fine-tuning requires Colab GPU, and the resulting model can't be served for free via HF Inference API. Skipping this phase keeps the project **fully free** and locally runnable while still covering the most important AI concepts (prompting, retrieval, agents, optimization).
 
-> **Architecture: Config-Driven Training in Colab**
-> - All training runs **ONLY in Colab** (never locally)
-> - Use **standalone Python scripts** (not interactive notebooks)
-> - **YAML configs** define all experiments
-> - Models saved to **HuggingFace Hub** (not local disk)
-> - Lightweight LoRA adapters only (~100MB vs 15GB full model)
-
-### Colab-Specific Setup
-
-**Initial Setup (First Session):**
-1. Open new Colab notebook
-2. Mount Google Drive: `from google.colab import drive; drive.mount('/content/drive')`
-3. Clone repo: `!git clone https://github.com/your-username/LlmForge`
-4. Install heavy dependencies (ONLY in Colab): `!pip install torch transformers trl peft accelerate`
-
-**Checkpoint Strategy:**
-- Save checkpoint every 100 training steps → Google Drive
-- On disconnect: resume from last checkpoint
-- Final model: upload to HuggingFace Hub (private repo)
-
-### Tasks
-- [ ] **7.1 Create Training Config (YAML)**
-  - Write `configs/training/dpo_mistral_v1.yaml`
-  - Define: model, dataset, hyperparameters, LoRA config
-  - Version control in Git
-  - Config is the source of truth
-
-- [ ] **7.2 Write Standalone Training Script**
-  - Create `training/train_dpo.py` (runs in Colab)
-  - Reads config from YAML file
-  - No hardcoded values
-  - Can run as: `python train_dpo.py --config configs/training/dpo_mistral_v1.yaml`
-
-- [ ] **7.3 Preference Dataset Preparation**
-  - Download Anthropic HH-RLHF (helpfulness subset) in Colab
-  - Format: prompt + chosen_response + rejected_response
-  - Split: 800 train / 100 validation / 100 test
-  - Load via config, no manual download locally
-
-- [ ] **7.4 Training Configuration**
-  - Base model: `mistralai/Mistral-7B-Instruct-v0.2` (Colab T4 only)
-  - Use LoRA for efficiency (don't full fine-tune)
-  - LoRA config: `rank=16, target_modules=["q_proj", "v_proj"]`
-  - DPO config: `beta=0.1, learning_rate=5e-7`
-  - Training: 1 epoch, `batch_size=4`, `gradient_accumulation=4`
-
-- [ ] **7.5 Training Execution in Colab**
-  - Run training script in Colab
-  - Load base model with 4-bit quantization (fits in 16GB)
-  - Initialize DPOTrainer from `trl` library
-  - Train for ~2 hours on T4 GPU
-  - Monitor loss curves (should decrease steadily)
-  - Save checkpoints to Google Drive every 100 steps
-
-- [ ] **7.6 Model Upload to HuggingFace Hub**
-  - Merge LoRA weights with base model (optional)
-  - Upload LoRA adapter to HF Hub: `your-username/mistral-7b-dpo-lora-v1`
-  - Set repository to private during development
-  - Save model card with training details and config link
-
-- [ ] **7.7 Evaluation Setup (Back to Platform)**
-  - Use fine-tuned model from HF Hub via Inference API or Colab
-  - Compare: Base model vs DPO-tuned model
-  - Use same evaluation infrastructure from Phase 3
-  - No local model loading needed
-
-- [ ] **7.8 Helpfulness Evaluation**
-  - Use Anthropic HH test set (100 prompts)
-  - Generate responses from both models
-  - Human evaluation: judge 50 pairs (which is more helpful?)
-  - Expected: DPO model preferred 60-70% of time
-
-- [ ] **7.9 Factuality Evaluation**
-  - Use TriviaQA (200 questions)
-  - Measure exact match accuracy for both models
-  - Expected: DPO model slightly worse (2-8% drop)
-
-- [ ] **7.10 Verbosity Analysis**
-  - Measure average response length (tokens)
-  - Compare: base vs DPO on same prompts
-  - Expected: DPO model 10-20% longer responses
-
-- [ ] **7.11 Ablation Studies**
-  - Ablation 1 - Beta: Train with `beta = 0.05, 0.1, 0.2`
-  - Ablation 2 - Data: Train with 200, 500, 800 pairs
-  - Measure: Helpfulness score vs Factuality accuracy
-  - Find optimal hyperparameters
-
-### Deliverables
-- ✅ DPO-tuned model on HF Hub
-- ✅ Finding: "Helpfulness +15%, Factuality -6%"
-- ✅ Alignment-capability trade-off documented
-
-### Exit Criteria
-- [ ] Fine-tuned model successfully uploaded to HuggingFace Hub
-- [ ] Base vs DPO comparison completed on 2+ metrics
-- [ ] Human evaluation shows measurable preference improvement
-- [ ] Factuality trade-off documented with numbers
-- [ ] At least 1 ablation study completed
-- [ ] README updated with alignment findings
-
-### Example Training Config (YAML)
-```yaml
-# configs/training/dpo_mistral_v1.yaml
-training:
-  model_name: "mistralai/Mistral-7B-Instruct-v0.2"
-  dataset: "Anthropic/hh-rlhf"
-  dataset_subset: "helpful-base"
-  dataset_size: 1000
-  
-  method: "dpo"
-  
-  hyperparameters:
-    beta: 0.1
-    learning_rate: 5e-7
-    num_train_epochs: 1
-    per_device_train_batch_size: 4
-    gradient_accumulation_steps: 4
-  
-  lora:
-    rank: 16
-    alpha: 32
-    target_modules: ["q_proj", "v_proj"]
-  
-  output:
-    checkpoint_dir: "/content/drive/MyDrive/llmforge/checkpoints"
-    push_to_hub: true
-    hub_model_id: "your-username/mistral-7b-dpo-lora-v1"
-  
-  seed: 42
-```
-
-### Colab Execution
-```bash
-# In Colab, run training script with config
-!python training/train_dpo.py --config configs/training/dpo_mistral_v1.yaml
-```
-
-### Colab Session Management
-- Checkpoint every 100 steps → Google Drive
-- If session disconnects: reload from last checkpoint
-- Total training: ~800 steps (1 epoch on 800 pairs)
-- Each session: aim for 200-300 steps, then save
-
-### Common Pitfalls & Solutions
-| Issue | Solution |
-|-------|----------|
-| Colab disconnects during training | Save checkpoints every 100 steps, resume with `trainer.train(resume_from_checkpoint=...)` |
-| Out of memory during training | Use 4-bit quantization, reduce batch_size to 2, increase gradient accumulation |
-| Loss doesn't decrease | Check learning rate, verify dataset format, monitor gradient norms |
-| DPO makes model worse | Review dataset quality, try lower beta (0.05), may need better base model |
-| Upload to HuggingFace fails | Run `huggingface-cli login`, check repo exists, verify internet in Colab |
+> **For learning**: If you want to explore alignment later, the [TRL library docs](https://huggingface.co/docs/trl/dpo_trainer) provide excellent tutorials. You can run DPO in Colab as a standalone experiment without integrating into LlmForge.
 
 ---
 
 ## Phase 8: Inference Optimization
 
-**Goal**: Production-grade performance
+**Goal**: Measure and improve inference performance
 
-> **Architecture Note**: vLLM optimization runs **only in Colab** (requires GPU). Batching and caching can be tested with HF Inference API or mock data locally.
+> **Note**: All optimizations in this phase can run locally or on HF Spaces (no GPU required). We focus on batching, caching, and profiling — practical techniques that work with any inference backend.
 
 ### Tasks
 - [ ] **8.1 Batching Implementation**
-  - Implement `generate_batch()` method
+  - Implement `generate_batch()` method in inference engine
   - Group prompts into batches of 4, 8, 16
-  - Use padding for variable-length inputs
+  - Batch calls to HF Inference API (reduces HTTP overhead)
   - Measure: throughput (prompts/second), latency per prompt
 
-- [ ] **8.2 vLLM Integration (Colab Only)**
-  - Install vLLM in Colab: `!pip install vllm==0.2.7`
-  - Load Mistral-7B with vLLM engine
-  - Compare: Transformers vs vLLM on same workload
-  - Measure: tokens/second, first token latency, memory usage
-
-- [ ] **8.3 Prompt Caching**
-  - Detect repeated context prefixes (common in RAG)
-  - Cache embedding of context chunks
-  - Reuse cached embeddings for same context + different questions
+- [ ] **8.2 Prompt Caching**
+  - Detect repeated context prefixes (common in RAG — same context, different questions)
+  - Cache generation results for identical prompts (deterministic with seed)
+  - Use in-memory LRU cache with configurable max size
   - Measure: cache hit rate, latency savings per hit
 
-- [ ] **8.4 Memory Profiling**
-  - Measure peak GPU memory per method
-  - Test: max batch size before OOM
-  - Document: Method × Batch Size → Memory usage
-  - Create memory usage heatmap
+- [ ] **8.3 Response Profiling**
+  - Measure time breakdown per run: prompt building, API call, parsing, metrics
+  - Identify bottlenecks (is it network? tokenization? parsing?)
+  - Log profiling data per experiment
+  - Create profiling summary in results dashboard
 
-- [ ] **8.5 Comprehensive Benchmark**
-  - Matrix: All methods × All optimizations
-  - Methods: Naive, CoT, RAG, Agent, DPO
-  - Optimizations: Sequential, Batched, vLLM, Cached
-  - Metrics: Accuracy, Latency (p50/p95), Throughput, Memory
+- [ ] **8.4 Comprehensive Benchmark**
+  - Matrix: All methods × optimizations
+  - Methods: Naive, CoT, RAG, Agent
+  - Optimizations: Sequential, Batched, Cached
+  - Metrics: Accuracy, Latency (p50/p95), Throughput, Total Tokens
+  - Run on TriviaQA (100 samples) with same seed
 
-- [ ] **8.6 Optimization Decision Framework**
+- [ ] **8.5 Optimization Decision Framework**
   - Document when to use each optimization
-  - Create decision tree based on use case
+  - Create decision guide based on use case
   - Include cost-benefit analysis
 
 ### Deliverables
-- ✅ 4× throughput with vLLM + batching
-- ✅ Pareto frontier visualization
-- ✅ Production recommendations
+- ✅ 2-3× throughput with batching
+- ✅ Measurable cache hit rate for RAG queries
+- ✅ Production recommendations documented
 
 ### Exit Criteria
-- [ ] Batching implemented and shows 2-3× throughput improvement
-- [ ] vLLM tested on Colab (T4 GPU) with performance gains documented
+- [ ] Batching implemented and shows throughput improvement
 - [ ] Prompt caching shows measurable latency reduction for RAG
 - [ ] Full benchmark matrix completed with all combinations
-- [ ] Memory profiling reveals optimal batch sizes per method
+- [ ] Profiling reveals bottlenecks per method
 - [ ] Performance recommendations documented for different scenarios
 
-### Benchmark Matrix
-| Method | Baseline | +Batching | +vLLM | +Cache |
-|--------|----------|-----------|-------|--------|
-| Naive | 1.0× | 3.2× | 4.1× | 4.5× |
-| CoT | 1.0× | 2.8× | 3.5× | 3.8× |
-| RAG | 1.0× | 2.5× | 3.2× | 4.2× |
+### Benchmark Matrix (Expected)
+| Method | Baseline | +Batching | +Cache |
+|--------|----------|-----------|--------|
+| Naive | 1.0× | 2.5× | 2.5× |
+| CoT | 1.0× | 2.2× | 2.2× |
+| RAG | 1.0× | 2.0× | 3.5× |
 
 ### When to Use Each Optimization
 
 | Optimization | Use When |
 |--------------|----------|
-| **Batching** | Processing 10+ queries at once, throughput > latency, GPU utilization <50% |
-| **vLLM** | Sustained high throughput, 16GB+ VRAM, production-like workload |
+| **Batching** | Processing 10+ queries at once, throughput > latency priority |
 | **Prompt Caching** | Same context reused (RAG), context >500 tokens, query rate >1/min |
 | **Don't optimize** | Accuracy still too low, debugging issues, baseline not complete |
 
 ### Common Pitfalls & Solutions
 | Issue | Solution |
 |-------|----------|
-| Batching doesn't improve throughput | Check GPU utilization, try batch sizes 8-16, ensure efficient padding |
-| vLLM installation fails in Colab | Use specific version `vllm==0.2.7`, restart runtime, check CUDA compatibility |
-| Cache hit rate is 0% | Verify cache key generation (hash of context), check for whitespace differences |
-| Memory profiling shows unexpected usage | Clear cache with `torch.cuda.empty_cache()`, use `torch.cuda.memory_summary()` |
+| Batching doesn't improve throughput | HF API may throttle; try different batch sizes, add delays between batches |
+| Cache hit rate is 0% | Verify cache key generation, check for whitespace differences in prompts |
+| Profiling adds overhead | Use sampling (profile every 10th run), disable in production |
 
 ---
 
@@ -898,7 +747,7 @@ training:
 - [ ] **9.2 Visualizations Creation**
   - Chart 1: Accuracy vs Latency scatter (all methods)
   - Chart 2: Faithfulness comparison bar chart (RAG variants)
-  - Chart 3: Optimization speedup bar chart (batching, vLLM, caching)
+  - Chart 3: Optimization speedup bar chart (batching, caching)
   - Chart 4: Agent tool usage pie chart (successful/failed/unnecessary)
   - Chart 5: Pareto frontier (accuracy vs cost)
   - Save as high-quality PNG (300 DPI)
@@ -914,32 +763,35 @@ training:
   - Use logging instead of print statements
   - Write 10-15 unit tests for critical paths
 
-- [ ] **9.4 Demo Video**
-  - Minute 1: Project overview and motivation
-  - Minute 2: Architecture explanation
-  - Minutes 3-4: Live demo (create experiment, view results)
-  - Minutes 5-6: Key findings with visualizations
-  - Minute 7: Future work and conclusions
-  - Upload to YouTube (unlisted)
-  - Add link to README
+- [ ] **9.4 Demo Video / GIF Walkthrough**
+  - Option A: Short demo video (3-5 min) uploaded to YouTube (unlisted)
+  - Option B: Animated GIF walkthrough embedded in README
+  - Cover: Create experiment → run → view results → compare methods
 
-- [ ] **9.5 Deployment**
-  - Frontend: Deploy to Vercel (connect GitHub, auto-deploy on push)
-  - Backend: Deploy to Railway (or HuggingFace Spaces)
-  - Database: NeonDB (already configured)
-  - Vector DB: Qdrant Cloud (1GB free tier)
+- [ ] **9.5 Deployment (All Free Tier)**
+  - **Frontend**: Deploy to Vercel (Hobby plan, connect GitHub, auto-deploy)
+    - URL: `https://llm-forge.vercel.app` or similar
+    - Set `NEXT_PUBLIC_API_URL` environment variable to HF Spaces URL
+  - **Backend**: Deploy to HuggingFace Spaces (Docker SDK)
+    - Create Docker-based Space: `your-username/llmforge-api`
+    - Include `Dockerfile` that installs requirements and runs FastAPI
+    - ChromaDB data persists within the Space's disk storage
+    - URL: `https://your-username-llmforge-api.hf.space`
+  - **Database**: Neon PostgreSQL (free tier, 0.5GB storage)
+    - Set `DATABASE_URL` as HF Spaces secret
   - Test deployed version thoroughly
+  - Note: HF Spaces sleeps after ~48h inactivity (30-60s cold start — acceptable)
 
 - [ ] **9.6 Documentation**
-  - API documentation (auto-generated from FastAPI)
+  - API documentation (auto-generated from FastAPI at `/docs`)
   - Component documentation (how each module works)
   - Experiment configuration guide
   - Troubleshooting section
 
 ### Deliverables
-- ✅ Live demo URL
+- ✅ Live demo URL (Vercel + HF Spaces)
 - ✅ README that impresses in 30 seconds
-- ✅ Video walkthrough
+- ✅ Demo video or GIF walkthrough
 - ✅ Clean, documented codebase
 
 ### Exit Criteria
@@ -947,38 +799,42 @@ training:
 - [ ] 5+ high-quality visualizations embedded
 - [ ] All code has docstrings and type hints
 - [ ] 10+ unit tests pass successfully
-- [ ] Demo video recorded and published
+- [ ] Demo video/GIF recorded and published
 - [ ] Application deployed and accessible via URL
 - [ ] Can walk through entire project in 10 minutes clearly
 
-### Deployment URLs
+### Deployment Stack (All Free)
 ```
-Frontend: https://llm-forge.vercel.app
-Backend:  https://llm-forge-api.railway.app
-API Docs: https://llm-forge-api.railway.app/docs
+Frontend:  Vercel Hobby Plan      → https://llm-forge.vercel.app
+Backend:   HuggingFace Spaces     → https://username-llmforge-api.hf.space
+Database:  Neon PostgreSQL         → Free tier (0.5GB)
+Vector DB: ChromaDB (embedded)    → Runs inside HF Space
+API Docs:  FastAPI auto-docs      → https://username-llmforge-api.hf.space/docs
+Monthly Cost: $0
 ```
 
 ### Common Pitfalls & Solutions
 | Issue | Solution |
 |-------|----------|
 | README too technical | Start with high-level overview, add context before implementation |
-| Visualizations unclear | Add clear axis labels/legends, colorblind-friendly palettes, readable font size 12+ |
-| Deployment failures | Check environment variables, verify DB connection strings, test locally first |
-| Video too long | Script beforehand, practice 2-3 times, edit out pauses |
+| Visualizations unclear | Add clear axis labels/legends, colorblind-friendly palettes |
+| HF Space cold starts | Add a loading indicator in frontend, document expected wake-up time |
+| Vercel build fails | Check `NEXT_PUBLIC_API_URL` env var, ensure no SSR dependencies on backend |
+| Neon connection from HF Spaces | Use `DATABASE_URL` as HF secret, ensure SSL mode is enabled |
 
 ---
 
 ## Risk Management
 
-### Risk 1: Colab Session Limits
-**Likelihood**: High | **Impact**: Medium
+### Risk 1: HF Spaces Cold Starts
+**Likelihood**: High | **Impact**: Low
 
 **Mitigation**:
-- Save checkpoints to Google Drive every 100 steps
-- Structure training in resumable chunks (200-300 steps per session)
-- Use Colab Pro ($10/month) if free tier too restrictive
+- Add loading spinner in frontend ("Backend waking up...")
+- Document 30-60s cold start for users
+- Consider upgrading to HF Spaces persistent if needed ($0 → project stays awake)
 
-**Fallback**: Use Kaggle notebooks (30 hours/week free GPU) or Lambda Labs ($0.50/hour)
+**Fallback**: Switch to Google Cloud Run (2M free requests/month)
 
 ### Risk 2: Results Are Underwhelming
 **Likelihood**: Medium | **Impact**: Low (actually valuable)
@@ -1001,13 +857,16 @@ API Docs: https://llm-forge-api.railway.app/docs
 
 **Rule**: If it's not in the roadmap, write it in "Future Work" and move on.
 
-### Risk 4: Hardware Limitations
+### Risk 4: HuggingFace Inference API Rate Limits
 **Likelihood**: Medium | **Impact**: Medium
 
 **Mitigation**:
-- Use Phi-2 (2.7B) for local development
-- Reserve 7B models for Colab only
-- Implement CPU fallback automatically
+- Use mock engine for development and testing
+- Batch API calls where possible (Phase 8)
+- Cache responses for identical prompts
+- Add retry with exponential backoff
+
+**Fallback**: Use Google AI Studio (free Gemini API) or Groq (free fast inference)
 
 ---
 
@@ -1021,13 +880,12 @@ Phase 1 (Database) → Phase 2 (Inference) → Phase 3 (Evaluation) ← MUST BE 
                                           │                   │
                                           └───── Can parallelize somewhat ─────┘
                                                 ↓
-                          Phase 7 (DPO) → Phase 8 (Optimization) → Phase 9 (Polish)
-                          ↑ Colab only ↑
+                          Phase 7 (SKIPPED) → Phase 8 (Optimization) → Phase 9 (Polish)
 ```
 
 ### Blocking Issues
 - If **Phase 3 (Evaluation) is not solid**: ALL subsequent phases unreliable
-- If **Colab access lost**: Phases 7-8 blocked (use Kaggle as fallback)
+- If **HF Inference API goes down**: Switch to mock engine or Groq free tier
 
 ---
 
@@ -1078,31 +936,24 @@ Every phase must pass these gates before proceeding:
 - [ ] README table updated
 
 ### Phase 5: RAG Pipeline
-- [ ] Qdrant accessible: `curl http://localhost:6333/health`
-- [ ] All chunks embedded and uploaded
+- [ ] ChromaDB collection populated with embedded chunks
 - [ ] Retrieval returns relevant docs (spot-check 10)
-- [ ] All RAG variants work
+- [ ] All 3 RAG variants work
 - [ ] Faithfulness metric validated
 
 ### Phase 6: ReAct Agent
-- [ ] All tools pass unit tests
+- [ ] All 3 tools pass unit tests
 - [ ] Agent completes 5+ questions successfully
 - [ ] Traces logged and viewable
 - [ ] Loop detection prevents infinite runs
 - [ ] Comparison table shows all methods
 
-### Phase 7: DPO Alignment
-- [ ] Training completes without errors
-- [ ] Model uploaded to HuggingFace Hub
-- [ ] Can download and run fine-tuned model
-- [ ] Comparison shows measurable differences
-- [ ] Human eval completed (50 samples minimum)
+### Phase 7: DPO Alignment — SKIPPED
 
 ### Phase 8: Inference Optimization
 - [ ] Batching shows throughput improvement
-- [ ] vLLM runs on Colab successfully
+- [ ] Prompt caching reduces RAG latency
 - [ ] Full benchmark matrix completed
-- [ ] Memory profiling reveals optimal settings
 - [ ] Recommendations documented
 
 ### Phase 9: Polish & Deployment
@@ -1110,8 +961,8 @@ Every phase must pass these gates before proceeding:
 - [ ] 5+ visualizations embedded
 - [ ] All code has docstrings
 - [ ] 10+ tests pass
-- [ ] Demo video published
-- [ ] Deployed and accessible online
+- [ ] Demo video/GIF published
+- [ ] Deployed on Vercel + HF Spaces (all free)
 - [ ] UI fully compliant with DESIGN_SYSTEM.md
 
 ---
@@ -1119,7 +970,7 @@ Every phase must pass these gates before proceeding:
 ## Interview Talking Points
 
 ### 30-Second Pitch
-> "I built a config-driven LLM experimentation platform. I compared Chain-of-Thought, RAG, and ReAct agents, finding CoT improves accuracy 16% on reasoning tasks. I implemented DPO alignment and discovered a 6% factuality drop despite 15% helpfulness gains. I optimized inference with vLLM batching for 4× throughput. Everything is reproducible from versioned configs."
+> "I built a config-driven LLM experimentation platform. I compared Chain-of-Thought, RAG, and ReAct agents, finding CoT improves accuracy 16% on reasoning tasks. Reranking retrieval reduces hallucinations by 18%. Agents achieve +12% accuracy at 4× cost. I optimized inference with batching and caching for 2-3× throughput. Everything is reproducible from versioned configs, deployed free on Vercel + HuggingFace Spaces."
 
 ### Key Findings Summary
 | Finding | Evidence |
@@ -1127,8 +978,7 @@ Every phase must pass these gates before proceeding:
 | CoT > Naive | +16% accuracy, +270ms latency |
 | Reranking reduces hallucinations | Faithfulness 0.72 → 0.87 |
 | Agents are expensive | +12% accuracy, 4× token cost |
-| Alignment has trade-offs | +15% helpful, -6% factual |
-| Batching is free perf | 3-4× throughput, same accuracy |
+| Batching is free perf | 2-3× throughput, same accuracy |
 
 ---
 
