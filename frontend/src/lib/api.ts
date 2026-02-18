@@ -69,7 +69,7 @@ export interface Experiment {
     name: string;
     description?: string;
     config: ExperimentConfig;
-    status: 'pending' | 'running' | 'completed' | 'failed';
+    status: 'pending' | 'queued' | 'running' | 'completed' | 'failed';
     created_at: string;
     started_at?: string;
     completed_at?: string;
@@ -257,3 +257,95 @@ export async function healthCheck(): Promise<{ status: string }> {
     const response = await fetch(`${baseUrl}/health`);
     return response.json();
 }
+
+// =============================================================================
+// COMPARISON TYPES
+// =============================================================================
+
+export interface ExperimentComparison {
+    experiment_id: string;
+    experiment_name: string;
+    method: string;
+    model: string;
+    metrics: Metrics;
+}
+
+export interface ComparisonResponse {
+    experiments: ExperimentComparison[];
+    comparison_metrics: {
+        accuracy_exact: number[];
+        accuracy_f1: number[];
+        latency_p50: number[];
+    };
+}
+
+export interface BootstrapCI {
+    mean: number;
+    lower: number;
+    upper: number;
+    std: number;
+}
+
+export interface McNemarResult {
+    statistic: number;
+    p_value: number;
+    is_significant: boolean;
+    b: number;
+    c: number;
+    n: number;
+}
+
+export interface PerExampleDiff {
+    example_id: string;
+    a_correct: boolean;
+    b_correct: boolean;
+    a_output: string;
+    b_output: string;
+    expected: string;
+    a_score: number;
+    b_score: number;
+}
+
+export interface StatisticalComparison {
+    experiment_a_id: string;
+    experiment_b_id: string;
+    num_common_examples: number;
+    accuracy_a: number;
+    accuracy_b: number;
+    accuracy_diff: number;
+    mcnemar: McNemarResult;
+    bootstrap_ci_a: BootstrapCI;
+    bootstrap_ci_b: BootstrapCI;
+    per_example_differences: PerExampleDiff[];
+    summary: {
+        both_correct: number;
+        both_wrong: number;
+        a_only_correct: number;
+        b_only_correct: number;
+    };
+}
+
+// =============================================================================
+// COMPARISON API FUNCTIONS
+// =============================================================================
+
+/**
+ * Compare metrics across multiple experiments.
+ */
+export async function compareExperiments(ids: string[]): Promise<ComparisonResponse> {
+    const params = ids.map(id => `experiment_ids=${id}`).join('&');
+    return fetchAPI<ComparisonResponse>(`/results/compare?${params}`);
+}
+
+/**
+ * Get statistical comparison between two experiments.
+ */
+export async function getStatisticalComparison(
+    experimentA: string,
+    experimentB: string,
+): Promise<StatisticalComparison> {
+    return fetchAPI<StatisticalComparison>(
+        `/results/compare/statistical?experiment_a=${experimentA}&experiment_b=${experimentB}`
+    );
+}
+

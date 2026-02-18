@@ -252,6 +252,7 @@ class ExperimentService:
         Should be run as a background task.
         """
         import os
+        import json
         import logging
         
         logger = logging.getLogger(__name__)
@@ -260,7 +261,7 @@ class ExperimentService:
         from app.services.inference.base import GenerationConfig
         from app.services.inference.hf_api_engine import HFAPIEngine
         from app.services.inference.mock_engine import MockEngine
-        from app.services.inference.prompting import NaivePromptTemplate
+        from app.services.inference.prompting import NaivePromptTemplate, CoTPromptTemplate
         from app.services.run_service import RunService
         from app.services.dataset_service import DatasetService
         from app.services.metrics_service import MetricsService
@@ -315,18 +316,46 @@ class ExperimentService:
             logger.info(f"[EXECUTE] ✓ Loaded {len(examples)} examples")
             print(f"[EXECUTE] ✓ Loaded {len(examples)} examples")
             
-            # Step 5: Prepare generation config
+            # Step 5: Determine reasoning method and prepare prompt template
+            reasoning_method = experiment_response.config.reasoning_method.value
+            logger.info(f"[EXECUTE] Reasoning method: {reasoning_method}")
+            print(f"[EXECUTE] Reasoning method: {reasoning_method}")
+            
+            # Load CoT few-shot examples if using CoT
+            cot_examples = None
+            if reasoning_method == "cot":
+                cot_examples_path = os.path.join(
+                    os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))),
+                    "configs", "cot_examples.json"
+                )
+                if os.path.exists(cot_examples_path):
+                    with open(cot_examples_path, "r", encoding="utf-8") as f:
+                        cot_examples = json.load(f)
+                    logger.info(f"[EXECUTE] ✓ Loaded {len(cot_examples)} CoT few-shot examples")
+                    print(f"[EXECUTE] ✓ Loaded {len(cot_examples)} CoT few-shot examples")
+                else:
+                    logger.warning("[EXECUTE] ⚠ CoT examples file not found, using zero-shot CoT")
+                    print("[EXECUTE] ⚠ CoT examples file not found, using zero-shot CoT")
+            
+            # Step 6: Prepare generation config
+            # CoT needs more output tokens for reasoning chains
+            max_tokens = experiment_response.config.hyperparameters.max_tokens
+            if reasoning_method == "cot" and max_tokens <= 256:
+                max_tokens = 512  # CoT reasoning chains need more space
+                logger.info(f"[EXECUTE] ✓ Increased max_tokens to {max_tokens} for CoT")
+                print(f"[EXECUTE] ✓ Increased max_tokens to {max_tokens} for CoT")
+            
             gen_config = GenerationConfig(
-                max_tokens=experiment_response.config.hyperparameters.max_tokens,
+                max_tokens=max_tokens,
                 temperature=experiment_response.config.hyperparameters.temperature,
                 top_p=experiment_response.config.hyperparameters.top_p,
             )
             
-            # Step 6: Initialize services
+            # Step 7: Initialize services
             run_service = RunService(self.db)
             metrics_svc = MetricsService(self.db)
             
-            # Step 7: Run inference for each example
+            # Step 8: Run inference for each example
             logger.info(f"[EXECUTE] Running inference for {len(examples)} examples...")
             print(f"[EXECUTE] Running inference for {len(examples)} examples...")
             
@@ -334,14 +363,20 @@ class ExperimentService:
                 logger.info(f"[EXECUTE] Processing {i+1}/{len(examples)}: {item['id']}")
                 print(f"[EXECUTE] Processing {i+1}/{len(examples)}: {item['id']}")
                 
-                # Format prompt using naive template
-                prompt = NaivePromptTemplate.format(item["question"])
+                # Format prompt based on reasoning method
+                if reasoning_method == "cot":
+                    prompt = CoTPromptTemplate.format(item["question"], cot_examples)
+                else:
+                    prompt = NaivePromptTemplate.format(item["question"])
                 
                 # Generate response
                 result = engine.generate(prompt, gen_config)
                 
-                # Parse response
-                parsed_answer = NaivePromptTemplate.parse_response(result.text)
+                # Parse response based on reasoning method
+                if reasoning_method == "cot":
+                    parsed_answer = CoTPromptTemplate.parse_response(result.text)
+                else:
+                    parsed_answer = NaivePromptTemplate.parse_response(result.text)
                 
                 # Evaluate against aliases (Phase 3: multi-answer matching)
                 aliases = item.get("aliases", [item["answer"]])
@@ -350,11 +385,13 @@ class ExperimentService:
                 )
                 
                 # Log run to database
+                # Store full model output (preserves CoT reasoning chain),
+                # but evaluate using parsed_answer
                 await run_service.create_run(
                     experiment_id=experiment_id,
                     example_id=item["id"],
                     input_text=prompt,
-                    output_text=parsed_answer,
+                    output_text=result.text,
                     expected_output=item["answer"],
                     is_correct=is_exact or is_substring,
                     score=f1_score,

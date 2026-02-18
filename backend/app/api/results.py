@@ -323,3 +323,31 @@ async def compare_experiments(
             "latency_p50": latency_p50_values,
         },
     )
+
+
+@router.get("/compare/statistical")
+async def statistical_comparison(
+    experiment_a: UUID = Query(..., description="First experiment ID"),
+    experiment_b: UUID = Query(..., description="Second experiment ID"),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Statistical comparison between two experiments.
+    
+    Computes:
+    - McNemar's test for paired accuracy comparison
+    - Bootstrap confidence intervals for both experiments
+    - Per-example agreement/disagreement breakdown
+    
+    Returns statistical significance results.
+    """
+    from app.services.statistical_service import StatisticalService
+    
+    stat_service = StatisticalService(db)
+    
+    try:
+        result = await stat_service.compare_experiments(experiment_a, experiment_b)
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+

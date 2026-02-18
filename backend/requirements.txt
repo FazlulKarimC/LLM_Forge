@@ -18,6 +18,7 @@ huggingface-hub>=0.20.0
 
 # --- Metrics Computation ---
 numpy>=1.24.0
+statsmodels>=0.14.0
 
 # --- Utilities ---
 python-dotenv>=1.0.0

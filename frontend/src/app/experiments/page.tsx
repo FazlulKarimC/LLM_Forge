@@ -80,9 +80,14 @@ export default function ExperimentsPage() {
                             Experiments ({total})
                         </h1>
                     </div>
-                    <Link href="/experiments/new" className="btn-primary">
-                        New Experiment
-                    </Link>
+                    <div className="flex gap-3">
+                        <Link href="/experiments/compare" className="border border-border rounded-full px-4 py-2 text-sm font-medium text-(--text-body) hover:bg-(--bg-page) transition-colors">
+                            Compare
+                        </Link>
+                        <Link href="/experiments/new" className="btn-primary">
+                            New Experiment
+                        </Link>
+                    </div>
                 </div>
             </header>
 
