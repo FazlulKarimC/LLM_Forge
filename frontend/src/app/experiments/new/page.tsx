@@ -12,7 +12,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { createExperiment, runExperiment, ExperimentConfig, CreateExperimentRequest } from "@/lib/api";
+import { createExperiment, runExperiment, ExperimentConfig, CreateExperimentRequest, AgentConfig } from "@/lib/api";
 
 // Free-tier models confirmed working on HuggingFace Inference API
 const AVAILABLE_MODELS = [
@@ -37,6 +37,8 @@ export default function NewExperimentPage() {
         num_samples: number;
         retrieval_method: "none" | "naive" | "hybrid" | "reranked";
         rag_top_k: number;
+        agent_max_iterations: number;
+        agent_tools: string[];
     }>({
         name: "",
         description: "",
@@ -48,6 +50,8 @@ export default function NewExperimentPage() {
         num_samples: 10,
         retrieval_method: "none",
         rag_top_k: 5,
+        agent_max_iterations: 5,
+        agent_tools: ["wikipedia_search", "calculator"],
     });
 
     const [runAfterCreate, setRunAfterCreate] = useState(false);
@@ -88,6 +92,13 @@ export default function NewExperimentPage() {
             config.rag = {
                 retrieval_method: formData.retrieval_method,
                 top_k: formData.rag_top_k,
+            };
+        }
+
+        if (formData.reasoning_method === "react") {
+            config.agent = {
+                max_iterations: formData.agent_max_iterations,
+                tools: formData.agent_tools,
             };
         }
 
@@ -246,10 +257,31 @@ export default function NewExperimentPage() {
                                     onChange={(e) => setFormData({ ...formData, dataset_name: e.target.value })}
                                     className="mt-1 block w-full border border-border rounded-lg px-3 py-2 bg-(--bg-card) text-(--text-body)"
                                 >
-                                    <option value="trivia_qa">TriviaQA</option>
-                                    <option value="hotpot_qa">HotpotQA</option>
-                                    <option value="gsm8k">GSM8K (Math)</option>
+                                    <optgroup label="📋 General">
+                                        <option value="trivia_qa">TriviaQA (100 Qs)</option>
+                                        <option value="commonsense_qa">Commonsense QA (30 Qs)</option>
+                                        <option value="sample">Sample Questions (10 Qs)</option>
+                                    </optgroup>
+                                    <optgroup label="📚 RAG">
+                                        <option value="knowledge_base">Knowledge Base QA (50 Qs)</option>
+                                    </optgroup>
+                                    <optgroup label="🧠 Reasoning">
+                                        <option value="multi_hop">Multi-Hop QA (40 Qs)</option>
+                                        <option value="math_reasoning">Math Reasoning (40 Qs)</option>
+                                    </optgroup>
+                                    <optgroup label="🤖 Agent">
+                                        <option value="react_bench">ReAct Agent Bench (30 Qs)</option>
+                                    </optgroup>
                                 </select>
+                                <p className="text-xs text-(--text-muted) mt-1">
+                                    {formData.dataset_name === "trivia_qa" && "Single-hop factual recall questions"}
+                                    {formData.dataset_name === "commonsense_qa" && "Everyday knowledge and reasoning"}
+                                    {formData.dataset_name === "sample" && "Built-in smoke test questions"}
+                                    {formData.dataset_name === "knowledge_base" && "⭐ Questions answerable from indexed articles — ideal for RAG"}
+                                    {formData.dataset_name === "multi_hop" && "Requires combining 2+ facts — ideal for CoT & ReAct"}
+                                    {formData.dataset_name === "math_reasoning" && "GSM8K-style word problems — ideal for CoT & calculator"}
+                                    {formData.dataset_name === "react_bench" && "⭐ Multi-tool questions requiring search + calculation"}
+                                </p>
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-(--text-body)">Retrieval Method</label>
@@ -296,6 +328,53 @@ export default function NewExperimentPage() {
                             </div>
                         )}
                     </section>
+
+                    {/* Agent Settings (Phase 6) */}
+                    {formData.reasoning_method === "react" && (
+                        <section>
+                            <h2 className="text-lg font-serif text-(--text-heading) mb-4">Agent Settings</h2>
+                            <div className="p-4 bg-(--bg-page) rounded-lg border border-border space-y-4">
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-(--text-body)">Max Iterations</label>
+                                        <input
+                                            type="number"
+                                            min="1"
+                                            max="20"
+                                            value={formData.agent_max_iterations}
+                                            onChange={(e) => setFormData({ ...formData, agent_max_iterations: parseInt(e.target.value) || 5 })}
+                                            className="mt-1 block w-full border border-border rounded-lg px-3 py-2 bg-(--bg-card) text-(--text-body)"
+                                        />
+                                        <p className="text-xs text-(--text-muted) mt-1">Max Thought→Action→Observation loops</p>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-(--text-body)">Tools</label>
+                                        <div className="mt-2 space-y-2">
+                                            {["wikipedia_search", "calculator", "retrieval"].map(tool => (
+                                                <label key={tool} className="flex items-center gap-2 text-sm text-(--text-body) cursor-pointer">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={formData.agent_tools.includes(tool)}
+                                                        onChange={(e) => {
+                                                            const tools = e.target.checked
+                                                                ? [...formData.agent_tools, tool]
+                                                                : formData.agent_tools.filter(t => t !== tool);
+                                                            setFormData({ ...formData, agent_tools: tools });
+                                                        }}
+                                                        className="rounded border-border"
+                                                    />
+                                                    {tool === "wikipedia_search" ? "🌐 Wikipedia" : tool === "calculator" ? "🧮 Calculator" : "📚 Retrieval (RAG)"}
+                                                </label>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                                <p className="text-xs text-(--text-muted) p-2 bg-(--bg-card) rounded-lg border border-border">
+                                    🤖 The agent will reason step-by-step, using tools to gather information before answering. More iterations = more thorough but slower and more expensive.
+                                </p>
+                            </div>
+                        </section>
+                    )}
 
                     {/* Submit */}
                     <div className="flex justify-end gap-3 pt-4 border-t border-border">

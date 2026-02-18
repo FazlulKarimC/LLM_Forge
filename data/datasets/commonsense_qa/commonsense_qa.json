@@ -1,0 +1,288 @@
+[
+    {
+        "id": "cs001",
+        "question": "What happens to ice when it is heated above 0°C?",
+        "answer": "it melts",
+        "aliases": [
+            "it melts",
+            "melts",
+            "it turns into water"
+        ]
+    },
+    {
+        "id": "cs002",
+        "question": "If you drop a ball from the top of a building, which direction will it fall?",
+        "answer": "downward",
+        "aliases": [
+            "downward",
+            "down",
+            "towards the ground"
+        ]
+    },
+    {
+        "id": "cs003",
+        "question": "What color do you get when you mix red and blue paint?",
+        "answer": "purple",
+        "aliases": [
+            "purple",
+            "violet"
+        ]
+    },
+    {
+        "id": "cs004",
+        "question": "What season comes after winter in the Northern Hemisphere?",
+        "answer": "spring",
+        "aliases": [
+            "spring"
+        ]
+    },
+    {
+        "id": "cs005",
+        "question": "If a glass of water is left outside on a hot sunny day, what will eventually happen to the water?",
+        "answer": "it will evaporate",
+        "aliases": [
+            "it will evaporate",
+            "evaporate",
+            "it evaporates"
+        ]
+    },
+    {
+        "id": "cs006",
+        "question": "What instrument do you use to measure temperature?",
+        "answer": "thermometer",
+        "aliases": [
+            "thermometer",
+            "a thermometer"
+        ]
+    },
+    {
+        "id": "cs007",
+        "question": "In which direction does the Sun appear to rise?",
+        "answer": "east",
+        "aliases": [
+            "east",
+            "the east"
+        ]
+    },
+    {
+        "id": "cs008",
+        "question": "What shape is a standard stop sign?",
+        "answer": "octagon",
+        "aliases": [
+            "octagon",
+            "octagonal"
+        ]
+    },
+    {
+        "id": "cs009",
+        "question": "Which sense do you primarily use to identify a smell?",
+        "answer": "smell",
+        "aliases": [
+            "smell",
+            "olfaction",
+            "sense of smell"
+        ]
+    },
+    {
+        "id": "cs010",
+        "question": "What happens to shadows when the sun is directly overhead?",
+        "answer": "they become very short or disappear",
+        "aliases": [
+            "they become very short",
+            "they disappear",
+            "shortest",
+            "they shrink"
+        ]
+    },
+    {
+        "id": "cs011",
+        "question": "If you push a shopping cart, it moves forward. What force stops it eventually?",
+        "answer": "friction",
+        "aliases": [
+            "friction"
+        ]
+    },
+    {
+        "id": "cs012",
+        "question": "What do bees produce that humans commonly eat?",
+        "answer": "honey",
+        "aliases": [
+            "honey"
+        ]
+    },
+    {
+        "id": "cs013",
+        "question": "What happens to metal when it is exposed to water and air over time?",
+        "answer": "it rusts",
+        "aliases": [
+            "it rusts",
+            "rust",
+            "it corrodes",
+            "corrosion"
+        ]
+    },
+    {
+        "id": "cs014",
+        "question": "What gas do humans exhale that plants use for photosynthesis?",
+        "answer": "carbon dioxide",
+        "aliases": [
+            "carbon dioxide",
+            "CO2"
+        ]
+    },
+    {
+        "id": "cs015",
+        "question": "If you are facing north and turn 90 degrees to the right, which direction are you facing?",
+        "answer": "east",
+        "aliases": [
+            "east"
+        ]
+    },
+    {
+        "id": "cs016",
+        "question": "What is the primary source of energy for life on Earth?",
+        "answer": "the Sun",
+        "aliases": [
+            "the Sun",
+            "Sun",
+            "sunlight",
+            "solar energy"
+        ]
+    },
+    {
+        "id": "cs017",
+        "question": "What do you call a baby dog?",
+        "answer": "puppy",
+        "aliases": [
+            "puppy",
+            "a puppy"
+        ]
+    },
+    {
+        "id": "cs018",
+        "question": "How many days are there in a leap year?",
+        "answer": "366",
+        "aliases": [
+            "366",
+            "366 days"
+        ]
+    },
+    {
+        "id": "cs019",
+        "question": "What causes the tides in the ocean?",
+        "answer": "the Moon's gravitational pull",
+        "aliases": [
+            "the Moon's gravitational pull",
+            "gravity of the Moon",
+            "Moon's gravity",
+            "the Moon"
+        ]
+    },
+    {
+        "id": "cs020",
+        "question": "If a recipe says to 'sauté' vegetables, what cooking method is being described?",
+        "answer": "frying quickly in a small amount of oil or fat",
+        "aliases": [
+            "frying",
+            "pan-frying",
+            "cooking in oil",
+            "quick frying"
+        ]
+    },
+    {
+        "id": "cs021",
+        "question": "What natural phenomenon creates a rainbow?",
+        "answer": "refraction of sunlight through water droplets",
+        "aliases": [
+            "refraction of light",
+            "light refraction",
+            "sunlight and rain",
+            "refraction"
+        ]
+    },
+    {
+        "id": "cs022",
+        "question": "What is the opposite of 'transparent'?",
+        "answer": "opaque",
+        "aliases": [
+            "opaque"
+        ]
+    },
+    {
+        "id": "cs023",
+        "question": "Which is heavier: one kilogram of feathers or one kilogram of iron?",
+        "answer": "they weigh the same",
+        "aliases": [
+            "they weigh the same",
+            "neither",
+            "equal",
+            "the same"
+        ]
+    },
+    {
+        "id": "cs024",
+        "question": "What type of celestial body orbits a planet?",
+        "answer": "a moon",
+        "aliases": [
+            "a moon",
+            "moon",
+            "satellite",
+            "natural satellite"
+        ]
+    },
+    {
+        "id": "cs025",
+        "question": "What happens to bread dough when yeast is added and it is left in a warm place?",
+        "answer": "it rises",
+        "aliases": [
+            "it rises",
+            "rises",
+            "it expands"
+        ]
+    },
+    {
+        "id": "cs026",
+        "question": "What part of a plant is primarily responsible for absorbing water from the soil?",
+        "answer": "roots",
+        "aliases": [
+            "roots",
+            "the roots"
+        ]
+    },
+    {
+        "id": "cs027",
+        "question": "In which state of matter do molecules move the fastest: solid, liquid, or gas?",
+        "answer": "gas",
+        "aliases": [
+            "gas",
+            "gaseous state"
+        ]
+    },
+    {
+        "id": "cs028",
+        "question": "What is the frozen form of water called?",
+        "answer": "ice",
+        "aliases": [
+            "ice"
+        ]
+    },
+    {
+        "id": "cs029",
+        "question": "If you look at the night sky and see a bright object that doesn't twinkle, what is it most likely?",
+        "answer": "a planet",
+        "aliases": [
+            "a planet",
+            "planet"
+        ]
+    },
+    {
+        "id": "cs030",
+        "question": "What unit is used to measure electrical resistance?",
+        "answer": "ohm",
+        "aliases": [
+            "ohm",
+            "ohms",
+            "Ω"
+        ]
+    }
+]

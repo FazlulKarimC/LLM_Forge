@@ -1,3 +1,4 @@
+# Results API Routes (updated)
 """
 Results API Routes
 
@@ -64,6 +65,125 @@ def _result_to_metrics_response(result: Result) -> MetricsResponse:
         computed_at=result.computed_at,
     )
 
+
+
+# =========================================================================
+# COMPARE routes — must be declared BEFORE /{experiment_id} to avoid
+# FastAPI matching "compare" as a UUID path parameter.
+# =========================================================================
+
+@router.get("/compare", response_model=ComparisonResponse)
+async def compare_experiments(
+    experiment_ids: List[str] = Query(..., description="List of experiment IDs to compare"),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Compare metrics across multiple experiments.
+    
+    Returns side-by-side metrics for all specified experiments.
+    """
+    if len(experiment_ids) < 2:
+        raise HTTPException(
+            status_code=400,
+            detail="At least 2 experiments required for comparison"
+        )
+    
+    # Parse string IDs to UUIDs
+    try:
+        parsed_ids = [UUID(eid) for eid in experiment_ids]
+    except (ValueError, AttributeError):
+        raise HTTPException(status_code=400, detail="Invalid experiment ID format")
+    
+    comparisons = []
+    accuracy_values = []
+    f1_values = []
+    latency_p50_values = []
+    
+    for exp_id in parsed_ids:
+        # Get experiment
+        exp_query = select(Experiment).where(Experiment.id == exp_id)
+        exp_result = await db.execute(exp_query)
+        experiment = exp_result.scalar_one_or_none()
+        
+        if not experiment:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Experiment {exp_id} not found"
+            )
+        
+        # Get result
+        res_query = select(Result).where(Result.experiment_id == exp_id)
+        res_result = await db.execute(res_query)
+        db_result = res_result.scalar_one_or_none()
+        
+        if not db_result:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No results for experiment {exp_id}"
+            )
+        
+        metrics = _result_to_metrics_response(db_result)
+        
+        config = experiment.config or {}
+        comparisons.append(ExperimentComparison(
+            experiment_id=exp_id,
+            experiment_name=experiment.name,
+            method=experiment.method or config.get("reasoning_method", "unknown"),
+            model=experiment.model_name or config.get("model_name", "unknown"),
+            metrics=metrics,
+        ))
+        
+        accuracy_values.append(db_result.accuracy_exact or 0.0)
+        f1_values.append(db_result.accuracy_f1 or 0.0)
+        latency_p50_values.append(db_result.latency_p50 or 0.0)
+    
+    return ComparisonResponse(
+        experiments=comparisons,
+        comparison_metrics={
+            "accuracy_exact": accuracy_values,
+            "accuracy_f1": f1_values,
+            "latency_p50": latency_p50_values,
+        },
+    )
+
+
+@router.get("/compare/statistical")
+async def statistical_comparison(
+    experiment_a: str = Query(..., description="First experiment ID"),
+    experiment_b: str = Query(..., description="Second experiment ID"),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Statistical comparison between two experiments.
+    
+    Computes:
+    - McNemar's test for paired accuracy comparison
+    - Bootstrap confidence intervals for both experiments
+    - Per-example agreement/disagreement breakdown
+    
+    Returns statistical significance results.
+    """
+    from app.services.statistical_service import StatisticalService
+    
+    # Parse string IDs to UUIDs
+    try:
+        parsed_a = UUID(experiment_a)
+        parsed_b = UUID(experiment_b)
+    except (ValueError, AttributeError):
+        raise HTTPException(status_code=400, detail="Invalid experiment ID format")
+    
+    stat_service = StatisticalService(db)
+    
+    try:
+        result = await stat_service.compare_experiments(parsed_a, parsed_b)
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+# =========================================================================
+# Per-experiment routes — /{experiment_id} parameterized routes below
+# =========================================================================
 
 @router.get("/{experiment_id}", response_model=ResultResponse)
 async def get_results(
@@ -254,100 +374,4 @@ async def export_results(
             "Content-Disposition": f'attachment; filename="{experiment.name}_results.json"'
         },
     )
-
-
-@router.get("/compare", response_model=ComparisonResponse)
-async def compare_experiments(
-    experiment_ids: List[UUID] = Query(..., description="List of experiment IDs to compare"),
-    db: AsyncSession = Depends(get_db),
-):
-    """
-    Compare metrics across multiple experiments.
-    
-    Returns side-by-side metrics for all specified experiments.
-    """
-    if len(experiment_ids) < 2:
-        raise HTTPException(
-            status_code=400,
-            detail="At least 2 experiments required for comparison"
-        )
-    
-    comparisons = []
-    accuracy_values = []
-    f1_values = []
-    latency_p50_values = []
-    
-    for exp_id in experiment_ids:
-        # Get experiment
-        exp_query = select(Experiment).where(Experiment.id == exp_id)
-        exp_result = await db.execute(exp_query)
-        experiment = exp_result.scalar_one_or_none()
-        
-        if not experiment:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Experiment {exp_id} not found"
-            )
-        
-        # Get result
-        res_query = select(Result).where(Result.experiment_id == exp_id)
-        res_result = await db.execute(res_query)
-        db_result = res_result.scalar_one_or_none()
-        
-        if not db_result:
-            raise HTTPException(
-                status_code=404,
-                detail=f"No results for experiment {exp_id}"
-            )
-        
-        metrics = _result_to_metrics_response(db_result)
-        
-        config = experiment.config or {}
-        comparisons.append(ExperimentComparison(
-            experiment_id=exp_id,
-            experiment_name=experiment.name,
-            method=config.get("method", "unknown"),
-            model=config.get("model_name", "unknown"),
-            metrics=metrics,
-        ))
-        
-        accuracy_values.append(db_result.accuracy_exact or 0.0)
-        f1_values.append(db_result.accuracy_f1 or 0.0)
-        latency_p50_values.append(db_result.latency_p50 or 0.0)
-    
-    return ComparisonResponse(
-        experiments=comparisons,
-        comparison_metrics={
-            "accuracy_exact": accuracy_values,
-            "accuracy_f1": f1_values,
-            "latency_p50": latency_p50_values,
-        },
-    )
-
-
-@router.get("/compare/statistical")
-async def statistical_comparison(
-    experiment_a: UUID = Query(..., description="First experiment ID"),
-    experiment_b: UUID = Query(..., description="Second experiment ID"),
-    db: AsyncSession = Depends(get_db),
-):
-    """
-    Statistical comparison between two experiments.
-    
-    Computes:
-    - McNemar's test for paired accuracy comparison
-    - Bootstrap confidence intervals for both experiments
-    - Per-example agreement/disagreement breakdown
-    
-    Returns statistical significance results.
-    """
-    from app.services.statistical_service import StatisticalService
-    
-    stat_service = StatisticalService(db)
-    
-    try:
-        result = await stat_service.compare_experiments(experiment_a, experiment_b)
-        return result
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
 

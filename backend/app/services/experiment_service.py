@@ -261,7 +261,7 @@ class ExperimentService:
         from app.services.inference.base import GenerationConfig
         from app.services.inference.hf_api_engine import HFAPIEngine
         from app.services.inference.mock_engine import MockEngine
-        from app.services.inference.prompting import NaivePromptTemplate, CoTPromptTemplate, RAGPromptTemplate
+        from app.services.inference.prompting import NaivePromptTemplate, CoTPromptTemplate, RAGPromptTemplate, ReActPromptTemplate
         from app.services.run_service import RunService
         from app.services.dataset_service import DatasetService
         from app.services.metrics_service import MetricsService
@@ -315,6 +315,48 @@ class ExperimentService:
                 logger.info(f"[EXECUTE] ✓ RAG pipeline initialized (top_k={rag_config.top_k})")
                 print(f"[EXECUTE] ✓ RAG pipeline initialized (top_k={rag_config.top_k})")
             
+            # Step 3c: Determine reasoning method (needed for agent init)
+            reasoning_method = experiment_response.config.reasoning_method.value
+            logger.info(f"[EXECUTE] Reasoning method: {reasoning_method}")
+            print(f"[EXECUTE] Reasoning method: {reasoning_method}")
+            
+            # Step 3d: Initialize ReAct agent if configured
+            react_agent = None
+            if reasoning_method == "react":
+                from app.services.agent_service import (
+                    ReActAgent, WikipediaSearchTool, CalculatorTool, RetrievalTool,
+                )
+                agent_config = experiment_response.config.agent
+                enabled_tools_names = agent_config.tools if agent_config else ["wikipedia_search", "calculator"]
+                agent_max_iter = agent_config.max_iterations if agent_config else 5
+                
+                # Build tool list
+                agent_tools = []
+                for tool_name in enabled_tools_names:
+                    if tool_name == "wikipedia_search":
+                        agent_tools.append(WikipediaSearchTool())
+                    elif tool_name == "calculator":
+                        agent_tools.append(CalculatorTool())
+                    elif tool_name == "retrieval" and rag_pipeline:
+                        agent_tools.append(RetrievalTool(rag_pipeline=rag_pipeline))
+                    elif tool_name == "retrieval":
+                        # Initialize RAG pipeline for retrieval tool
+                        try:
+                            from app.services.rag_service import RAGPipeline
+                            rag_for_tool = RAGPipeline()
+                            rag_for_tool.load_knowledge_base()
+                            agent_tools.append(RetrievalTool(rag_pipeline=rag_for_tool))
+                        except Exception as e:
+                            logger.warning(f"[EXECUTE] ⚠ Could not init retrieval tool: {e}")
+                
+                logger.info(f"[EXECUTE] Initializing ReAct agent (max_iter={agent_max_iter}, tools={[t.name for t in agent_tools]})")
+                print(f"[EXECUTE] Initializing ReAct agent (max_iter={agent_max_iter}, tools={[t.name for t in agent_tools]})")
+                
+                # Agent needs gen_config before being created, but gen_config
+                # is built later — store params for now, create agent after gen_config
+                _agent_tools = agent_tools
+                _agent_max_iter = agent_max_iter
+            
             # Step 4: Load dataset
             dataset_name = experiment_response.config.dataset_name
             num_samples = experiment_response.config.num_samples
@@ -331,10 +373,7 @@ class ExperimentService:
             logger.info(f"[EXECUTE] ✓ Loaded {len(examples)} examples")
             print(f"[EXECUTE] ✓ Loaded {len(examples)} examples")
             
-            # Step 5: Determine reasoning method and prepare prompt template
-            reasoning_method = experiment_response.config.reasoning_method.value
-            logger.info(f"[EXECUTE] Reasoning method: {reasoning_method}")
-            print(f"[EXECUTE] Reasoning method: {reasoning_method}")
+            # Step 5: Prepare prompt template based on reasoning method
             
             # Load CoT few-shot examples if using CoT
             cot_examples = None
@@ -353,11 +392,14 @@ class ExperimentService:
                     print("[EXECUTE] ⚠ CoT examples file not found, using zero-shot CoT")
             
             # Step 6: Prepare generation config
-            # CoT needs more output tokens for reasoning chains
+            # CoT/Agent needs more output tokens for reasoning chains
             max_tokens = experiment_response.config.hyperparameters.max_tokens
             if reasoning_method == "cot" and max_tokens <= 256:
                 max_tokens = 512  # CoT reasoning chains need more space
                 logger.info(f"[EXECUTE] ✓ Increased max_tokens to {max_tokens} for CoT")
+            elif reasoning_method == "react" and max_tokens <= 512:
+                max_tokens = 1024  # Agent needs space for Thought/Action/Answer
+                logger.info(f"[EXECUTE] ✓ Increased max_tokens to {max_tokens} for ReAct")
                 print(f"[EXECUTE] ✓ Increased max_tokens to {max_tokens} for CoT")
             
             gen_config = GenerationConfig(
@@ -365,6 +407,18 @@ class ExperimentService:
                 temperature=experiment_response.config.hyperparameters.temperature,
                 top_p=experiment_response.config.hyperparameters.top_p,
             )
+            
+            # Step 6b: Create ReAct agent now that gen_config is ready
+            if reasoning_method == "react" and react_agent is None:
+                from app.services.agent_service import ReActAgent as _ReActAgent
+                react_agent = _ReActAgent(
+                    engine=engine,
+                    tools=_agent_tools,
+                    max_iterations=_agent_max_iter,
+                    gen_config=gen_config,
+                )
+                logger.info(f"[EXECUTE] ✓ ReAct agent created")
+                print(f"[EXECUTE] ✓ ReAct agent created")
             
             # Step 7: Initialize services
             run_service = RunService(self.db)
@@ -377,6 +431,43 @@ class ExperimentService:
             for i, item in enumerate(examples):
                 logger.info(f"[EXECUTE] Processing {i+1}/{len(examples)}: {item['id']}")
                 print(f"[EXECUTE] Processing {i+1}/{len(examples)}: {item['id']}")
+                
+                # ReAct agent path
+                if reasoning_method == "react" and react_agent is not None:
+                    agent_result = react_agent.run(item["question"])
+                    
+                    parsed_answer = ReActPromptTemplate.parse_response(agent_result.answer)
+                    prompt = f"[Agent] {item['question']}"
+                    raw_output = agent_result.answer
+                    
+                    logger.info(
+                        f"[EXECUTE]   Agent: {agent_result.total_iterations} iters, "
+                        f"{agent_result.tool_calls} tool calls, "
+                        f"success={agent_result.success} ({agent_result.termination_reason})"
+                    )
+                    
+                    # Evaluate
+                    aliases = item.get("aliases", [item["answer"]])
+                    is_exact, is_substring, f1_score = metrics_svc.check_any_alias_match(
+                        parsed_answer, aliases
+                    )
+                    
+                    await run_service.create_run(
+                        experiment_id=experiment_id,
+                        example_id=item["id"],
+                        input_text=prompt,
+                        output_text=raw_output,
+                        expected_output=item["answer"],
+                        is_correct=is_exact or is_substring,
+                        score=f1_score,
+                        tokens_input=agent_result.total_tokens_input,
+                        tokens_output=agent_result.total_tokens_output,
+                        latency_ms=agent_result.total_latency_ms,
+                        gpu_memory_mb=None,
+                        agent_trace=agent_result.trace_as_dict(),
+                        tool_calls=agent_result.tool_calls,
+                    )
+                    continue
                 
                 # RAG retrieval (if enabled)
                 context_chunks = []

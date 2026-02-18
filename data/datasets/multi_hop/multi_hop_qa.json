@@ -1,0 +1,356 @@
+[
+    {
+        "id": "mh001",
+        "question": "Who painted the portrait that is permanently displayed at the Louvre Museum in Paris?",
+        "answer": "Leonardo da Vinci",
+        "aliases": [
+            "Leonardo da Vinci",
+            "Da Vinci",
+            "Leonardo"
+        ]
+    },
+    {
+        "id": "mh002",
+        "question": "What is the name of the mountain that sits on the border between the country where Edmund Hillary was from and China?",
+        "answer": "Mount Everest",
+        "aliases": [
+            "Mount Everest",
+            "Everest"
+        ]
+    },
+    {
+        "id": "mh003",
+        "question": "The scientist who formulated the laws of motion also contributed to which branch of mathematics that he shares credit for with Leibniz?",
+        "answer": "infinitesimal calculus",
+        "aliases": [
+            "infinitesimal calculus",
+            "calculus"
+        ]
+    },
+    {
+        "id": "mh004",
+        "question": "The person who proved lightning's electrical nature also conducted experiments in which city that later hosted the first electric power station?",
+        "answer": "New York City",
+        "aliases": [
+            "New York City",
+            "New York",
+            "NYC"
+        ]
+    },
+    {
+        "id": "mh005",
+        "question": "In what country is the river located that is the source of most of the Nile's water?",
+        "answer": "Ethiopia",
+        "aliases": [
+            "Ethiopia"
+        ]
+    },
+    {
+        "id": "mh006",
+        "question": "The composer who wrote the 'Ode to Joy' was born in the same country as the inventor of the printing press. What country is that?",
+        "answer": "Germany",
+        "aliases": [
+            "Germany"
+        ]
+    },
+    {
+        "id": "mh007",
+        "question": "The structure of DNA was described in the same year as the first ascent of Mount Everest. What year was that?",
+        "answer": "1953",
+        "aliases": [
+            "1953"
+        ]
+    },
+    {
+        "id": "mh008",
+        "question": "What is the atomic number of the element that makes up about 46% of Earth's crust?",
+        "answer": "8",
+        "aliases": [
+            "8",
+            "eight"
+        ]
+    },
+    {
+        "id": "mh009",
+        "question": "The Mona Lisa is thought to be a portrait of Lisa Gherardini. In which city was the artist who painted it born?",
+        "answer": "Vinci",
+        "aliases": [
+            "Vinci",
+            "Vinci, Italy"
+        ]
+    },
+    {
+        "id": "mh010",
+        "question": "What type of animal is considered the only surviving lineage of the group that included Tyrannosaurus rex?",
+        "answer": "birds",
+        "aliases": [
+            "birds",
+            "Birds"
+        ]
+    },
+    {
+        "id": "mh011",
+        "question": "The inventor of the modern AC electricity system was born in the same empire as which famous composer born in Salzburg?",
+        "answer": "Mozart",
+        "aliases": [
+            "Mozart",
+            "Wolfgang Amadeus Mozart"
+        ]
+    },
+    {
+        "id": "mh012",
+        "question": "Alexander the Great died in the same region where which ancient civilization was founded on the banks of the Tiber River?",
+        "answer": "Ancient Rome",
+        "aliases": [
+            "Ancient Rome",
+            "Rome"
+        ]
+    },
+    {
+        "id": "mh013",
+        "question": "Insulin was discovered at the University of Toronto. What disease did it treat that previously meant death within months?",
+        "answer": "diabetes mellitus",
+        "aliases": [
+            "diabetes mellitus",
+            "diabetes"
+        ]
+    },
+    {
+        "id": "mh014",
+        "question": "The man who led India's independence movement was assassinated in which year — the same decade that the Berlin Wall's construction would later divide?",
+        "answer": "1948",
+        "aliases": [
+            "1948"
+        ]
+    },
+    {
+        "id": "mh015",
+        "question": "What theory published by Einstein in 1915 redefined gravity as spacetime curvature rather than a force?",
+        "answer": "general theory of relativity",
+        "aliases": [
+            "general theory of relativity",
+            "general relativity"
+        ]
+    },
+    {
+        "id": "mh016",
+        "question": "The person who received the Nobel Prize for discovering the ABO blood group system — in what year did they receive it?",
+        "answer": "1930",
+        "aliases": [
+            "1930"
+        ]
+    },
+    {
+        "id": "mh017",
+        "question": "What is the name of the rover that landed on the planet with the Solar System's highest mountain?",
+        "answer": "Perseverance",
+        "aliases": [
+            "Perseverance",
+            "Perseverance rover"
+        ]
+    },
+    {
+        "id": "mh018",
+        "question": "The largest contiguous land empire in history was founded by someone born around 1162. Who was he?",
+        "answer": "Genghis Khan",
+        "aliases": [
+            "Genghis Khan",
+            "Temüjin"
+        ]
+    },
+    {
+        "id": "mh019",
+        "question": "Cleopatra's death led to her country becoming a province of the empire whose fall is dated to what year?",
+        "answer": "476 AD",
+        "aliases": [
+            "476 AD",
+            "476"
+        ]
+    },
+    {
+        "id": "mh020",
+        "question": "The Taj Mahal was designated a UNESCO World Heritage Site. In which city on the river Yamuna is it located?",
+        "answer": "Agra",
+        "aliases": [
+            "Agra",
+            "Agra, India"
+        ]
+    },
+    {
+        "id": "mh021",
+        "question": "What celestial body's gravity is responsible for ocean tides, according to the article about the force that Newton described?",
+        "answer": "the Moon",
+        "aliases": [
+            "the Moon",
+            "Moon"
+        ]
+    },
+    {
+        "id": "mh022",
+        "question": "The Renaissance started in which Italian city, known for contributions by the artist who painted The Last Supper?",
+        "answer": "Florence",
+        "aliases": [
+            "Florence"
+        ]
+    },
+    {
+        "id": "mh023",
+        "question": "What was the name of the space mission that first landed humans on the Moon in 1969?",
+        "answer": "Apollo 11",
+        "aliases": [
+            "Apollo 11"
+        ]
+    },
+    {
+        "id": "mh024",
+        "question": "The Pacific Ocean was named by which explorer who called it 'peaceful'?",
+        "answer": "Ferdinand Magellan",
+        "aliases": [
+            "Ferdinand Magellan",
+            "Magellan"
+        ]
+    },
+    {
+        "id": "mh025",
+        "question": "What event in Greek mythology was fought due to the abduction of Helen of Sparta?",
+        "answer": "the Trojan War",
+        "aliases": [
+            "the Trojan War",
+            "Trojan War"
+        ]
+    },
+    {
+        "id": "mh026",
+        "question": "The antibiotic era began with a discovery by a Scottish physician. What was the contaminating mould in his Petri dish?",
+        "answer": "Penicillium",
+        "aliases": [
+            "Penicillium",
+            "Penicillium mould"
+        ]
+    },
+    {
+        "id": "mh027",
+        "question": "Darwin's book 'On the Origin of Species' was published in the same century that the Sahara region's climate underwent enormous variations. What year was the book published?",
+        "answer": "1859",
+        "aliases": [
+            "1859"
+        ]
+    },
+    {
+        "id": "mh028",
+        "question": "The emperor who first joined the selective stretches of the Great Wall was also the first emperor of which country?",
+        "answer": "China",
+        "aliases": [
+            "China"
+        ]
+    },
+    {
+        "id": "mh029",
+        "question": "How many countries does the mountain range span that contains the peak first ascended by Edmund Hillary and Tenzing Norgay?",
+        "answer": "5",
+        "aliases": [
+            "5",
+            "five"
+        ]
+    },
+    {
+        "id": "mh030",
+        "question": "The element with atomic number 79 dissolves in what type of acid?",
+        "answer": "aqua regia",
+        "aliases": [
+            "aqua regia"
+        ]
+    },
+    {
+        "id": "mh031",
+        "question": "Who was the companion of Alexander the Great that also founded the dynasty Cleopatra VII belonged to?",
+        "answer": "Ptolemy I Soter",
+        "aliases": [
+            "Ptolemy I Soter",
+            "Ptolemy I",
+            "Ptolemy"
+        ]
+    },
+    {
+        "id": "mh032",
+        "question": "The Berlin Wall fell in November 1989. How many years after its construction did it last?",
+        "answer": "28",
+        "aliases": [
+            "28",
+            "28 years"
+        ]
+    },
+    {
+        "id": "mh033",
+        "question": "What vitamin, discovered through clinical trials by James Lind, is also known as ascorbic acid?",
+        "answer": "Vitamin C",
+        "aliases": [
+            "Vitamin C",
+            "ascorbic acid"
+        ]
+    },
+    {
+        "id": "mh034",
+        "question": "The planet that Ferdinand Magellan named 'peaceful' covers approximately what percentage of Earth's total surface area?",
+        "answer": "about 32%",
+        "aliases": [
+            "32%",
+            "about 32%",
+            "approximately 32 percent"
+        ]
+    },
+    {
+        "id": "mh035",
+        "question": "What mathematical concept, introduced by Leonardo of Pisa, has its successive ratios converging to approximately 1.618?",
+        "answer": "the Fibonacci sequence",
+        "aliases": [
+            "the Fibonacci sequence",
+            "Fibonacci sequence",
+            "Fibonacci numbers"
+        ]
+    },
+    {
+        "id": "mh036",
+        "question": "Tesla moved to the United States in 1884 and initially worked for which famous inventor?",
+        "answer": "Thomas Edison",
+        "aliases": [
+            "Thomas Edison",
+            "Edison"
+        ]
+    },
+    {
+        "id": "mh037",
+        "question": "The pyramids that are the only surviving Wonder of the Ancient World were built for pharaohs of which dynasty?",
+        "answer": "the Fourth Dynasty",
+        "aliases": [
+            "the Fourth Dynasty",
+            "Fourth Dynasty",
+            "4th Dynasty"
+        ]
+    },
+    {
+        "id": "mh038",
+        "question": "The human heart pumps deoxygenated blood to the lungs through what type of arteries?",
+        "answer": "pulmonary arteries",
+        "aliases": [
+            "pulmonary arteries"
+        ]
+    },
+    {
+        "id": "mh039",
+        "question": "What writing system did Gutenberg's invention make dramatically cheaper to produce?",
+        "answer": "books",
+        "aliases": [
+            "books",
+            "book production"
+        ]
+    },
+    {
+        "id": "mh040",
+        "question": "The Hubble Space Telescope was launched into orbit in what year, the same decade the Berlin Wall fell?",
+        "answer": "1990",
+        "aliases": [
+            "1990"
+        ]
+    }
+]

@@ -55,12 +55,18 @@ export interface RAGConfig {
     chunk_size?: number;
 }
 
+export interface AgentConfig {
+    max_iterations?: number;
+    tools?: string[];
+}
+
 export interface ExperimentConfig {
     model_name: string;
     reasoning_method: 'naive' | 'cot' | 'react';
     dataset_name: string;
     hyperparameters?: HyperParameters;
     rag?: RAGConfig;
+    agent?: AgentConfig;
     num_samples?: number;
 }
 

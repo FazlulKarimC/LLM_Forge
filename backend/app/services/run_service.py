@@ -46,6 +46,8 @@ class RunService:
         is_correct: Optional[bool] = None,
         score: Optional[float] = None,
         gpu_memory_mb: Optional[float] = None,
+        agent_trace: Optional[dict] = None,
+        tool_calls: Optional[int] = None,
     ) -> Run:
         """
         Create a new run log entry.
@@ -62,6 +64,8 @@ class RunService:
             is_correct: Whether answer was correct (optional)
             score: Soft score 0-1 (optional)
             gpu_memory_mb: GPU memory usage (optional)
+            agent_trace: Full agent Thought/Action/Observation trace (optional)
+            tool_calls: Number of tool invocations (optional)
         
         Returns:
             Created Run instance
@@ -78,6 +82,8 @@ class RunService:
             tokens_output=tokens_output,
             latency_ms=latency_ms,
             gpu_memory_mb=gpu_memory_mb,
+            agent_trace=agent_trace,
+            tool_calls=tool_calls,
         )
         
         self.db.add(run)

@@ -1,0 +1,291 @@
+[
+    {
+        "id": "rb001",
+        "question": "What is the population of the city where the Mona Lisa is displayed, and what is that number divided by 1000?",
+        "answer": "2161",
+        "aliases": [
+            "2161",
+            "approximately 2161",
+            "about 2,161"
+        ]
+    },
+    {
+        "id": "rb002",
+        "question": "Search for information about the Eiffel Tower. In what year was it completed, and how many years ago was that from 2025?",
+        "answer": "136",
+        "aliases": [
+            "136",
+            "136 years"
+        ]
+    },
+    {
+        "id": "rb003",
+        "question": "How many years did Mozart live? He was born in 1756 and died in 1791.",
+        "answer": "35",
+        "aliases": [
+            "35",
+            "35 years"
+        ]
+    },
+    {
+        "id": "rb004",
+        "question": "The Great Pyramid of Giza was completed around 2560 BC. How many years before the first modern Olympics in 1896 was that?",
+        "answer": "4456",
+        "aliases": [
+            "4456",
+            "4,456",
+            "approximately 4456"
+        ]
+    },
+    {
+        "id": "rb005",
+        "question": "If the Sahara Desert's area is 9,200,000 km² and France has an area of 643,801 km², approximately how many times bigger is the Sahara than France?",
+        "answer": "about 14.3",
+        "aliases": [
+            "14.3",
+            "approximately 14",
+            "about 14.3",
+            "14"
+        ]
+    },
+    {
+        "id": "rb006",
+        "question": "Search for the height of the Burj Khalifa. How much taller is it than the original height of the Great Pyramid of Giza (146.5 meters)?",
+        "answer": "683.5",
+        "aliases": [
+            "683.5",
+            "about 684",
+            "approximately 683.5"
+        ]
+    },
+    {
+        "id": "rb007",
+        "question": "Alexander the Great died at age 32 in 323 BC. In what year was he born?",
+        "answer": "356 BC",
+        "aliases": [
+            "356 BC",
+            "355 BC",
+            "356"
+        ]
+    },
+    {
+        "id": "rb008",
+        "question": "The Amazon basin is 7,000,000 km² and the Pacific Ocean covers 165,250,000 km². What percentage of the Pacific's area is the Amazon basin?",
+        "answer": "about 4.24%",
+        "aliases": [
+            "4.24%",
+            "approximately 4.2%",
+            "about 4.24%",
+            "4.2%"
+        ]
+    },
+    {
+        "id": "rb009",
+        "question": "Search for the current world population. If the human heart beats about 100,000 times per day, how many total heartbeats happen worldwide in one day?",
+        "answer": "approximately 8 × 10^14",
+        "aliases": [
+            "8 × 10^14",
+            "800 trillion",
+            "approximately 800 trillion"
+        ]
+    },
+    {
+        "id": "rb010",
+        "question": "The Berlin Wall stood from 1961 to 1989. How many total days was it standing?",
+        "answer": "10,316",
+        "aliases": [
+            "10316",
+            "10,316",
+            "approximately 10316"
+        ]
+    },
+    {
+        "id": "rb011",
+        "question": "If Mount Everest (8,848.86 m) were placed in the Mariana Trench (10,994 m depth), how many meters of water would still be above its peak?",
+        "answer": "2,145.14",
+        "aliases": [
+            "2145.14",
+            "2,145.14",
+            "about 2145",
+            "approximately 2,145"
+        ]
+    },
+    {
+        "id": "rb012",
+        "question": "Search Wikipedia for the speed of sound in air. If the Great Wall of China is 21,196 km, how many seconds would sound take to travel its length?",
+        "answer": "approximately 61,754",
+        "aliases": [
+            "61754",
+            "approximately 61,754",
+            "about 61754"
+        ]
+    },
+    {
+        "id": "rb013",
+        "question": "Genghis Khan was proclaimed Great Khan in 1206. How many years before Gutenberg's printing press invention (1440) was that?",
+        "answer": "234",
+        "aliases": [
+            "234",
+            "234 years"
+        ]
+    },
+    {
+        "id": "rb014",
+        "question": "If 98% of Antarctica's 14,200,000 km² is covered by ice, what is the ice-free area?",
+        "answer": "284,000 km²",
+        "aliases": [
+            "284,000",
+            "284000",
+            "284,000 km²"
+        ]
+    },
+    {
+        "id": "rb015",
+        "question": "Search for the distance from Earth to Mars. If light travels at 299,792,458 m/s, how many minutes does it take light to reach Mars at its closest approach (~55 million km)?",
+        "answer": "approximately 3.06 minutes",
+        "aliases": [
+            "3.06",
+            "approximately 3 minutes",
+            "about 3.06 minutes",
+            "3 minutes"
+        ]
+    },
+    {
+        "id": "rb016",
+        "question": "Shakespeare wrote 39 plays and 154 sonnets. What is the total number of these literary works?",
+        "answer": "193",
+        "aliases": [
+            "193"
+        ]
+    },
+    {
+        "id": "rb017",
+        "question": "The Nile is about 6,650 km long and flows through 11 countries. What is the average length per country?",
+        "answer": "approximately 604.5 km",
+        "aliases": [
+            "604.5",
+            "approximately 605",
+            "about 604.5 km"
+        ]
+    },
+    {
+        "id": "rb018",
+        "question": "Search for the GDP of India. Mahatma Gandhi led India's independence. In what year did India gain independence?",
+        "answer": "1947",
+        "aliases": [
+            "1947"
+        ]
+    },
+    {
+        "id": "rb019",
+        "question": "If the human body has 206 bones and 46 chromosomes, what is the ratio of bones to chromosomes (simplified)?",
+        "answer": "103:23",
+        "aliases": [
+            "103:23",
+            "103/23",
+            "approximately 4.48"
+        ]
+    },
+    {
+        "id": "rb020",
+        "question": "The Hubble Space Telescope was launched in 1990 and the James Webb Space Telescope in December 2021. How many years apart were their launches?",
+        "answer": "31",
+        "aliases": [
+            "31",
+            "31 years"
+        ]
+    },
+    {
+        "id": "rb021",
+        "question": "Search for how many Nobel Prizes have been awarded in total. Einstein won his in 1921. How many years ago was that from 2025?",
+        "answer": "104",
+        "aliases": [
+            "104",
+            "104 years"
+        ]
+    },
+    {
+        "id": "rb022",
+        "question": "The heart pumps about 7,570 litres of blood per day. How many litres does it pump per hour?",
+        "answer": "approximately 315.4",
+        "aliases": [
+            "315.4",
+            "approximately 315",
+            "about 315.4"
+        ]
+    },
+    {
+        "id": "rb023",
+        "question": "If the Fibonacci sequence starts 0, 1, 1, 2, 3, 5, 8, 13, 21, 34, what is the sum of the first 10 Fibonacci numbers?",
+        "answer": "88",
+        "aliases": [
+            "88"
+        ]
+    },
+    {
+        "id": "rb024",
+        "question": "Search for the population of Tokyo. Given that Japan's population is about 125 million, what percentage of Japan's population lives in Tokyo?",
+        "answer": "approximately 11%",
+        "aliases": [
+            "11%",
+            "approximately 11%",
+            "about 11 percent"
+        ]
+    },
+    {
+        "id": "rb025",
+        "question": "The Taj Mahal construction started in 1631 and was completed in 1653. How many years did it take to build?",
+        "answer": "22",
+        "aliases": [
+            "22",
+            "22 years"
+        ]
+    },
+    {
+        "id": "rb026",
+        "question": "If insulin was discovered in 1921 and penicillin in 1928, how many years apart were these two medical breakthroughs?",
+        "answer": "7",
+        "aliases": [
+            "7",
+            "7 years"
+        ]
+    },
+    {
+        "id": "rb027",
+        "question": "Search for the elevation of Mount Kilimanjaro. How much shorter is it than Mount Everest (8,848.86 m)?",
+        "answer": "approximately 2,953 m",
+        "aliases": [
+            "2953",
+            "approximately 2,953",
+            "about 2953 meters"
+        ]
+    },
+    {
+        "id": "rb028",
+        "question": "The Roman Empire was founded in 27 BC and the Western Roman Empire fell in 476 AD. How many years did it span?",
+        "answer": "503",
+        "aliases": [
+            "503",
+            "503 years"
+        ]
+    },
+    {
+        "id": "rb029",
+        "question": "Search for the number of species in the Amazon rainforest. The Amazon covers 5,500,000 km². If there are approximately 10 million species, what is the density of species per km²?",
+        "answer": "approximately 1.82",
+        "aliases": [
+            "1.82",
+            "approximately 1.82",
+            "about 1.8"
+        ]
+    },
+    {
+        "id": "rb030",
+        "question": "Nikola Tesla was born in 1856 and died in 1943. Thomas Edison developed the light bulb in 1879. How old was Tesla when Edison made this invention?",
+        "answer": "23",
+        "aliases": [
+            "23",
+            "23 years old"
+        ]
+    }
+]

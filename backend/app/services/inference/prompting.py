@@ -5,6 +5,7 @@ Prompt formatting utilities for different reasoning methods.
 - NaivePromptTemplate: Simple Q&A (Phase 2)
 - CoTPromptTemplate: Chain-of-Thought reasoning (Phase 4)
 - RAGPromptTemplate: Context-augmented generation (Phase 5)
+- ReActPromptTemplate: Agent answer extraction (Phase 6)
 """
 
 import re
@@ -227,4 +228,37 @@ class RAGPromptTemplate:
     def parse_response(response: str) -> str:
         """Parse response — same as NaivePromptTemplate."""
         return NaivePromptTemplate.parse_response(response)
+
+
+class ReActPromptTemplate:
+    """
+    ReAct prompt template for agent-based reasoning (Phase 6).
+    
+    The actual prompt building is handled by ReActAgent._build_system_prompt.
+    This class provides parse_response to extract the final answer.
+    """
+
+    @staticmethod
+    def parse_response(response: str) -> str:
+        """
+        Extract the final answer from agent output.
+        
+        Looks for 'Answer: ...' pattern first, then falls back
+        to CoT-style extraction.
+        """
+        if not response or not response.strip():
+            return "[No response generated]"
+        
+        text = response.strip()
+        
+        # Try Answer: pattern (ReAct format)
+        answer_match = re.search(r"Answer:\s*(.+?)(?:\n|$)", text, re.DOTALL)
+        if answer_match:
+            answer = answer_match.group(1).strip().rstrip(".,;:!?")
+            if answer:
+                return answer
+        
+        # Fallback to CoT-style parsing
+        return CoTPromptTemplate.parse_response(text)
+
 
