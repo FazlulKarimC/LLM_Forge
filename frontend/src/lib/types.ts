@@ -16,7 +16,7 @@ export type {
 // UI TYPES
 // =============================================================================
 
-export type ExperimentStatus = 'pending' | 'running' | 'completed' | 'failed';
+export type ExperimentStatus = 'pending' | 'queued' | 'running' | 'completed' | 'failed';
 
 export type ReasoningMethod = 'naive' | 'cot' | 'react';
 
@@ -24,11 +24,12 @@ export type RetrievalMethod = 'none' | 'naive' | 'hybrid' | 'reranked';
 
 export interface StatusBadge {
     label: string;
-    color: 'gray' | 'blue' | 'green' | 'red';
+    color: 'gray' | 'purple' | 'blue' | 'green' | 'red';
 }
 
 export const STATUS_BADGES: Record<ExperimentStatus, StatusBadge> = {
     pending: { label: 'Pending', color: 'gray' },
+    queued: { label: 'Queued', color: 'purple' },
     running: { label: 'Running', color: 'blue' },
     completed: { label: 'Completed', color: 'green' },
     failed: { label: 'Failed', color: 'red' },

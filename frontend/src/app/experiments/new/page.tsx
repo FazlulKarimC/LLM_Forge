@@ -12,7 +12,15 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { createExperiment, ExperimentConfig, CreateExperimentRequest } from "@/lib/api";
+import { createExperiment, runExperiment, ExperimentConfig, CreateExperimentRequest } from "@/lib/api";
+
+// Free-tier models confirmed working on HuggingFace Inference API
+const AVAILABLE_MODELS = [
+    { value: "meta-llama/Llama-3.2-1B-Instruct", label: "Llama 3.2 (1B)", description: "Fast, efficient — default" },
+    { value: "Qwen/Qwen2.5-3B-Instruct", label: "Qwen 2.5 (3B)", description: "Strong multilingual" },
+    { value: "google/gemma-2-2b-it", label: "Gemma 2 (2B)", description: "Google's compact model" },
+    { value: "microsoft/Phi-3.5-mini-instruct", label: "Phi-3.5 Mini (3.8B)", description: "Strong reasoning" },
+];
 
 export default function NewExperimentPage() {
     const router = useRouter();
@@ -31,26 +39,37 @@ export default function NewExperimentPage() {
     }>({
         name: "",
         description: "",
-        model_name: "microsoft/phi-2",
+        model_name: "meta-llama/Llama-3.2-1B-Instruct",
         reasoning_method: "naive",
         dataset_name: "trivia_qa",
-        temperature: 0.7,
-        max_tokens: 256,
-        num_samples: 100,
+        temperature: 0.1,
+        max_tokens: 150,
+        num_samples: 10,
         retrieval_method: "none",
     });
 
-    const mutation = useMutation({
+    const [runAfterCreate, setRunAfterCreate] = useState(false);
+
+    const createMutation = useMutation({
         mutationFn: createExperiment,
-        onSuccess: (experiment) => {
+        onSuccess: async (experiment) => {
             queryClient.invalidateQueries({ queryKey: ["experiments"] });
             queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
+
+            if (runAfterCreate) {
+                try {
+                    await runExperiment(experiment.id);
+                } catch {
+                    // Still navigate even if run fails — user can retry from detail page
+                }
+            }
             router.push(`/experiments/${experiment.id}`);
         },
     });
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = (e: React.FormEvent, shouldRun: boolean = false) => {
         e.preventDefault();
+        setRunAfterCreate(shouldRun);
 
         const config: ExperimentConfig = {
             model_name: formData.model_name,
@@ -73,8 +92,10 @@ export default function NewExperimentPage() {
             config,
         };
 
-        mutation.mutate(request);
+        createMutation.mutate(request);
     };
+
+    const selectedModel = AVAILABLE_MODELS.find(m => m.value === formData.model_name);
 
     return (
         <div className="min-h-screen bg-(--bg-page)">
@@ -90,12 +111,12 @@ export default function NewExperimentPage() {
             </header>
 
             <main className="max-w-3xl mx-auto px-4 py-8">
-                <form onSubmit={handleSubmit} className="card p-6 space-y-6">
+                <form onSubmit={(e) => handleSubmit(e, false)} className="card p-6 space-y-6">
                     {/* Error Display */}
-                    {mutation.error && (
+                    {createMutation.error && (
                         <div className="bg-red-50 border border-red-200 rounded-xl p-4">
                             <p className="text-(--error)">
-                                {mutation.error instanceof Error ? mutation.error.message : "Failed to create experiment"}
+                                {createMutation.error instanceof Error ? createMutation.error.message : "Failed to create experiment"}
                             </p>
                         </div>
                     )}
@@ -143,10 +164,15 @@ export default function NewExperimentPage() {
                                     onChange={(e) => setFormData({ ...formData, model_name: e.target.value })}
                                     className="mt-1 block w-full border border-border rounded-lg px-3 py-2 bg-(--bg-card) text-(--text-body)"
                                 >
-                                    <option value="microsoft/phi-2">Phi-2 (2.7B)</option>
-                                    <option value="TinyLlama/TinyLlama-1.1B-Chat-v1.0">TinyLlama (1.1B)</option>
-                                    <option value="mistralai/Mistral-7B-Instruct-v0.2">Mistral-7B</option>
+                                    {AVAILABLE_MODELS.map(model => (
+                                        <option key={model.value} value={model.value}>
+                                            {model.label}
+                                        </option>
+                                    ))}
                                 </select>
+                                {selectedModel && (
+                                    <p className="text-xs text-(--text-muted) mt-1">{selectedModel.description}</p>
+                                )}
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-(--text-body)">Reasoning Method</label>
@@ -237,16 +263,39 @@ export default function NewExperimentPage() {
                     </section>
 
                     {/* Submit */}
-                    <div className="flex justify-end gap-4 pt-4 border-t border-border">
+                    <div className="flex justify-end gap-3 pt-4 border-t border-border">
                         <Link href="/experiments" className="px-4 py-2 text-(--text-body) hover:underline">
                             Cancel
                         </Link>
                         <button
                             type="submit"
-                            disabled={mutation.isPending}
-                            className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+                            disabled={createMutation.isPending}
+                            className="px-6 py-2 rounded-full border border-border text-(--text-body) hover:bg-(--bg-page) transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                         >
-                            {mutation.isPending ? "Creating..." : "Create Experiment"}
+                            {createMutation.isPending && !runAfterCreate ? "Creating..." : "Create Experiment"}
+                        </button>
+                        <button
+                            type="button"
+                            disabled={createMutation.isPending}
+                            onClick={(e) => handleSubmit(e, true)}
+                            className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer inline-flex items-center gap-2"
+                        >
+                            {createMutation.isPending && runAfterCreate ? (
+                                <>
+                                    <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                                    </svg>
+                                    Creating & Running...
+                                </>
+                            ) : (
+                                <>
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                                        <polygon points="5,3 19,12 5,21" />
+                                    </svg>
+                                    Create & Run
+                                </>
+                            )}
                         </button>
                     </div>
                 </form>

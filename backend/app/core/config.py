@@ -58,7 +58,7 @@ class Settings(BaseSettings):
     HF_CACHE_DIR: str = "./models"
     
     # ----- Model Defaults -----
-    DEFAULT_MODEL: str = "microsoft/phi-2"
+    DEFAULT_MODEL: str = "meta-llama/Llama-3.2-1B-Instruct"
     DEFAULT_MAX_TOKENS: int = 256
     DEFAULT_TEMPERATURE: float = 0.7
     

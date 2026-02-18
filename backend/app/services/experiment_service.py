@@ -285,7 +285,8 @@ class ExperimentService:
             print(f"[EXECUTE] ✓ Status: RUNNING")
             
             # Step 3: Initialize inference engine
-            engine_type = os.getenv("INFERENCE_ENGINE", "mock")
+            from app.core.config import settings
+            engine_type = settings.INFERENCE_ENGINE
             logger.info(f"[EXECUTE] Engine type: {engine_type}")
             print(f"[EXECUTE] Engine type: {engine_type}")
             

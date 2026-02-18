@@ -11,7 +11,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import Link from "next/link";
-import { listExperiments, deleteExperiment, Experiment, ListExperimentsParams } from "@/lib/api";
+import { listExperiments, deleteExperiment, runExperiment, Experiment, ListExperimentsParams } from "@/lib/api";
 
 export default function ExperimentsPage() {
     const queryClient = useQueryClient();
@@ -34,12 +34,23 @@ export default function ExperimentsPage() {
         },
     });
 
+    const runMutation = useMutation({
+        mutationFn: runExperiment,
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["experiments"] });
+        },
+    });
+
     const experiments = data?.experiments ?? [];
     const total = data?.total ?? 0;
 
     function handleDelete(id: string, name: string) {
         if (!confirm(`Delete experiment "${name}"?`)) return;
         deleteMutation.mutate(id);
+    }
+
+    function handleRun(id: string) {
+        runMutation.mutate(id);
     }
 
     const methodLabels: Record<string, string> = {
@@ -92,6 +103,7 @@ export default function ExperimentsPage() {
                         >
                             <option value="">All Statuses</option>
                             <option value="pending">Pending</option>
+                            <option value="queued">Queued</option>
                             <option value="running">Running</option>
                             <option value="completed">Completed</option>
                             <option value="failed">Failed</option>
@@ -155,13 +167,22 @@ export default function ExperimentsPage() {
                                         </td>
                                         <td className="px-6 py-4 text-sm text-(--text-muted)">{formatDate(exp.created_at)}</td>
                                         <td className="px-6 py-4">
-                                            <div className="flex gap-2">
+                                            <div className="flex gap-2 items-center">
                                                 <Link href={`/experiments/${exp.id}`} className="text-primary hover:underline text-sm">
                                                     View
                                                 </Link>
+                                                {(exp.status === "pending" || exp.status === "failed") && (
+                                                    <button
+                                                        onClick={() => handleRun(exp.id)}
+                                                        disabled={runMutation.isPending}
+                                                        className="text-sm text-green-700 hover:underline disabled:opacity-50 cursor-pointer"
+                                                    >
+                                                        ▶ Run
+                                                    </button>
+                                                )}
                                                 <button
                                                     onClick={() => handleDelete(exp.id, exp.name)}
-                                                    className="text-(--error) hover:underline text-sm"
+                                                    className="text-(--error) hover:underline text-sm cursor-pointer"
                                                     disabled={deleteMutation.isPending}
                                                 >
                                                     Delete
@@ -182,9 +203,10 @@ export default function ExperimentsPage() {
 function StatusBadge({ status }: { status: string }) {
     const classes: Record<string, string> = {
         pending: "badge-pending",
+        queued: "badge-queued",
         running: "badge-running",
         completed: "badge-completed",
         failed: "badge-failed",
     };
-    return <span className={`text-xs px-2 py-1 rounded-full ${classes[status]}`}>{status}</span>;
+    return <span className={`text-xs px-2 py-1 rounded-full ${classes[status] || "badge-pending"}`}>{status}</span>;
 }

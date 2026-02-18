@@ -5,9 +5,10 @@
  * 
  * Displays experiment configuration, status, and full results dashboard.
  * Phase 3: Metrics cards, latency chart, correctness grid, export.
+ * Includes run button and auto-polling for running experiments.
  */
 
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { use, useState } from "react";
 import Link from "next/link";
 import {
@@ -15,7 +16,7 @@ import {
     getMetrics,
     getRunSummaries,
     exportResults,
-    Experiment,
+    runExperiment,
     Metrics,
     RunSummary,
 } from "@/lib/api";
@@ -57,7 +58,6 @@ function LatencyChart({ runs }: { runs: RunSummary[] }) {
 
     if (latencies.length === 0) return null;
 
-    // Create histogram buckets
     const maxLatency = Math.max(...latencies);
     const minLatency = Math.min(...latencies);
     const bucketCount = Math.min(12, latencies.length);
@@ -127,7 +127,6 @@ function CorrectnessGrid({ runs }: { runs: RunSummary[] }) {
                 </div>
             </div>
 
-            {/* Grid of colored squares */}
             <div className="flex flex-wrap gap-1.5 mb-4">
                 {runs.map((run) => (
                     <button
@@ -146,7 +145,6 @@ function CorrectnessGrid({ runs }: { runs: RunSummary[] }) {
                 ))}
             </div>
 
-            {/* Detail panel for selected run */}
             {selectedRun && (
                 <div className="bg-(--bg-page) rounded-lg p-4 mt-2 border border-border animate-in fade-in">
                     <div className="flex items-center justify-between mb-2">
@@ -334,32 +332,33 @@ function ResultsDashboard({ experimentId }: { experimentId: string }) {
                 </button>
             </div>
 
-            {/* Metrics Cards */}
+            {/* Metrics Cards — Quality */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <MetricCard
-                    title="Accuracy (Exact Match)"
-                    value={`${((metrics.quality.accuracy_exact ?? 0) * 100).toFixed(1)}%`}
-                    subtitle={`${correctCount}/${totalCount} correct`}
-                    color={
-                        (metrics.quality.accuracy_exact ?? 0) >= 0.7
-                            ? "text-green-600"
-                            : (metrics.quality.accuracy_exact ?? 0) >= 0.4
-                                ? "text-yellow-600"
-                                : "text-red-600"
-                    }
-                />
                 <MetricCard
                     title="Accuracy (Substring)"
                     value={`${((metrics.quality.accuracy_substring ?? 0) * 100).toFixed(1)}%`}
-                    subtitle="Contains correct answer"
+                    subtitle={`${correctCount}/${totalCount} contain correct answer`}
+                    color={
+                        (metrics.quality.accuracy_substring ?? 0) >= 0.7
+                            ? "text-green-600"
+                            : (metrics.quality.accuracy_substring ?? 0) >= 0.4
+                                ? "text-yellow-600"
+                                : "text-red-600"
+                    }
                 />
                 <MetricCard
                     title="F1 Score (Mean)"
                     value={`${((metrics.quality.accuracy_f1 ?? 0) * 100).toFixed(1)}%`}
                     subtitle="Token-level overlap"
                 />
+                <MetricCard
+                    title="Throughput"
+                    value={`${(metrics.performance.throughput ?? 0).toFixed(1)}/s`}
+                    subtitle="Prompts per second"
+                />
             </div>
 
+            {/* Metrics Cards — Performance & Cost */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <MetricCard
                     title="Latency (p50)"
@@ -395,10 +394,24 @@ function ResultsDashboard({ experimentId }: { experimentId: string }) {
 // =============================================================================
 export default function ExperimentDetailPage({ params }: Props) {
     const { id } = use(params);
+    const queryClient = useQueryClient();
 
     const { data: experiment, isLoading, error } = useQuery({
         queryKey: ["experiment", id],
         queryFn: () => getExperiment(id),
+        // Auto-refetch every 3s while experiment is running or queued
+        refetchInterval: (query) => {
+            const status = query.state.data?.status;
+            return (status === "running" || status === "queued") ? 3000 : false;
+        },
+    });
+
+    const runMutation = useMutation({
+        mutationFn: () => runExperiment(id),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["experiment", id] });
+            queryClient.invalidateQueries({ queryKey: ["experiments"] });
+        },
     });
 
     if (isLoading) {
@@ -433,10 +446,14 @@ export default function ExperimentDetailPage({ params }: Props) {
 
     const statusClasses: Record<string, string> = {
         pending: "badge-pending",
+        queued: "badge-queued",
         running: "badge-running",
         completed: "badge-completed",
         failed: "badge-failed",
     };
+
+    const canRun = experiment.status === "pending" || experiment.status === "failed";
+    const isActive = experiment.status === "running" || experiment.status === "queued";
 
     return (
         <div className="min-h-screen bg-(--bg-page)">
@@ -445,13 +462,52 @@ export default function ExperimentDetailPage({ params }: Props) {
                     <Link href="/experiments" className="text-primary hover:underline text-sm">
                         ← Back to Experiments
                     </Link>
-                    <div className="flex items-center gap-3 mt-1">
-                        <h1 className="text-2xl font-serif text-(--text-heading)">
-                            {experiment.name}
-                        </h1>
-                        <span className={`text-xs px-2 py-1 rounded-full ${statusClasses[experiment.status]}`}>
-                            {experiment.status}
-                        </span>
+                    <div className="flex items-center justify-between mt-1">
+                        <div className="flex items-center gap-3">
+                            <h1 className="text-2xl font-serif text-(--text-heading)">
+                                {experiment.name}
+                            </h1>
+                            <span className={`text-xs px-2 py-1 rounded-full ${statusClasses[experiment.status]}`}>
+                                {experiment.status}
+                            </span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                            {/* Run Button */}
+                            {canRun && (
+                                <button
+                                    onClick={() => runMutation.mutate()}
+                                    disabled={runMutation.isPending}
+                                    className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer inline-flex items-center gap-2"
+                                >
+                                    {runMutation.isPending ? (
+                                        <>
+                                            <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                                            </svg>
+                                            Starting...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                                                <polygon points="5,3 19,12 5,21" />
+                                            </svg>
+                                            Run Experiment
+                                        </>
+                                    )}
+                                </button>
+                            )}
+                            {/* Active Indicator */}
+                            {isActive && (
+                                <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-blue-50 text-blue-700 text-sm font-medium">
+                                    <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                                    </svg>
+                                    Running...
+                                </div>
+                            )}
+                        </div>
                     </div>
                     {experiment.description && (
                         <p className="mt-1 text-(--text-muted)">{experiment.description}</p>
@@ -460,6 +516,15 @@ export default function ExperimentDetailPage({ params }: Props) {
             </header>
 
             <main className="max-w-7xl mx-auto px-4 py-8">
+                {/* Run Error Display */}
+                {runMutation.error && (
+                    <div className="card p-4 mb-6 border-l-4 border-l-(--error)">
+                        <p className="text-(--error) text-sm">
+                            Failed to start: {runMutation.error instanceof Error ? runMutation.error.message : "Unknown error"}
+                        </p>
+                    </div>
+                )}
+
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                     {/* Configuration */}
                     <div className="card p-6">
@@ -533,9 +598,11 @@ export default function ExperimentDetailPage({ params }: Props) {
                     ) : (
                         <div className="card p-6">
                             <p className="text-(--text-muted) text-center py-4">
-                                {experiment.status === "running"
-                                    ? "Experiment is running..."
-                                    : "Run the experiment to see results."}
+                                {isActive
+                                    ? "Experiment is running... Results will appear automatically."
+                                    : canRun
+                                        ? "Click \"Run Experiment\" above to start execution."
+                                        : "Run the experiment to see results."}
                             </p>
                         </div>
                     )}
