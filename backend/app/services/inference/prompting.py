@@ -4,6 +4,7 @@ Prompt Templates
 Prompt formatting utilities for different reasoning methods.
 - NaivePromptTemplate: Simple Q&A (Phase 2)
 - CoTPromptTemplate: Chain-of-Thought reasoning (Phase 4)
+- RAGPromptTemplate: Context-augmented generation (Phase 5)
 """
 
 import re
@@ -190,4 +191,40 @@ class CoTPromptTemplate:
                 cleaned = cleaned[len(prefix):].strip()
         
         return cleaned.strip()
+
+
+class RAGPromptTemplate:
+    """
+    RAG prompt template for context-augmented generation (Phase 5).
+    
+    Prepends retrieved context chunks before the question.
+    Uses the same parse logic as NaivePromptTemplate.
+    """
+
+    @staticmethod
+    def format(question: str, context_chunks: List[str]) -> str:
+        """
+        Format a question with retrieved context.
+        
+        Args:
+            question: The question to ask
+            context_chunks: List of relevant text chunks from retrieval
+        
+        Returns:
+            Formatted prompt with context
+        """
+        if not context_chunks:
+            return NaivePromptTemplate.format(question)
+
+        context = "\n\n".join(context_chunks)
+        return (
+            f"Context:\n{context}\n\n"
+            f"Based on the context above, answer the following question.\n"
+            f"Question: {question}\nAnswer:"
+        )
+
+    @staticmethod
+    def parse_response(response: str) -> str:
+        """Parse response — same as NaivePromptTemplate."""
+        return NaivePromptTemplate.parse_response(response)
 

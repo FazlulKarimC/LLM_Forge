@@ -28,3 +28,7 @@ tenacity>=8.2.0
 # --- Background Tasks (RQ + Upstash Redis) ---
 rq>=1.16.0
 redis>=5.0.0
+
+# --- RAG Pipeline (lightweight — all models via HF API) ---
+qdrant-client>=1.7.0
+rank-bm25>=0.2.2

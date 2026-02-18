@@ -261,7 +261,7 @@ class ExperimentService:
         from app.services.inference.base import GenerationConfig
         from app.services.inference.hf_api_engine import HFAPIEngine
         from app.services.inference.mock_engine import MockEngine
-        from app.services.inference.prompting import NaivePromptTemplate, CoTPromptTemplate
+        from app.services.inference.prompting import NaivePromptTemplate, CoTPromptTemplate, RAGPromptTemplate
         from app.services.run_service import RunService
         from app.services.dataset_service import DatasetService
         from app.services.metrics_service import MetricsService
@@ -299,6 +299,21 @@ class ExperimentService:
             engine.load_model(experiment_response.config.model_name)
             logger.info(f"[EXECUTE] ✓ Engine loaded: {experiment_response.config.model_name}")
             print(f"[EXECUTE] ✓ Engine loaded: {experiment_response.config.model_name}")
+            
+            # Step 3b: Initialize RAG pipeline if configured
+            rag_pipeline = None
+            rag_config = experiment_response.config.rag
+            use_rag = rag_config and rag_config.retrieval_method.value != "none"
+            
+            if use_rag:
+                from app.services.rag_service import RAGPipeline, FaithfulnessScorer
+                logger.info(f"[EXECUTE] Initializing RAG pipeline (method={rag_config.retrieval_method.value})")
+                print(f"[EXECUTE] Initializing RAG pipeline (method={rag_config.retrieval_method.value})")
+                rag_pipeline = RAGPipeline()
+                rag_pipeline.load_knowledge_base(chunk_size=rag_config.chunk_size)
+                faithfulness_scorer = FaithfulnessScorer()
+                logger.info(f"[EXECUTE] ✓ RAG pipeline initialized (top_k={rag_config.top_k})")
+                print(f"[EXECUTE] ✓ RAG pipeline initialized (top_k={rag_config.top_k})")
             
             # Step 4: Load dataset
             dataset_name = experiment_response.config.dataset_name
@@ -363,8 +378,23 @@ class ExperimentService:
                 logger.info(f"[EXECUTE] Processing {i+1}/{len(examples)}: {item['id']}")
                 print(f"[EXECUTE] Processing {i+1}/{len(examples)}: {item['id']}")
                 
-                # Format prompt based on reasoning method
-                if reasoning_method == "cot":
+                # RAG retrieval (if enabled)
+                context_chunks = []
+                retrieval_context = ""
+                if use_rag and rag_pipeline:
+                    retrieval_result = rag_pipeline.retrieve(
+                        question=item["question"],
+                        method=rag_config.retrieval_method.value,
+                        top_k=rag_config.top_k,
+                    )
+                    context_chunks = [c.text for c in retrieval_result.chunks]
+                    retrieval_context = " ".join(context_chunks)
+                    logger.info(f"[EXECUTE]   Retrieved {len(context_chunks)} chunks ({retrieval_result.latency_ms:.0f}ms)")
+                
+                # Format prompt based on reasoning method and RAG
+                if use_rag and context_chunks:
+                    prompt = RAGPromptTemplate.format(item["question"], context_chunks)
+                elif reasoning_method == "cot":
                     prompt = CoTPromptTemplate.format(item["question"], cot_examples)
                 else:
                     prompt = NaivePromptTemplate.format(item["question"])
@@ -373,10 +403,21 @@ class ExperimentService:
                 result = engine.generate(prompt, gen_config)
                 
                 # Parse response based on reasoning method
-                if reasoning_method == "cot":
+                if use_rag:
+                    parsed_answer = RAGPromptTemplate.parse_response(result.text)
+                elif reasoning_method == "cot":
                     parsed_answer = CoTPromptTemplate.parse_response(result.text)
                 else:
                     parsed_answer = NaivePromptTemplate.parse_response(result.text)
+                
+                # Compute faithfulness score (RAG only)
+                faithfulness = None
+                if use_rag and retrieval_context:
+                    try:
+                        faithfulness = faithfulness_scorer.score(parsed_answer, retrieval_context)
+                        logger.info(f"[EXECUTE]   Faithfulness: {faithfulness:.3f}")
+                    except Exception as e:
+                        logger.warning(f"[EXECUTE]   Faithfulness scoring failed: {e}")
                 
                 # Evaluate against aliases (Phase 3: multi-answer matching)
                 aliases = item.get("aliases", [item["answer"]])

@@ -36,6 +36,7 @@ export default function NewExperimentPage() {
         max_tokens: number;
         num_samples: number;
         retrieval_method: "none" | "naive" | "hybrid" | "reranked";
+        rag_top_k: number;
     }>({
         name: "",
         description: "",
@@ -46,6 +47,7 @@ export default function NewExperimentPage() {
         max_tokens: 150,
         num_samples: 10,
         retrieval_method: "none",
+        rag_top_k: 5,
     });
 
     const [runAfterCreate, setRunAfterCreate] = useState(false);
@@ -83,7 +85,10 @@ export default function NewExperimentPage() {
         };
 
         if (formData.retrieval_method !== "none") {
-            config.rag = { retrieval_method: formData.retrieval_method };
+            config.rag = {
+                retrieval_method: formData.retrieval_method,
+                top_k: formData.rag_top_k,
+            };
         }
 
         const request: CreateExperimentRequest = {
@@ -260,6 +265,36 @@ export default function NewExperimentPage() {
                                 </select>
                             </div>
                         </div>
+                        {/* RAG-specific settings */}
+                        {formData.retrieval_method !== "none" && (
+                            <div className="mt-4 p-4 bg-(--bg-page) rounded-lg border border-border space-y-3">
+                                <h3 className="text-sm font-semibold text-(--text-heading) flex items-center gap-2">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                        <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" />
+                                    </svg>
+                                    RAG Settings
+                                </h3>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-(--text-body)">Top-K Chunks</label>
+                                        <input
+                                            type="number"
+                                            min="1"
+                                            max="20"
+                                            value={formData.rag_top_k}
+                                            onChange={(e) => setFormData({ ...formData, rag_top_k: parseInt(e.target.value) || 5 })}
+                                            className="mt-1 block w-full border border-border rounded-lg px-3 py-2 bg-(--bg-card) text-(--text-body)"
+                                        />
+                                        <p className="text-xs text-(--text-muted) mt-1">Number of context chunks to retrieve</p>
+                                    </div>
+                                    <div className="flex items-end">
+                                        <p className="text-xs text-(--text-muted) p-2 bg-(--bg-card) rounded-lg border border-border">
+                                            💡 <strong>Naive</strong>: Dense retrieval&ensp;•&ensp;<strong>Hybrid</strong>: Dense + BM25&ensp;•&ensp;<strong>Reranked</strong>: Hybrid + cross-encoder
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                     </section>
 
                     {/* Submit */}
