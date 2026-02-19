@@ -7,6 +7,16 @@
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
 
+// Warn loudly in production if the env var is not configured.
+// This prevents silent failures where all API calls fallback to localhost.
+if (process.env.NODE_ENV === 'production' && !process.env.NEXT_PUBLIC_API_URL) {
+    console.error(
+        '[LlmForge] NEXT_PUBLIC_API_URL is not set! ' +
+        'All API calls will fall back to http://localhost:8000 which will fail in production. ' +
+        'Set NEXT_PUBLIC_API_URL in your Vercel environment variables.'
+    );
+}
+
 /**
  * Base fetch wrapper with error handling.
  */
@@ -262,7 +272,7 @@ export async function getProfile(experimentId: string): Promise<ProfileData> {
 /**
  * Export results as JSON download.
  */
-export async function exportResults(experimentId: string): Promise<void> {
+export async function exportResults(experimentId: string, experimentName?: string): Promise<void> {
     const url = `${API_BASE_URL}/results/${experimentId}/export`;
     const response = await fetch(url);
     if (!response.ok) throw new Error('Export failed');
@@ -272,7 +282,9 @@ export async function exportResults(experimentId: string): Promise<void> {
     const downloadUrl = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = downloadUrl;
-    a.download = `experiment_results.json`;
+    // Use the experiment name in the filename if provided, fallback to ID
+    const safeName = (experimentName || experimentId).replace(/[^a-z0-9_-]/gi, '_').toLowerCase();
+    a.download = `experiment_${safeName}_results.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -314,8 +326,13 @@ export async function getAvailableModels(): Promise<{ models: ModelOption[] }> {
  * Health check.
  */
 export async function healthCheck(): Promise<{ status: string }> {
-    // Health endpoint is at root, not under /api/v1
-    const baseUrl = process.env.NEXT_PUBLIC_API_URL?.replace('/api/v1', '') || 'http://localhost:8000';
+    // Use a separate base URL env var to avoid fragile string manipulation.
+    // NEXT_PUBLIC_API_BASE_URL should be the root (e.g. https://myapp.hf.space)
+    // NEXT_PUBLIC_API_URL should be the full API path (e.g. https://myapp.hf.space/api/v1)
+    const baseUrl =
+        process.env.NEXT_PUBLIC_API_BASE_URL ||
+        API_BASE_URL.replace(/\/api\/v1\/?$/, '') ||
+        'http://localhost:8000';
     const response = await fetch(`${baseUrl}/health`);
     return response.json();
 }

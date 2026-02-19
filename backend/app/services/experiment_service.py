@@ -5,13 +5,19 @@ Business logic for experiment management.
 Handles CRUD operations and experiment execution orchestration.
 """
 
+import json
+import logging
+import os
+import time as _time
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Optional
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_
 
+from app.core.config import settings
 from app.models.experiment import Experiment
 from app.schemas.experiment import (
     ExperimentCreate,
@@ -19,7 +25,15 @@ from app.schemas.experiment import (
     ExperimentListResponse,
     ExperimentStatus,
     ExperimentConfig,
+    OptimizationConfig,
 )
+
+logger = logging.getLogger(__name__)
+
+# Resolve project root once at import time so path lookups are stable
+# regardless of the working directory.
+_PROJECT_ROOT = Path(__file__).resolve().parents[4]
+_COT_EXAMPLES_PATH = _PROJECT_ROOT / "configs" / "cot_examples.json"
 
 
 class ExperimentService:
@@ -252,25 +266,7 @@ class ExperimentService:
         
         Should be run as a background task.
         """
-        import os
-        import json
-        import logging
-        import time as _time
-        
-        logger = logging.getLogger(__name__)
-        
-        from app.schemas.experiment import ExperimentStatus, OptimizationConfig
-        from app.services.inference.base import GenerationConfig
-        from app.services.inference.hf_api_engine import HFAPIEngine
-        from app.services.inference.mock_engine import MockEngine
-        from app.services.inference.prompting import NaivePromptTemplate, CoTPromptTemplate, RAGPromptTemplate, ReActPromptTemplate
-        from app.services.run_service import RunService
-        from app.services.dataset_service import DatasetService
-        from app.services.metrics_service import MetricsService
-        from app.services.optimization import PromptCache, ProfilerContext, OptimizationReport
-        
-        logger.info(f"[EXECUTE] Starting execution for experiment: {experiment_id}")
-        print(f"[EXECUTE] Starting execution for experiment: {experiment_id}")
+        logger.info("[EXECUTE] Starting execution for experiment: %s", experiment_id)
         
         # Step 1: Get experiment
         experiment_response = await self.get(experiment_id)
@@ -278,15 +274,24 @@ class ExperimentService:
             error = f"Experiment {experiment_id} not found"
             logger.error(f"[EXECUTE] ❌ {error}")
             raise ValueError(error)
-        logger.info(f"[EXECUTE] ✓ Found experiment: {experiment_response.name}")
-        print(f"[EXECUTE] ✓ Found experiment: {experiment_response.name}")
+        logger.info("[EXECUTE] ✓ Found experiment: %s", experiment_response.name)
         
         try:
+            from app.services.inference.base import GenerationConfig
+            from app.services.inference.hf_api_engine import HFAPIEngine
+            from app.services.inference.mock_engine import MockEngine
+            from app.services.inference.prompting import (
+                NaivePromptTemplate, CoTPromptTemplate, RAGPromptTemplate, ReActPromptTemplate
+            )
+            from app.services.run_service import RunService
+            from app.services.dataset_service import DatasetService
+            from app.services.metrics_service import MetricsService
+            from app.services.optimization import PromptCache, ProfilerContext, OptimizationReport
+
             # Step 2: Update status to RUNNING
             await self.update_status(experiment_id, ExperimentStatus.RUNNING)
             await self.db.commit()
-            logger.info(f"[EXECUTE] ✓ Status: RUNNING")
-            print(f"[EXECUTE] ✓ Status: RUNNING")
+            logger.info("[EXECUTE] ✓ Status: RUNNING")
             
             # ─── Optimization setup (Phase 8) ───
             wall_start = _time.perf_counter()
@@ -297,29 +302,21 @@ class ExperimentService:
             opt_report = OptimizationReport()
             
             logger.info(
-                f"[EXECUTE] Optimization: batching={opt_config.enable_batching} "
-                f"(size={opt_config.batch_size}), caching={opt_config.enable_caching}, "
-                f"profiling={opt_config.enable_profiling}"
-            )
-            print(
-                f"[EXECUTE] Optimization: batching={opt_config.enable_batching} "
-                f"(size={opt_config.batch_size}), caching={opt_config.enable_caching}, "
-                f"profiling={opt_config.enable_profiling}"
+                "[EXECUTE] Optimization: batching=%s (size=%s), caching=%s, profiling=%s",
+                opt_config.enable_batching, opt_config.batch_size,
+                opt_config.enable_caching, opt_config.enable_profiling,
             )
             
             # Step 3: Initialize inference engine
-            from app.core.config import settings
             model_name = experiment_response.config.model_name
             engine_type = settings.INFERENCE_ENGINE
             
             # Auto-detect mock models regardless of INFERENCE_ENGINE setting
             if "mock" in model_name.lower():
                 engine_type = "mock"
-                logger.info(f"[EXECUTE] Auto-detected mock model '{model_name}', using MockEngine")
-                print(f"[EXECUTE] Auto-detected mock model '{model_name}', using MockEngine")
+                logger.info("[EXECUTE] Auto-detected mock model '%s', using MockEngine", model_name)
             
-            logger.info(f"[EXECUTE] Engine type: {engine_type}")
-            print(f"[EXECUTE] Engine type: {engine_type}")
+            logger.info("[EXECUTE] Engine type: %s", engine_type)
             
             if engine_type == "hf_api":
                 engine = HFAPIEngine(model_name=model_name)
@@ -327,8 +324,7 @@ class ExperimentService:
                 engine = MockEngine()
             
             engine.load_model(experiment_response.config.model_name)
-            logger.info(f"[EXECUTE] ✓ Engine loaded: {experiment_response.config.model_name}")
-            print(f"[EXECUTE] ✓ Engine loaded: {experiment_response.config.model_name}")
+            logger.info("[EXECUTE] ✓ Engine loaded: %s", experiment_response.config.model_name)
             
             # Step 3b: Initialize RAG pipeline if configured
             rag_pipeline = None
@@ -337,18 +333,15 @@ class ExperimentService:
             
             if use_rag:
                 from app.services.rag_service import RAGPipeline, FaithfulnessScorer
-                logger.info(f"[EXECUTE] Initializing RAG pipeline (method={rag_config.retrieval_method.value})")
-                print(f"[EXECUTE] Initializing RAG pipeline (method={rag_config.retrieval_method.value})")
+                logger.info("[EXECUTE] Initializing RAG pipeline (method=%s)", rag_config.retrieval_method.value)
                 rag_pipeline = RAGPipeline()
                 rag_pipeline.load_knowledge_base(chunk_size=rag_config.chunk_size)
                 faithfulness_scorer = FaithfulnessScorer()
-                logger.info(f"[EXECUTE] ✓ RAG pipeline initialized (top_k={rag_config.top_k})")
-                print(f"[EXECUTE] ✓ RAG pipeline initialized (top_k={rag_config.top_k})")
+                logger.info("[EXECUTE] ✓ RAG pipeline initialized (top_k=%s)", rag_config.top_k)
             
             # Step 3c: Determine reasoning method (needed for agent init)
             reasoning_method = experiment_response.config.reasoning_method.value
-            logger.info(f"[EXECUTE] Reasoning method: {reasoning_method}")
-            print(f"[EXECUTE] Reasoning method: {reasoning_method}")
+            logger.info("[EXECUTE] Reasoning method: %s", reasoning_method)
             
             # Step 3d: Initialize ReAct agent if configured
             react_agent = None
@@ -379,8 +372,10 @@ class ExperimentService:
                         except Exception as e:
                             logger.warning(f"[EXECUTE] ⚠ Could not init retrieval tool: {e}")
                 
-                logger.info(f"[EXECUTE] Initializing ReAct agent (max_iter={agent_max_iter}, tools={[t.name for t in agent_tools]})")
-                print(f"[EXECUTE] Initializing ReAct agent (max_iter={agent_max_iter}, tools={[t.name for t in agent_tools]})")
+                logger.info(
+                    "[EXECUTE] Initializing ReAct agent (max_iter=%s, tools=%s)",
+                    agent_max_iter, [t.name for t in agent_tools]
+                )
                 
                 _agent_tools = agent_tools
                 _agent_max_iter = agent_max_iter
@@ -390,42 +385,33 @@ class ExperimentService:
             num_samples = experiment_response.config.num_samples
             seed = experiment_response.config.hyperparameters.seed
             
-            logger.info(f"[EXECUTE] Loading dataset: {dataset_name} (n={num_samples}, seed={seed})")
-            print(f"[EXECUTE] Loading dataset: {dataset_name} (n={num_samples}, seed={seed})")
+            logger.info("[EXECUTE] Loading dataset: %s (n=%s, seed=%s)", dataset_name, num_samples, seed)
             
             examples = DatasetService.load(
                 dataset_name=dataset_name,
                 num_samples=num_samples,
                 seed=seed,
             )
-            logger.info(f"[EXECUTE] ✓ Loaded {len(examples)} examples")
-            print(f"[EXECUTE] ✓ Loaded {len(examples)} examples")
+            logger.info("[EXECUTE] ✓ Loaded %s examples", len(examples))
             
             # Step 5: Prepare prompt template based on reasoning method
             cot_examples = None
             if reasoning_method == "cot":
-                cot_examples_path = os.path.join(
-                    os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))),
-                    "configs", "cot_examples.json"
-                )
-                if os.path.exists(cot_examples_path):
-                    with open(cot_examples_path, "r", encoding="utf-8") as f:
+                if _COT_EXAMPLES_PATH.exists():
+                    with _COT_EXAMPLES_PATH.open("r", encoding="utf-8") as f:
                         cot_examples = json.load(f)
-                    logger.info(f"[EXECUTE] ✓ Loaded {len(cot_examples)} CoT few-shot examples")
-                    print(f"[EXECUTE] ✓ Loaded {len(cot_examples)} CoT few-shot examples")
+                    logger.info("[EXECUTE] ✓ Loaded %s CoT few-shot examples", len(cot_examples))
                 else:
-                    logger.warning("[EXECUTE] ⚠ CoT examples file not found, using zero-shot CoT")
-                    print("[EXECUTE] ⚠ CoT examples file not found, using zero-shot CoT")
+                    logger.warning("[EXECUTE] ⚠ CoT examples file not found (%s), using zero-shot CoT", _COT_EXAMPLES_PATH)
             
             # Step 6: Prepare generation config
             max_tokens = experiment_response.config.hyperparameters.max_tokens
             if reasoning_method == "cot" and max_tokens <= 256:
                 max_tokens = 512
-                logger.info(f"[EXECUTE] ✓ Increased max_tokens to {max_tokens} for CoT")
+                logger.info("[EXECUTE] ✓ Increased max_tokens to %s for CoT", max_tokens)
             elif reasoning_method == "react" and max_tokens <= 512:
                 max_tokens = 1024
-                logger.info(f"[EXECUTE] ✓ Increased max_tokens to {max_tokens} for ReAct")
-                print(f"[EXECUTE] ✓ Increased max_tokens to {max_tokens} for ReAct")
+                logger.info("[EXECUTE] ✓ Increased max_tokens to %s for ReAct", max_tokens)
             
             gen_config = GenerationConfig(
                 max_tokens=max_tokens,
@@ -442,16 +428,14 @@ class ExperimentService:
                     max_iterations=_agent_max_iter,
                     gen_config=gen_config,
                 )
-                logger.info(f"[EXECUTE] ✓ ReAct agent created")
-                print(f"[EXECUTE] ✓ ReAct agent created")
+                logger.info("[EXECUTE] ✓ ReAct agent created")
             
             # Step 7: Initialize services
             run_service = RunService(self.db)
             metrics_svc = MetricsService(self.db)
             
             # Step 8: Run inference
-            logger.info(f"[EXECUTE] Running inference for {len(examples)} examples...")
-            print(f"[EXECUTE] Running inference for {len(examples)} examples...")
+            logger.info("[EXECUTE] Running inference for %s examples...", len(examples))
             
             # ─── Decide execution strategy ───
             use_batching = (
@@ -466,8 +450,7 @@ class ExperimentService:
                 # BATCHED execution path (non-RAG, non-agent)
                 # ═══════════════════════════════════════════════
                 batch_size = opt_config.batch_size
-                logger.info(f"[EXECUTE] Using BATCHED execution (batch_size={batch_size})")
-                print(f"[EXECUTE] Using BATCHED execution (batch_size={batch_size})")
+                logger.info("[EXECUTE] Using BATCHED execution (batch_size=%s)", batch_size)
                 
                 for batch_start in range(0, len(examples), batch_size):
                     batch_end = min(batch_start + batch_size, len(examples))
@@ -578,8 +561,7 @@ class ExperimentService:
                     logger.info("[EXECUTE] Batching disabled for RAG/Agent (requires sequential processing)")
                 
                 for i, item in enumerate(examples):
-                    logger.info(f"[EXECUTE] Processing {i+1}/{len(examples)}: {item['id']}")
-                    print(f"[EXECUTE] Processing {i+1}/{len(examples)}: {item['id']}")
+                    logger.info("[EXECUTE] Processing %s/%s: %s", i+1, len(examples), item['id'])
                     
                     # ReAct agent path
                     if reasoning_method == "react" and react_agent is not None:
@@ -715,17 +697,14 @@ class ExperimentService:
                     )
             
             # Step 8: Commit all runs
-            logger.info(f"[EXECUTE] Committing {len(examples)} runs to database...")
-            print(f"[EXECUTE] Committing {len(examples)} runs to database...")
+            logger.info("[EXECUTE] Committing %s runs to database...", len(examples))
             await self.db.commit()
             
             # Step 9: Compute aggregate metrics and save Result
-            logger.info(f"[EXECUTE] Computing aggregate metrics...")
-            print(f"[EXECUTE] Computing aggregate metrics...")
+            logger.info("[EXECUTE] Computing aggregate metrics...")
             await metrics_svc.compute_and_save(experiment_id)
             await self.db.commit()
-            logger.info(f"[EXECUTE] ✓ Metrics computed and saved")
-            print(f"[EXECUTE] ✓ Metrics computed and saved")
+            logger.info("[EXECUTE] ✓ Metrics computed and saved")
             
             # ─── Step 9b: Save optimization report into raw_metrics ───
             wall_end = _time.perf_counter()
@@ -748,8 +727,7 @@ class ExperimentService:
                 result_obj.raw_metrics = existing_raw
                 await self.db.flush()
                 await self.db.commit()
-                logger.info(f"[EXECUTE] ✓ Optimization report saved to raw_metrics")
-                print(f"[EXECUTE] ✓ Optimization report saved to raw_metrics")
+                logger.info("[EXECUTE] ✓ Optimization report saved to raw_metrics")
             
             # Step 10: Cleanup
             engine.unload_model()
@@ -758,15 +736,13 @@ class ExperimentService:
             await self.update_status(experiment_id, ExperimentStatus.COMPLETED)
             await self.db.commit()
             
-            logger.info(f"[EXECUTE] ✅ EXECUTION COMPLETED SUCCESSFULLY (wall time: {opt_report.total_wall_time_ms:.0f}ms)")
-            print(f"[EXECUTE] ✅ EXECUTION COMPLETED SUCCESSFULLY (wall time: {opt_report.total_wall_time_ms:.0f}ms)")
+            logger.info(
+                "[EXECUTE] ✅ EXECUTION COMPLETED (wall time: %.0fms)",
+                opt_report.total_wall_time_ms
+            )
             
         except Exception as e:
-            logger.error(f"[EXECUTE] ❌ EXECUTION FAILED: {type(e).__name__}: {str(e)}")
-            print(f"[EXECUTE] ❌ EXECUTION FAILED: {type(e).__name__}: {str(e)}")
-            
-            import traceback
-            traceback.print_exc()
+            logger.exception("[EXECUTE] ❌ EXECUTION FAILED: %s: %s", type(e).__name__, e)
             
             error_message = f"Execution failed: {type(e).__name__}: {str(e)}"
             await self.update_status(

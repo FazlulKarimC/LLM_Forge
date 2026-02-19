@@ -6,18 +6,26 @@ This module initializes the FastAPI application with:
 - API routers for experiments, results, and metrics
 - Lifespan events for startup/shutdown
 - Health check endpoint
-
-TODO (Iteration 1): Add database connection on startup
-TODO (Iteration 2): Add model preloading for faster inference
-TODO (Iteration 3): Add request tracing and monitoring
 """
 
+import logging
+import logging.config
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.api import experiments, results, health
+
+# ── Logging setup ──────────────────────────────────────────────────────────
+# Configure logging early so all modules (including uvicorn workers in
+# HF Spaces / Docker) emit structured output captured by the log viewer.
+logging.basicConfig(
+    level=getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO),
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%Y-%m-%dT%H:%M:%S",
+)
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -40,14 +48,21 @@ async def lifespan(app: FastAPI):
     TODO (Iteration 3): Add graceful shutdown with request draining
     """
     # Startup
-    print(f"Starting {settings.PROJECT_NAME} v{settings.VERSION}")
-    # TODO: Initialize services here
-    
+    logger.info(f"Starting {settings.PROJECT_NAME} v{settings.VERSION} (env={settings.ENVIRONMENT})")
+
+    # Warn if HF_TOKEN is missing when HF API inference is expected
+    if settings.INFERENCE_ENGINE == "hf_api" and not settings.HF_TOKEN:
+        logger.warning(
+            "HF_TOKEN is not set but INFERENCE_ENGINE=hf_api. "
+            "All inference calls will fail. Set HF_TOKEN in your environment."
+        )
+
+    logger.info(f"CORS allowed origins: {settings.cors_origins_list}")
+
     yield
-    
+
     # Shutdown
-    print("Shutting down...")
-    # TODO: Cleanup resources here
+    logger.info("Shutting down...")
 
 
 def create_application() -> FastAPI:
@@ -65,11 +80,11 @@ def create_application() -> FastAPI:
         lifespan=lifespan,
     )
     
-    # Configure CORS
-    # TODO (Iteration 1): Restrict origins in production
+    # Configure CORS — origins are read from the CORS_ORIGINS env var
+    # so additional origins (e.g. Vercel URL) can be added without code changes.
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=settings.CORS_ORIGINS,
+        allow_origins=settings.cors_origins_list,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

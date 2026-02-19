@@ -152,6 +152,7 @@ function StatCard({
 function ExperimentRow({ experiment }: { experiment: Experiment }) {
   const statusClasses: Record<string, string> = {
     pending: "badge-pending",
+    queued: "badge-queued",
     running: "badge-running",
     completed: "badge-completed",
     failed: "badge-failed",

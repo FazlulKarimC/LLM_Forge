@@ -617,32 +617,32 @@ Query → [Embed via HF API] → [Qdrant Dense Search] → [BM25 Sparse Search]
 > **Note**: All optimizations in this phase can run locally or on HF Spaces (no GPU required). We focus on batching, caching, and profiling — practical techniques that work with any inference backend.
 
 ### Tasks
-- [ ] **8.1 Batching Implementation**
+- [x] **8.1 Batching Implementation**
   - Implement `generate_batch()` method in inference engine
   - Group prompts into batches of 4, 8, 16
   - Batch calls to HF Inference API (reduces HTTP overhead)
   - Measure: throughput (prompts/second), latency per prompt
 
-- [ ] **8.2 Prompt Caching**
+- [x] **8.2 Prompt Caching**
   - Detect repeated context prefixes (common in RAG — same context, different questions)
   - Cache generation results for identical prompts (deterministic with seed)
   - Use in-memory LRU cache with configurable max size
   - Measure: cache hit rate, latency savings per hit
 
-- [ ] **8.3 Response Profiling**
+- [x] **8.3 Response Profiling**
   - Measure time breakdown per run: prompt building, API call, parsing, metrics
   - Identify bottlenecks (is it network? tokenization? parsing?)
   - Log profiling data per experiment
   - Create profiling summary in results dashboard
 
-- [ ] **8.4 Comprehensive Benchmark**
+- [x] **8.4 Comprehensive Benchmark**
   - Matrix: All methods × optimizations
   - Methods: Naive, CoT, RAG, Agent
   - Optimizations: Sequential, Batched, Cached
   - Metrics: Accuracy, Latency (p50/p95), Throughput, Total Tokens
   - Run on TriviaQA (100 samples) with same seed
 
-- [ ] **8.5 Optimization Decision Framework**
+- [x] **8.5 Optimization Decision Framework**
   - Document when to use each optimization
   - Create decision guide based on use case
   - Include cost-benefit analysis

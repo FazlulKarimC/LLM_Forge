@@ -8,7 +8,7 @@
  */
 
 import { useQuery } from "@tanstack/react-query";
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
@@ -275,10 +275,10 @@ function DifferencesTable({ diffs, nameA, nameB }: {
 }
 
 // =============================================================================
-// Main Page
+// Inner page component — contains useSearchParams() so must live inside Suspense
 // =============================================================================
 
-export default function ComparePage() {
+function ComparePageInner() {
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
     const searchParams = useSearchParams();
     const preselect = searchParams.get('preselect');
@@ -578,5 +578,22 @@ export default function ComparePage() {
                 ) : null}
             </main>
         </div>
+    );
+}
+
+// =============================================================================
+// Default Export — wraps inner component in Suspense (required by Next.js 15
+// because useSearchParams() is used inside ComparePageInner).
+// =============================================================================
+
+export default function ComparePage() {
+    return (
+        <Suspense fallback={
+            <div className="min-h-screen bg-(--bg-page) flex items-center justify-center">
+                <div className="text-(--text-muted) animate-pulse">Loading comparison page...</div>
+            </div>
+        }>
+            <ComparePageInner />
+        </Suspense>
     );
 }

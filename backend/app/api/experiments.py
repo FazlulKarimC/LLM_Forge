@@ -183,37 +183,6 @@ async def run_experiment(
     return await service.get(experiment_id)
 
 
-@router.post("/{experiment_id}/execute", status_code=202)
-async def execute_experiment(
-    experiment_id: UUID,
-    background_tasks: BackgroundTasks,
-    db: AsyncSession = Depends(get_db),
-):
-    """
-    Trigger experiment execution (alias for /run).
-    Returns 202 Accepted immediately.
-    """
-    service = ExperimentService(db)
-    experiment = await service.get(experiment_id)
-    
-    if not experiment:
-        raise HTTPException(status_code=404, detail="Experiment not found")
-    
-    if experiment.status in [ExperimentStatus.QUEUED, ExperimentStatus.RUNNING]:
-        raise HTTPException(status_code=409, detail="Experiment already queued or running")
-    
-    await service.update_status(experiment_id, ExperimentStatus.QUEUED)
-    await db.commit()
-    
-    mode = _enqueue_or_fallback(background_tasks, experiment_id)
-    
-    return {
-        "message": "Experiment execution started",
-        "experiment_id": str(experiment_id),
-        "status": "queued",
-        "mode": mode,
-    }
-
 
 @router.delete("/{experiment_id}", status_code=204)
 async def delete_experiment(

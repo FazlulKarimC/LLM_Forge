@@ -10,13 +10,13 @@ Environment Variables:
     QDRANT_API_KEY: Vector database API key
     HF_TOKEN: Hugging Face API token for model downloads
     ENVIRONMENT: development | staging | production
+    CORS_ORIGINS: Comma-separated list of allowed CORS origins (e.g., "http://localhost:3000,https://example.com")
 
 TODO (Iteration 1): Add validation for required secrets
 TODO (Iteration 2): Add config for model loading preferences
 TODO (Iteration 3): Add feature flags system
 """
 
-from typing import List
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -35,11 +35,16 @@ class Settings(BaseSettings):
     VERSION: str = "0.1.0"
     API_V1_PREFIX: str = "/api/v1"
     ENVIRONMENT: str = "development"
-    DEBUG: bool = True
+    DEBUG: bool = False # Default to False for production readiness
     
     # ----- CORS -----
-    # TODO: Restrict in production
-    CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
+    # Comma-separated string of allowed origins, parsed into a list
+    CORS_ORIGINS: str = "http://localhost:3000,http://127.0.0.1:3000"
+
+    @property
+    def cors_origins_list(self) -> list[str]:
+        """Return CORS_ORIGINS as a Python list (split on commas)."""
+        return [o.strip() for o in self.CORS_ORIGINS.split(",") if o.strip()]
     
     # ----- Database (NeonDB) -----
     DATABASE_URL: str = ""  # Required: postgresql://...
@@ -55,7 +60,7 @@ class Settings(BaseSettings):
     
     # ----- Hugging Face -----
     HF_TOKEN: str = ""
-    HF_CACHE_DIR: str = "./models"
+    HF_CACHE_DIR: str = "/tmp/hf_cache" # Use a more standard temporary directory
     
     # ----- Model Defaults -----
     DEFAULT_MODEL: str = "meta-llama/Llama-3.2-1B-Instruct"

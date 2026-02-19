@@ -14,7 +14,7 @@ from enum import Enum
 from typing import Optional, List, Dict, Any
 from uuid import UUID
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, ConfigDict, field_validator
 
 
 class ExperimentStatus(str, Enum):
@@ -171,8 +171,8 @@ class ExperimentConfig(BaseModel):
     num_samples: int = Field(
         default=100,
         ge=1,
-        le=10000,
-        description="Number of samples to evaluate"
+        le=500,  # Matches frontend validation cap
+        description="Number of dataset samples to evaluate"
     )
     
     @field_validator("agent")
@@ -203,8 +203,8 @@ class ExperimentResponse(BaseModel):
     completed_at: Optional[datetime]
     error_message: Optional[str]
     
-    class Config:
-        from_attributes = True
+    # Pydantic v2 style — replaces deprecated inner `class Config`
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ExperimentListResponse(BaseModel):

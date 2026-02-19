@@ -17,6 +17,8 @@ export default function ExperimentsPage() {
     const queryClient = useQueryClient();
     const [statusFilter, setStatusFilter] = useState("");
     const [methodFilter, setMethodFilter] = useState("");
+    // Track in-flight delete IDs so only the clicked row's button is disabled
+    const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
 
     const params: ListExperimentsParams = { limit: 50 };
     if (statusFilter) params.status = statusFilter;
@@ -28,9 +30,16 @@ export default function ExperimentsPage() {
     });
 
     const deleteMutation = useMutation({
-        mutationFn: deleteExperiment,
-        onSuccess: () => {
+        mutationFn: (id: string) => {
+            setDeletingIds(prev => new Set(prev).add(id));
+            return deleteExperiment(id);
+        },
+        onSuccess: (_data, id) => {
+            setDeletingIds(prev => { const s = new Set(prev); s.delete(id); return s; });
             queryClient.invalidateQueries({ queryKey: ["experiments"] });
+        },
+        onError: (_err, id) => {
+            setDeletingIds(prev => { const s = new Set(prev); s.delete(id); return s; });
         },
     });
 
@@ -38,6 +47,9 @@ export default function ExperimentsPage() {
         mutationFn: runExperiment,
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["experiments"] });
+        },
+        onError: (err: Error) => {
+            alert(`Failed to run experiment: ${err.message}`);
         },
     });
 
@@ -188,9 +200,9 @@ export default function ExperimentsPage() {
                                                 <button
                                                     onClick={() => handleDelete(exp.id, exp.name)}
                                                     className="text-(--error) hover:underline text-sm cursor-pointer"
-                                                    disabled={deleteMutation.isPending}
+                                                    disabled={deletingIds.has(exp.id)}
                                                 >
-                                                    Delete
+                                                    {deletingIds.has(exp.id) ? "Deleting..." : "Delete"}
                                                 </button>
                                             </div>
                                         </td>

@@ -23,7 +23,7 @@ export default function NewExperimentPage() {
     const { data: modelsData } = useQuery({
         queryKey: ["available-models"],
         queryFn: getAvailableModels,
-        staleTime: Infinity, // model list rarely changes
+        staleTime: 1000 * 60 * 60, // 1 hour — avoids constant refetches but respects model list changes
     });
     const availableModels = modelsData?.models ?? [
         { value: "meta-llama/Llama-3.2-1B-Instruct", label: "Llama 3.2 (1B)", description: "Fast, efficient — default" },
@@ -67,6 +67,7 @@ export default function NewExperimentPage() {
 
     const [runAfterCreate, setRunAfterCreate] = useState(false);
     const [validationError, setValidationError] = useState<string | null>(null);
+    const [runError, setRunError] = useState<string | null>(null);
 
     const createMutation = useMutation({
         mutationFn: createExperiment,
@@ -77,8 +78,13 @@ export default function NewExperimentPage() {
             if (runAfterCreate) {
                 try {
                     await runExperiment(experiment.id);
-                } catch {
-                    // Still navigate even if run fails — user can retry from detail page
+                } catch (err) {
+                    // Surface the error as a banner — user can retry from the detail page
+                    setRunError(
+                        err instanceof Error
+                            ? `Experiment created but failed to start: ${err.message}`
+                            : 'Experiment created but failed to start. Retry from the detail page.'
+                    );
                 }
             }
             router.push(`/experiments/${experiment.id}`);
@@ -174,6 +180,13 @@ export default function NewExperimentPage() {
                     {validationError && (
                         <div className="bg-red-50 border border-red-200 rounded-xl p-4">
                             <p className="text-(--error) text-sm font-medium">⚠ {validationError}</p>
+                        </div>
+                    )}
+
+                    {/* Run Error Display (Create & Run flow) */}
+                    {runError && (
+                        <div className="bg-yellow-50 border border-yellow-300 rounded-xl p-4">
+                            <p className="text-yellow-800 text-sm font-medium">⚠ {runError}</p>
                         </div>
                     )}
 
