@@ -8,7 +8,8 @@
  */
 
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
     listExperiments,
@@ -279,6 +280,8 @@ function DifferencesTable({ diffs, nameA, nameB }: {
 
 export default function ComparePage() {
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
+    const searchParams = useSearchParams();
+    const preselect = searchParams.get('preselect');
 
     // Fetch all completed experiments for selection
     const { data: expData, isLoading: listLoading } = useQuery({
@@ -287,6 +290,15 @@ export default function ComparePage() {
     });
 
     const experiments = expData?.experiments ?? [];
+
+    // Auto-select experiment from URL ?preselect=<id> (e.g., from detail page "Compare" button)
+    useEffect(() => {
+        if (!preselect || !experiments.length) return;
+        if (experiments.some(e => e.id === preselect) && !selectedIds.includes(preselect)) {
+            setSelectedIds([preselect]);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [preselect, experiments.length]);
 
     // Fetch comparison when 2 experiments selected
     const { data: comparison, isLoading: compLoading, error: compError } = useQuery({

@@ -106,11 +106,44 @@ class MockEngine(InferenceEngine):
         self,
         prompts: List[str],
         config: GenerationConfig,
+        max_workers: int = 8,
     ) -> List[GenerationResult]:
         """
-        Generate fake text for multiple prompts.
+        Generate fake text for multiple prompts with simulated concurrency.
+        
+        Simulates batch speedup: sleeps once for the whole batch
+        instead of once per prompt.
         """
-        return [self.generate(p, config) for p in prompts]
+        if not prompts:
+            return []
+        
+        start_time = time.perf_counter()
+        
+        # Simulate single batch latency (instead of N × latency)
+        time.sleep(self._simulate_latency_ms / 1000)
+        
+        results = []
+        for prompt in prompts:
+            prompt_preview = prompt[:50].replace("\n", " ")
+            random_prefix = random.choice(self._fake_responses)
+            fake_output = (
+                f"{random_prefix} related to: '{prompt_preview}...'. "
+                f"This is a mock response for testing purposes."
+            )
+            tokens_input = len(prompt.split())
+            tokens_output = len(fake_output.split())
+            per_prompt_latency = self._simulate_latency_ms / len(prompts)
+            
+            results.append(GenerationResult(
+                text=fake_output,
+                tokens_input=tokens_input,
+                tokens_output=tokens_output,
+                latency_ms=per_prompt_latency,
+                finish_reason="stop",
+                gpu_memory_mb=None,
+            ))
+        
+        return results
     
     def unload_model(self) -> None:
         """

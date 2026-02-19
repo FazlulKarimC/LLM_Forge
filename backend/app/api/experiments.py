@@ -48,12 +48,21 @@ def _enqueue_or_fallback(
     experiment_id: UUID,
 ) -> str:
     """
-    Try to enqueue via RQ (Redis). If Redis is unavailable,
-    fall back to FastAPI BackgroundTasks (async inline execution).
+    Try to enqueue via RQ (Redis). If Redis is unavailable or
+    we are in development mode, fall back to FastAPI BackgroundTasks
+    (async inline execution).
     
     Returns:
         'rq' if enqueued to Redis, 'inline' if using BackgroundTasks
     """
+    from app.core.config import settings
+    
+    # In development, always use inline execution (no RQ worker running)
+    if settings.ENVIRONMENT == "development":
+        logger.info("Development mode: using inline execution (no RQ worker)")
+        background_tasks.add_task(_execute_inline, experiment_id)
+        return "inline"
+    
     try:
         from app.core.redis import get_queue
         from app.tasks.experiment_tasks import run_experiment_task
@@ -94,6 +103,40 @@ async def list_experiments(
         skip=skip,
         limit=limit,
     )
+
+
+@router.get("/models")
+async def list_available_models():
+    """
+    List available LLM models for experiments.
+
+    Returns curated free-tier models available via HuggingFace Inference API.
+    Centralised here so the frontend does not need hardcoded model lists.
+    """
+    return {
+        "models": [
+            {
+                "value": "meta-llama/Llama-3.2-1B-Instruct",
+                "label": "Llama 3.2 (1B)",
+                "description": "Fast, efficient — default",
+            },
+            {
+                "value": "Qwen/Qwen2.5-3B-Instruct",
+                "label": "Qwen 2.5 (3B)",
+                "description": "Strong multilingual",
+            },
+            {
+                "value": "google/gemma-2-2b-it",
+                "label": "Gemma 2 (2B)",
+                "description": "Google's compact model",
+            },
+            {
+                "value": "microsoft/Phi-3.5-mini-instruct",
+                "label": "Phi-3.5 Mini (3.8B)",
+                "description": "Strong reasoning",
+            },
+        ]
+    }
 
 
 @router.get("/{experiment_id}", response_model=ExperimentResponse)

@@ -10,21 +10,24 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { createExperiment, runExperiment, ExperimentConfig, CreateExperimentRequest, AgentConfig } from "@/lib/api";
+import { createExperiment, runExperiment, getAvailableModels, ExperimentConfig, CreateExperimentRequest, AgentConfig } from "@/lib/api";
 
-// Free-tier models confirmed working on HuggingFace Inference API
-const AVAILABLE_MODELS = [
-    { value: "meta-llama/Llama-3.2-1B-Instruct", label: "Llama 3.2 (1B)", description: "Fast, efficient — default" },
-    { value: "Qwen/Qwen2.5-3B-Instruct", label: "Qwen 2.5 (3B)", description: "Strong multilingual" },
-    { value: "google/gemma-2-2b-it", label: "Gemma 2 (2B)", description: "Google's compact model" },
-    { value: "microsoft/Phi-3.5-mini-instruct", label: "Phi-3.5 Mini (3.8B)", description: "Strong reasoning" },
-];
 
 export default function NewExperimentPage() {
     const router = useRouter();
     const queryClient = useQueryClient();
+
+    // Fetch models from backend
+    const { data: modelsData } = useQuery({
+        queryKey: ["available-models"],
+        queryFn: getAvailableModels,
+        staleTime: Infinity, // model list rarely changes
+    });
+    const availableModels = modelsData?.models ?? [
+        { value: "meta-llama/Llama-3.2-1B-Instruct", label: "Llama 3.2 (1B)", description: "Fast, efficient — default" },
+    ];
 
     const [formData, setFormData] = useState<{
         name: string;
@@ -39,6 +42,10 @@ export default function NewExperimentPage() {
         rag_top_k: number;
         agent_max_iterations: number;
         agent_tools: string[];
+        enable_batching: boolean;
+        batch_size: number;
+        enable_caching: boolean;
+        cache_max_size: number;
     }>({
         name: "",
         description: "",
@@ -52,9 +59,14 @@ export default function NewExperimentPage() {
         rag_top_k: 5,
         agent_max_iterations: 5,
         agent_tools: ["wikipedia_search", "calculator"],
+        enable_batching: false,
+        batch_size: 8,
+        enable_caching: false,
+        cache_max_size: 256,
     });
 
     const [runAfterCreate, setRunAfterCreate] = useState(false);
+    const [validationError, setValidationError] = useState<string | null>(null);
 
     const createMutation = useMutation({
         mutationFn: createExperiment,
@@ -75,6 +87,25 @@ export default function NewExperimentPage() {
 
     const handleSubmit = (e: React.FormEvent, shouldRun: boolean = false) => {
         e.preventDefault();
+
+        // --- Client-side validation ---
+        if (!formData.name.trim()) {
+            setValidationError("Experiment name is required.");
+            return;
+        }
+        if (formData.num_samples < 1 || formData.num_samples > 500) {
+            setValidationError("Samples must be between 1 and 500.");
+            return;
+        }
+        if (formData.enable_batching && (formData.batch_size < 1 || formData.batch_size > 32)) {
+            setValidationError("Batch size must be between 1 and 32.");
+            return;
+        }
+        if (formData.enable_caching && (formData.cache_max_size < 8 || formData.cache_max_size > 4096)) {
+            setValidationError("Cache max size must be between 8 and 4096.");
+            return;
+        }
+        setValidationError(null);
         setRunAfterCreate(shouldRun);
 
         const config: ExperimentConfig = {
@@ -102,6 +133,17 @@ export default function NewExperimentPage() {
             };
         }
 
+        // Optimization settings (Phase 8)
+        if (formData.enable_batching || formData.enable_caching) {
+            config.optimization = {
+                enable_batching: formData.enable_batching,
+                batch_size: formData.batch_size,
+                enable_caching: formData.enable_caching,
+                cache_max_size: formData.cache_max_size,
+                enable_profiling: true,
+            };
+        }
+
         const request: CreateExperimentRequest = {
             name: formData.name,
             description: formData.description || undefined,
@@ -111,7 +153,7 @@ export default function NewExperimentPage() {
         createMutation.mutate(request);
     };
 
-    const selectedModel = AVAILABLE_MODELS.find(m => m.value === formData.model_name);
+    const selectedModel = availableModels.find(m => m.value === formData.model_name);
 
     return (
         <div className="min-h-screen bg-(--bg-page)">
@@ -128,8 +170,16 @@ export default function NewExperimentPage() {
 
             <main className="max-w-3xl mx-auto px-4 py-8">
                 <form onSubmit={(e) => handleSubmit(e, false)} className="card p-6 space-y-6">
-                    {/* Error Display */}
+                    {/* Validation Error Display */}
+                    {validationError && (
+                        <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+                            <p className="text-(--error) text-sm font-medium">⚠ {validationError}</p>
+                        </div>
+                    )}
+
+                    {/* API Error Display */}
                     {createMutation.error && (
+
                         <div className="bg-red-50 border border-red-200 rounded-xl p-4">
                             <p className="text-(--error)">
                                 {createMutation.error instanceof Error ? createMutation.error.message : "Failed to create experiment"}
@@ -180,7 +230,7 @@ export default function NewExperimentPage() {
                                     onChange={(e) => setFormData({ ...formData, model_name: e.target.value })}
                                     className="mt-1 block w-full border border-border rounded-lg px-3 py-2 bg-(--bg-card) text-(--text-body)"
                                 >
-                                    {AVAILABLE_MODELS.map(model => (
+                                    {availableModels.map(model => (
                                         <option key={model.value} value={model.value}>
                                             {model.label}
                                         </option>
@@ -237,11 +287,12 @@ export default function NewExperimentPage() {
                                 <input
                                     type="number"
                                     min="1"
-                                    max="10000"
+                                    max="500"
                                     value={formData.num_samples}
                                     onChange={(e) => setFormData({ ...formData, num_samples: parseInt(e.target.value) })}
                                     className="mt-1 block w-full border border-border rounded-lg px-3 py-2 bg-(--bg-card) text-(--text-body)"
                                 />
+                                <p className="text-xs text-(--text-muted) mt-1">Max 500 samples</p>
                             </div>
                         </div>
                     </section>
@@ -375,6 +426,71 @@ export default function NewExperimentPage() {
                             </div>
                         </section>
                     )}
+
+                    {/* Optimization Settings (Phase 8) */}
+                    <section>
+                        <h2 className="text-lg font-serif text-(--text-heading) mb-4">⚡ Optimization</h2>
+                        <div className="p-4 bg-(--bg-page) rounded-lg border border-border space-y-4">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="flex items-center gap-2 text-sm font-medium text-(--text-body) cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={formData.enable_batching}
+                                            onChange={(e) => setFormData({ ...formData, enable_batching: e.target.checked })}
+                                            className="rounded border-border"
+                                        />
+                                        Enable Batching
+                                    </label>
+                                    {formData.enable_batching && (
+                                        <div className="mt-2">
+                                            <label className="block text-xs text-(--text-muted)">Batch Size</label>
+                                            <input
+                                                type="number"
+                                                min="1"
+                                                max="32"
+                                                value={formData.batch_size}
+                                                onChange={(e) => setFormData({ ...formData, batch_size: parseInt(e.target.value) || 8 })}
+                                                className="mt-1 block w-full border border-border rounded-lg px-3 py-2 bg-(--bg-card) text-(--text-body) text-sm"
+                                            />
+                                            <p className="text-xs text-(--text-muted) mt-1">Concurrent API calls per batch</p>
+                                        </div>
+                                    )}
+                                </div>
+                                <div>
+                                    <label className="flex items-center gap-2 text-sm font-medium text-(--text-body) cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={formData.enable_caching}
+                                            onChange={(e) => setFormData({ ...formData, enable_caching: e.target.checked })}
+                                            className="rounded border-border"
+                                        />
+                                        Enable Caching
+                                    </label>
+                                    {formData.enable_caching && (
+                                        <div className="mt-2">
+                                            <label className="block text-xs text-(--text-muted)">Max Cache Entries</label>
+                                            <input
+                                                type="number"
+                                                min="16"
+                                                max="2048"
+                                                value={formData.cache_max_size}
+                                                onChange={(e) => setFormData({ ...formData, cache_max_size: parseInt(e.target.value) || 256 })}
+                                                className="mt-1 block w-full border border-border rounded-lg px-3 py-2 bg-(--bg-card) text-(--text-body) text-sm"
+                                            />
+                                            <p className="text-xs text-(--text-muted) mt-1">LRU cache for identical prompts</p>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                            <p className="text-xs text-(--text-muted) p-2 bg-(--bg-card) rounded-lg border border-border">
+                                ⚡ <strong>Batching</strong> parallelizes API calls for faster wall-clock time.
+                                <strong>Caching</strong> stores results for repeated prompts.
+                                Profiling is always enabled.
+                                {formData.reasoning_method === "react" && " Note: Batching is disabled for ReAct agent (requires iterative tool calling)."}
+                            </p>
+                        </div>
+                    </section>
 
                     {/* Submit */}
                     <div className="flex justify-end gap-3 pt-4 border-t border-border">

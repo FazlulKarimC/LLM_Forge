@@ -95,6 +95,7 @@ class InferenceEngine(ABC):
         self,
         prompts: List[str],
         config: GenerationConfig,
+        max_workers: int = 8,
     ) -> List[GenerationResult]:
         """
         Generate text for multiple prompts.

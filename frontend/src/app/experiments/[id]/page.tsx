@@ -15,10 +15,12 @@ import {
     getExperiment,
     getMetrics,
     getRunSummaries,
+    getProfile,
     exportResults,
     runExperiment,
     Metrics,
     RunSummary,
+    ProfileData,
 } from "@/lib/api";
 
 interface Props {
@@ -108,8 +110,16 @@ function LatencyChart({ runs }: { runs: RunSummary[] }) {
 // =============================================================================
 // Correctness Grid
 // =============================================================================
+const GRID_PAGE_SIZE = 50;
+
 function CorrectnessGrid({ runs }: { runs: RunSummary[] }) {
     const [selectedRun, setSelectedRun] = useState<RunSummary | null>(null);
+    const [page, setPage] = useState(0);
+
+    const totalPages = Math.ceil(runs.length / GRID_PAGE_SIZE);
+    const pageRuns = runs.slice(page * GRID_PAGE_SIZE, (page + 1) * GRID_PAGE_SIZE);
+    const startIdx = page * GRID_PAGE_SIZE + 1;
+    const endIdx = Math.min((page + 1) * GRID_PAGE_SIZE, runs.length);
 
     return (
         <div className="card p-6">
@@ -128,7 +138,8 @@ function CorrectnessGrid({ runs }: { runs: RunSummary[] }) {
             </div>
 
             <div className="flex flex-wrap gap-1.5 mb-4">
-                {runs.map((run) => (
+                {pageRuns.map((run) => (
+
                     <button
                         key={run.id}
                         onClick={() => setSelectedRun(selectedRun?.id === run.id ? null : run)}
@@ -184,6 +195,32 @@ function CorrectnessGrid({ runs }: { runs: RunSummary[] }) {
                             </div>
                         </div>
                     </dl>
+                </div>
+            )}
+
+            {/* Pagination Controls */}
+            {totalPages > 1 && (
+                <div className="flex items-center justify-between mt-4 pt-4 border-t border-border">
+                    <span className="text-xs text-(--text-muted)">
+                        Showing {startIdx}–{endIdx} of {runs.length} runs
+                    </span>
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={() => { setPage(p => p - 1); setSelectedRun(null); }}
+                            disabled={page === 0}
+                            className="px-3 py-1 text-xs rounded-lg border border-border text-(--text-body) hover:bg-(--bg-page) disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
+                        >
+                            ← Prev
+                        </button>
+                        <span className="text-xs text-(--text-muted)">{page + 1} / {totalPages}</span>
+                        <button
+                            onClick={() => { setPage(p => p + 1); setSelectedRun(null); }}
+                            disabled={page >= totalPages - 1}
+                            className="px-3 py-1 text-xs rounded-lg border border-border text-(--text-body) hover:bg-(--bg-page) disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
+                        >
+                            Next →
+                        </button>
+                    </div>
                 </div>
             )}
         </div>
@@ -390,6 +427,108 @@ function ResultsDashboard({ experimentId }: { experimentId: string }) {
 }
 
 // =============================================================================
+// Optimization Profile Dashboard (Phase 8)
+// =============================================================================
+function ProfileDashboard({ experimentId }: { experimentId: string }) {
+    const { data: profile, isLoading } = useQuery({
+        queryKey: ["profile", experimentId],
+        queryFn: () => getProfile(experimentId),
+    });
+
+    if (isLoading) {
+        return (
+            <div className="card p-6 animate-pulse">
+                <div className="h-5 bg-(--bg-page) rounded w-48 mb-4" />
+                <div className="h-20 bg-(--bg-page) rounded" />
+            </div>
+        );
+    }
+
+    if (!profile || profile.message) {
+        return null; // No optimization data
+    }
+
+    const sections = Object.entries(profile.profiling_summary || {});
+    const cache = profile.cache_stats || {};
+    const batch = profile.batch_stats || {};
+    const hasCache = cache.hits !== undefined || cache.misses !== undefined;
+    const hasBatch = batch.batches_processed !== undefined;
+
+    return (
+        <div className="space-y-4">
+            <h3 className="text-lg font-serif text-(--text-heading)">⚡ Optimization Profile</h3>
+
+            {/* Wall Time + Summary Stats */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {profile.total_wall_time_ms != null && (
+                    <MetricCard
+                        title="Total Wall Time"
+                        value={`${(profile.total_wall_time_ms / 1000).toFixed(2)}s`}
+                        subtitle="End-to-end execution"
+                    />
+                )}
+                {hasCache && (
+                    <MetricCard
+                        title="Cache Hit Rate"
+                        value={`${((cache.hit_rate ?? 0) * 100).toFixed(1)}%`}
+                        subtitle={`${cache.hits ?? 0} hits / ${cache.misses ?? 0} misses`}
+                        color={(cache.hit_rate ?? 0) > 0.5 ? "text-green-600" : "text-(--text-heading)"}
+                    />
+                )}
+                {hasBatch && (
+                    <MetricCard
+                        title="Batches Processed"
+                        value={`${batch.batches_processed ?? 0}`}
+                        subtitle={`${batch.total_prompts_batched ?? 0} prompts batched`}
+                    />
+                )}
+            </div>
+
+            {/* Timing Breakdown Table */}
+            {sections.length > 0 && (
+                <div className="card p-6">
+                    <h4 className="text-sm font-medium text-(--text-heading) mb-3">Timing Breakdown</h4>
+                    <table className="w-full text-sm">
+                        <thead>
+                            <tr className="border-b border-border">
+                                <th className="text-left py-1.5 text-(--text-muted) font-medium">Phase</th>
+                                <th className="text-right py-1.5 text-(--text-muted) font-medium">Count</th>
+                                <th className="text-right py-1.5 text-(--text-muted) font-medium">Total</th>
+                                <th className="text-right py-1.5 text-(--text-muted) font-medium">Mean</th>
+                                <th className="text-right py-1.5 text-(--text-muted) font-medium">p50</th>
+                                <th className="text-right py-1.5 text-(--text-muted) font-medium">p95</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {sections.map(([name, stats]) => (
+                                <tr key={name} className="border-b border-border/50">
+                                    <td className="py-1.5 font-mono text-xs text-(--text-body) capitalize">{name.replace(/_/g, " ")}</td>
+                                    <td className="py-1.5 text-right font-mono text-xs">{stats.count}</td>
+                                    <td className="py-1.5 text-right font-mono text-xs">{stats.total_ms.toFixed(0)} ms</td>
+                                    <td className="py-1.5 text-right font-mono text-xs">{stats.mean_ms.toFixed(1)} ms</td>
+                                    <td className="py-1.5 text-right font-mono text-xs">{stats.p50_ms.toFixed(1)} ms</td>
+                                    <td className="py-1.5 text-right font-mono text-xs">{stats.p95_ms.toFixed(1)} ms</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            )}
+
+            {/* Cache Latency Saved */}
+            {hasCache && (cache.total_latency_saved_ms ?? 0) > 0 && (
+                <div className="card p-4">
+                    <p className="text-sm text-(--text-body)">
+                        💡 Cache saved <strong className="font-mono">{((cache.total_latency_saved_ms ?? 0) / 1000).toFixed(2)}s</strong> of API call time
+                        ({cache.size ?? 0}/{cache.max_size ?? 0} entries used).
+                    </p>
+                </div>
+            )}
+        </div>
+    );
+}
+
+// =============================================================================
 // Main Page
 // =============================================================================
 export default function ExperimentDetailPage({ params }: Props) {
@@ -472,6 +611,18 @@ export default function ExperimentDetailPage({ params }: Props) {
                             </span>
                         </div>
                         <div className="flex items-center gap-3">
+                            {/* Compare Button (completed only) */}
+                            {experiment.status === "completed" && (
+                                <Link
+                                    href={`/experiments/compare?preselect=${id}`}
+                                    className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium border border-border rounded-full text-(--text-body) hover:bg-(--bg-page) transition-colors"
+                                >
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                        <path d="M18 20V10" /><path d="M12 20V4" /><path d="M6 20v-6" />
+                                    </svg>
+                                    Compare
+                                </Link>
+                            )}
                             {/* Run Button */}
                             {canRun && (
                                 <button
@@ -607,6 +758,13 @@ export default function ExperimentDetailPage({ params }: Props) {
                         </div>
                     )}
                 </div>
+
+                {/* Optimization Profile (Phase 8) */}
+                {experiment.status === "completed" && (
+                    <div className="mt-6">
+                        <ProfileDashboard experimentId={id} />
+                    </div>
+                )}
             </main>
         </div>
     );

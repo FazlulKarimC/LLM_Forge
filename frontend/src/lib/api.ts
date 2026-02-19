@@ -60,6 +60,14 @@ export interface AgentConfig {
     tools?: string[];
 }
 
+export interface OptimizationConfig {
+    enable_batching?: boolean;
+    batch_size?: number;
+    enable_caching?: boolean;
+    cache_max_size?: number;
+    enable_profiling?: boolean;
+}
+
 export interface ExperimentConfig {
     model_name: string;
     reasoning_method: 'naive' | 'cot' | 'react';
@@ -67,6 +75,7 @@ export interface ExperimentConfig {
     hyperparameters?: HyperParameters;
     rag?: RAGConfig;
     agent?: AgentConfig;
+    optimization?: OptimizationConfig;
     num_samples?: number;
 }
 
@@ -138,11 +147,44 @@ export interface RunSummary {
     expected_output?: string;
 }
 
+export interface ModelOption {
+    value: string;
+    label: string;
+    description: string;
+}
+
 export interface DashboardStats {
     totalExperiments: number;
     completedExperiments: number;
     runningExperiments: number;
     pendingExperiments: number;
+}
+
+export interface ProfilingSectionStats {
+    count: number;
+    total_ms: number;
+    mean_ms: number;
+    p50_ms: number;
+    p95_ms: number;
+}
+
+export interface ProfileData {
+    experiment_id: string;
+    message?: string;
+    profiling_summary: Record<string, ProfilingSectionStats>;
+    cache_stats: {
+        hits?: number;
+        misses?: number;
+        hit_rate?: number;
+        size?: number;
+        max_size?: number;
+        total_latency_saved_ms?: number;
+    };
+    batch_stats: {
+        batches_processed?: number;
+        total_prompts_batched?: number;
+    };
+    total_wall_time_ms?: number;
 }
 
 // =============================================================================
@@ -211,6 +253,13 @@ export async function getRunSummaries(experimentId: string): Promise<RunSummary[
 }
 
 /**
+ * Get optimization profiling data for an experiment.
+ */
+export async function getProfile(experimentId: string): Promise<ProfileData> {
+    return fetchAPI<ProfileData>(`/results/${experimentId}/profile`);
+}
+
+/**
  * Export results as JSON download.
  */
 export async function exportResults(experimentId: string): Promise<void> {
@@ -252,6 +301,13 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     }
 
     return stats;
+}
+
+/**
+ * Get available models for experiment creation.
+ */
+export async function getAvailableModels(): Promise<{ models: ModelOption[] }> {
+    return fetchAPI<{ models: ModelOption[] }>('/experiments/models');
 }
 
 /**

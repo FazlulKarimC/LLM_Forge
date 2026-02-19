@@ -126,13 +126,40 @@ class HFAPIEngine(InferenceEngine):
         self,
         prompts: List[str],
         config: GenerationConfig,
+        max_workers: int = 8,
     ) -> List[GenerationResult]:
         """
-        Generate text for multiple prompts.
+        Generate text for multiple prompts concurrently.
         
-        For now, sequential. Batching optimization in Phase 8.
+        Uses ThreadPoolExecutor to parallelize HTTP calls to HF API,
+        reducing wall-clock time compared to sequential execution.
+        
+        Args:
+            prompts: List of input texts
+            config: Generation parameters (applied to all)
+            max_workers: Max concurrent threads (default 8)
+        
+        Returns:
+            List of GenerationResult in same order as prompts
         """
-        return [self.generate(p, config) for p in prompts]
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        
+        if not prompts:
+            return []
+        
+        workers = min(len(prompts), max_workers)
+        results: List[GenerationResult] = [None] * len(prompts)  # type: ignore
+        
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            future_to_idx = {
+                pool.submit(self.generate, p, config): i
+                for i, p in enumerate(prompts)
+            }
+            for future in as_completed(future_to_idx):
+                idx = future_to_idx[future]
+                results[idx] = future.result()
+        
+        return results
     
     def unload_model(self) -> None:
         """

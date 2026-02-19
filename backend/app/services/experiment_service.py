@@ -243,21 +243,23 @@ class ExperimentService:
         1. Load experiment config
         2. Initialize inference engine
         3. Load dataset (TriviaQA or sample)
-        4. Run inference for each sample
+        4. Run inference for each sample (with optional batching/caching)
         5. Compute per-run metrics (F1, exact match)
         6. Log runs to database
         7. Compute aggregate metrics and save Result
         8. Update status
+        9. Store optimization report (profiling, cache stats, batch stats)
         
         Should be run as a background task.
         """
         import os
         import json
         import logging
+        import time as _time
         
         logger = logging.getLogger(__name__)
         
-        from app.schemas.experiment import ExperimentStatus
+        from app.schemas.experiment import ExperimentStatus, OptimizationConfig
         from app.services.inference.base import GenerationConfig
         from app.services.inference.hf_api_engine import HFAPIEngine
         from app.services.inference.mock_engine import MockEngine
@@ -265,6 +267,7 @@ class ExperimentService:
         from app.services.run_service import RunService
         from app.services.dataset_service import DatasetService
         from app.services.metrics_service import MetricsService
+        from app.services.optimization import PromptCache, ProfilerContext, OptimizationReport
         
         logger.info(f"[EXECUTE] Starting execution for experiment: {experiment_id}")
         print(f"[EXECUTE] Starting execution for experiment: {experiment_id}")
@@ -285,14 +288,41 @@ class ExperimentService:
             logger.info(f"[EXECUTE] ✓ Status: RUNNING")
             print(f"[EXECUTE] ✓ Status: RUNNING")
             
+            # ─── Optimization setup (Phase 8) ───
+            wall_start = _time.perf_counter()
+            opt_config = experiment_response.config.optimization or OptimizationConfig()
+            
+            cache = PromptCache(max_size=opt_config.cache_max_size) if opt_config.enable_caching else None
+            profiler = ProfilerContext(enabled=opt_config.enable_profiling)
+            opt_report = OptimizationReport()
+            
+            logger.info(
+                f"[EXECUTE] Optimization: batching={opt_config.enable_batching} "
+                f"(size={opt_config.batch_size}), caching={opt_config.enable_caching}, "
+                f"profiling={opt_config.enable_profiling}"
+            )
+            print(
+                f"[EXECUTE] Optimization: batching={opt_config.enable_batching} "
+                f"(size={opt_config.batch_size}), caching={opt_config.enable_caching}, "
+                f"profiling={opt_config.enable_profiling}"
+            )
+            
             # Step 3: Initialize inference engine
             from app.core.config import settings
+            model_name = experiment_response.config.model_name
             engine_type = settings.INFERENCE_ENGINE
+            
+            # Auto-detect mock models regardless of INFERENCE_ENGINE setting
+            if "mock" in model_name.lower():
+                engine_type = "mock"
+                logger.info(f"[EXECUTE] Auto-detected mock model '{model_name}', using MockEngine")
+                print(f"[EXECUTE] Auto-detected mock model '{model_name}', using MockEngine")
+            
             logger.info(f"[EXECUTE] Engine type: {engine_type}")
             print(f"[EXECUTE] Engine type: {engine_type}")
             
             if engine_type == "hf_api":
-                engine = HFAPIEngine(model_name=experiment_response.config.model_name)
+                engine = HFAPIEngine(model_name=model_name)
             else:
                 engine = MockEngine()
             
@@ -352,8 +382,6 @@ class ExperimentService:
                 logger.info(f"[EXECUTE] Initializing ReAct agent (max_iter={agent_max_iter}, tools={[t.name for t in agent_tools]})")
                 print(f"[EXECUTE] Initializing ReAct agent (max_iter={agent_max_iter}, tools={[t.name for t in agent_tools]})")
                 
-                # Agent needs gen_config before being created, but gen_config
-                # is built later — store params for now, create agent after gen_config
                 _agent_tools = agent_tools
                 _agent_max_iter = agent_max_iter
             
@@ -374,8 +402,6 @@ class ExperimentService:
             print(f"[EXECUTE] ✓ Loaded {len(examples)} examples")
             
             # Step 5: Prepare prompt template based on reasoning method
-            
-            # Load CoT few-shot examples if using CoT
             cot_examples = None
             if reasoning_method == "cot":
                 cot_examples_path = os.path.join(
@@ -392,15 +418,14 @@ class ExperimentService:
                     print("[EXECUTE] ⚠ CoT examples file not found, using zero-shot CoT")
             
             # Step 6: Prepare generation config
-            # CoT/Agent needs more output tokens for reasoning chains
             max_tokens = experiment_response.config.hyperparameters.max_tokens
             if reasoning_method == "cot" and max_tokens <= 256:
-                max_tokens = 512  # CoT reasoning chains need more space
+                max_tokens = 512
                 logger.info(f"[EXECUTE] ✓ Increased max_tokens to {max_tokens} for CoT")
             elif reasoning_method == "react" and max_tokens <= 512:
-                max_tokens = 1024  # Agent needs space for Thought/Action/Answer
+                max_tokens = 1024
                 logger.info(f"[EXECUTE] ✓ Increased max_tokens to {max_tokens} for ReAct")
-                print(f"[EXECUTE] ✓ Increased max_tokens to {max_tokens} for CoT")
+                print(f"[EXECUTE] ✓ Increased max_tokens to {max_tokens} for ReAct")
             
             gen_config = GenerationConfig(
                 max_tokens=max_tokens,
@@ -424,114 +449,270 @@ class ExperimentService:
             run_service = RunService(self.db)
             metrics_svc = MetricsService(self.db)
             
-            # Step 8: Run inference for each example
+            # Step 8: Run inference
             logger.info(f"[EXECUTE] Running inference for {len(examples)} examples...")
             print(f"[EXECUTE] Running inference for {len(examples)} examples...")
             
-            for i, item in enumerate(examples):
-                logger.info(f"[EXECUTE] Processing {i+1}/{len(examples)}: {item['id']}")
-                print(f"[EXECUTE] Processing {i+1}/{len(examples)}: {item['id']}")
+            # ─── Decide execution strategy ───
+            use_batching = (
+                opt_config.enable_batching
+                and reasoning_method != "react"  # Agent needs iterative tool calling
+            )
+            
+            batch_stats = {"batches_processed": 0, "total_prompts_batched": 0}
+            
+            if use_batching and not use_rag:
+                # ═══════════════════════════════════════════════
+                # BATCHED execution path (non-RAG, non-agent)
+                # ═══════════════════════════════════════════════
+                batch_size = opt_config.batch_size
+                logger.info(f"[EXECUTE] Using BATCHED execution (batch_size={batch_size})")
+                print(f"[EXECUTE] Using BATCHED execution (batch_size={batch_size})")
                 
-                # ReAct agent path
-                if reasoning_method == "react" and react_agent is not None:
-                    agent_result = react_agent.run(item["question"])
+                for batch_start in range(0, len(examples), batch_size):
+                    batch_end = min(batch_start + batch_size, len(examples))
+                    batch_items = examples[batch_start:batch_end]
                     
-                    parsed_answer = ReActPromptTemplate.parse_response(agent_result.answer)
-                    prompt = f"[Agent] {item['question']}"
-                    raw_output = agent_result.answer
+                    logger.info(f"[EXECUTE] Batch {batch_start // batch_size + 1}: examples {batch_start+1}-{batch_end}")
                     
-                    logger.info(
-                        f"[EXECUTE]   Agent: {agent_result.total_iterations} iters, "
-                        f"{agent_result.tool_calls} tool calls, "
-                        f"success={agent_result.success} ({agent_result.termination_reason})"
-                    )
+                    # Build prompts for batch
+                    prompts = []
+                    cached_results = {}  # idx -> GenerationResult
+                    uncached_indices = []
                     
-                    # Evaluate
-                    aliases = item.get("aliases", [item["answer"]])
-                    is_exact, is_substring, f1_score = metrics_svc.check_any_alias_match(
-                        parsed_answer, aliases
-                    )
+                    with profiler.section("prompt_build"):
+                        for local_idx, item in enumerate(batch_items):
+                            if reasoning_method == "cot":
+                                prompt = CoTPromptTemplate.format(item["question"], cot_examples)
+                            else:
+                                prompt = NaivePromptTemplate.format(item["question"])
+                            prompts.append(prompt)
+                            
+                            # Check cache
+                            if cache:
+                                with profiler.section("cache_lookup"):
+                                    cached = cache.get(
+                                        prompt,
+                                        experiment_response.config.model_name,
+                                        max_tokens,
+                                        gen_config.temperature,
+                                        gen_config.seed if hasattr(gen_config, 'seed') else None,
+                                    )
+                                if cached:
+                                    cached_results[local_idx] = cached
+                                    logger.info(f"[EXECUTE]   Cache HIT for example {batch_start + local_idx + 1}")
+                                else:
+                                    uncached_indices.append(local_idx)
+                            else:
+                                uncached_indices.append(local_idx)
                     
+                    # Generate for uncached prompts
+                    uncached_prompts = [prompts[i] for i in uncached_indices]
+                    batch_gen_results = []
+                    
+                    if uncached_prompts:
+                        with profiler.section("api_call"):
+                            batch_gen_results = engine.generate_batch(
+                                uncached_prompts, gen_config,
+                                max_workers=min(len(uncached_prompts), 8),
+                            )
+                        
+                        # Store in cache
+                        if cache:
+                            for uidx, gen_result in zip(uncached_indices, batch_gen_results):
+                                cache.put(
+                                    prompts[uidx],
+                                    experiment_response.config.model_name,
+                                    max_tokens,
+                                    gen_config.temperature,
+                                    gen_config.seed if hasattr(gen_config, 'seed') else None,
+                                    gen_result,
+                                )
+                    
+                    # Merge cached + generated results
+                    gen_results_iterator = iter(batch_gen_results)
+                    all_results = []
+                    for local_idx in range(len(batch_items)):
+                        if local_idx in cached_results:
+                            all_results.append(cached_results[local_idx])
+                        else:
+                            all_results.append(next(gen_results_iterator))
+                    
+                    # Process results
+                    for local_idx, (item, result) in enumerate(zip(batch_items, all_results)):
+                        global_idx = batch_start + local_idx
+                        
+                        with profiler.section("parsing"):
+                            if reasoning_method == "cot":
+                                parsed_answer = CoTPromptTemplate.parse_response(result.text)
+                            else:
+                                parsed_answer = NaivePromptTemplate.parse_response(result.text)
+                        
+                        with profiler.section("metrics"):
+                            aliases = item.get("aliases", [item["answer"]])
+                            is_exact, is_substring, f1_score = metrics_svc.check_any_alias_match(
+                                parsed_answer, aliases
+                            )
+                        
+                        await run_service.create_run(
+                            experiment_id=experiment_id,
+                            example_id=item["id"],
+                            input_text=prompts[local_idx],
+                            output_text=result.text,
+                            expected_output=item["answer"],
+                            is_correct=is_exact or is_substring,
+                            score=f1_score,
+                            tokens_input=result.tokens_input,
+                            tokens_output=result.tokens_output,
+                            latency_ms=result.latency_ms,
+                            gpu_memory_mb=result.gpu_memory_mb,
+                        )
+                    
+                    batch_stats["batches_processed"] += 1
+                    batch_stats["total_prompts_batched"] += len(batch_items)
+            else:
+                # ═══════════════════════════════════════════════
+                # SEQUENTIAL execution path (original + cache/profiling)
+                # ═══════════════════════════════════════════════
+                if use_batching:
+                    logger.info("[EXECUTE] Batching disabled for RAG/Agent (requires sequential processing)")
+                
+                for i, item in enumerate(examples):
+                    logger.info(f"[EXECUTE] Processing {i+1}/{len(examples)}: {item['id']}")
+                    print(f"[EXECUTE] Processing {i+1}/{len(examples)}: {item['id']}")
+                    
+                    # ReAct agent path
+                    if reasoning_method == "react" and react_agent is not None:
+                        with profiler.section("api_call"):
+                            agent_result = react_agent.run(item["question"])
+                        
+                        with profiler.section("parsing"):
+                            parsed_answer = ReActPromptTemplate.parse_response(agent_result.answer)
+                        prompt = f"[Agent] {item['question']}"
+                        raw_output = agent_result.answer
+                        
+                        logger.info(
+                            f"[EXECUTE]   Agent: {agent_result.total_iterations} iters, "
+                            f"{agent_result.tool_calls} tool calls, "
+                            f"success={agent_result.success} ({agent_result.termination_reason})"
+                        )
+                        
+                        with profiler.section("metrics"):
+                            aliases = item.get("aliases", [item["answer"]])
+                            is_exact, is_substring, f1_score = metrics_svc.check_any_alias_match(
+                                parsed_answer, aliases
+                            )
+                        
+                        await run_service.create_run(
+                            experiment_id=experiment_id,
+                            example_id=item["id"],
+                            input_text=prompt,
+                            output_text=raw_output,
+                            expected_output=item["answer"],
+                            is_correct=is_exact or is_substring,
+                            score=f1_score,
+                            tokens_input=agent_result.total_tokens_input,
+                            tokens_output=agent_result.total_tokens_output,
+                            latency_ms=agent_result.total_latency_ms,
+                            gpu_memory_mb=None,
+                            agent_trace=agent_result.trace_as_dict(),
+                            tool_calls=agent_result.tool_calls,
+                        )
+                        continue
+                    
+                    # RAG retrieval (if enabled)
+                    context_chunks = []
+                    retrieval_context = ""
+                    if use_rag and rag_pipeline:
+                        with profiler.section("rag_retrieval"):
+                            retrieval_result = rag_pipeline.retrieve(
+                                question=item["question"],
+                                method=rag_config.retrieval_method.value,
+                                top_k=rag_config.top_k,
+                            )
+                        context_chunks = [c.text for c in retrieval_result.chunks]
+                        retrieval_context = " ".join(context_chunks)
+                        logger.info(f"[EXECUTE]   Retrieved {len(context_chunks)} chunks ({retrieval_result.latency_ms:.0f}ms)")
+                    
+                    # Format prompt based on reasoning method and RAG
+                    with profiler.section("prompt_build"):
+                        if use_rag and context_chunks:
+                            prompt = RAGPromptTemplate.format(item["question"], context_chunks)
+                        elif reasoning_method == "cot":
+                            prompt = CoTPromptTemplate.format(item["question"], cot_examples)
+                        else:
+                            prompt = NaivePromptTemplate.format(item["question"])
+                    
+                    # Check cache before API call
+                    result = None
+                    if cache:
+                        with profiler.section("cache_lookup"):
+                            result = cache.get(
+                                prompt,
+                                experiment_response.config.model_name,
+                                max_tokens,
+                                gen_config.temperature,
+                                gen_config.seed if hasattr(gen_config, 'seed') else None,
+                            )
+                        if result:
+                            logger.info(f"[EXECUTE]   Cache HIT for example {i+1}")
+                    
+                    # Generate response (on cache miss)
+                    if result is None:
+                        with profiler.section("api_call"):
+                            result = engine.generate(prompt, gen_config)
+                        
+                        # Store in cache
+                        if cache:
+                            cache.put(
+                                prompt,
+                                experiment_response.config.model_name,
+                                max_tokens,
+                                gen_config.temperature,
+                                gen_config.seed if hasattr(gen_config, 'seed') else None,
+                                result,
+                            )
+                    
+                    # Parse response based on reasoning method
+                    with profiler.section("parsing"):
+                        if use_rag:
+                            parsed_answer = RAGPromptTemplate.parse_response(result.text)
+                        elif reasoning_method == "cot":
+                            parsed_answer = CoTPromptTemplate.parse_response(result.text)
+                        else:
+                            parsed_answer = NaivePromptTemplate.parse_response(result.text)
+                    
+                    # Compute faithfulness score (RAG only)
+                    faithfulness = None
+                    if use_rag and retrieval_context:
+                        try:
+                            with profiler.section("faithfulness"):
+                                faithfulness = faithfulness_scorer.score(parsed_answer, retrieval_context)
+                            logger.info(f"[EXECUTE]   Faithfulness: {faithfulness:.3f}")
+                        except Exception as e:
+                            logger.warning(f"[EXECUTE]   Faithfulness scoring failed: {e}")
+                    
+                    # Evaluate against aliases
+                    with profiler.section("metrics"):
+                        aliases = item.get("aliases", [item["answer"]])
+                        is_exact, is_substring, f1_score = metrics_svc.check_any_alias_match(
+                            parsed_answer, aliases
+                        )
+                    
+                    # Log run to database
                     await run_service.create_run(
                         experiment_id=experiment_id,
                         example_id=item["id"],
                         input_text=prompt,
-                        output_text=raw_output,
+                        output_text=result.text,
                         expected_output=item["answer"],
                         is_correct=is_exact or is_substring,
                         score=f1_score,
-                        tokens_input=agent_result.total_tokens_input,
-                        tokens_output=agent_result.total_tokens_output,
-                        latency_ms=agent_result.total_latency_ms,
-                        gpu_memory_mb=None,
-                        agent_trace=agent_result.trace_as_dict(),
-                        tool_calls=agent_result.tool_calls,
+                        tokens_input=result.tokens_input,
+                        tokens_output=result.tokens_output,
+                        latency_ms=result.latency_ms,
+                        gpu_memory_mb=result.gpu_memory_mb,
                     )
-                    continue
-                
-                # RAG retrieval (if enabled)
-                context_chunks = []
-                retrieval_context = ""
-                if use_rag and rag_pipeline:
-                    retrieval_result = rag_pipeline.retrieve(
-                        question=item["question"],
-                        method=rag_config.retrieval_method.value,
-                        top_k=rag_config.top_k,
-                    )
-                    context_chunks = [c.text for c in retrieval_result.chunks]
-                    retrieval_context = " ".join(context_chunks)
-                    logger.info(f"[EXECUTE]   Retrieved {len(context_chunks)} chunks ({retrieval_result.latency_ms:.0f}ms)")
-                
-                # Format prompt based on reasoning method and RAG
-                if use_rag and context_chunks:
-                    prompt = RAGPromptTemplate.format(item["question"], context_chunks)
-                elif reasoning_method == "cot":
-                    prompt = CoTPromptTemplate.format(item["question"], cot_examples)
-                else:
-                    prompt = NaivePromptTemplate.format(item["question"])
-                
-                # Generate response
-                result = engine.generate(prompt, gen_config)
-                
-                # Parse response based on reasoning method
-                if use_rag:
-                    parsed_answer = RAGPromptTemplate.parse_response(result.text)
-                elif reasoning_method == "cot":
-                    parsed_answer = CoTPromptTemplate.parse_response(result.text)
-                else:
-                    parsed_answer = NaivePromptTemplate.parse_response(result.text)
-                
-                # Compute faithfulness score (RAG only)
-                faithfulness = None
-                if use_rag and retrieval_context:
-                    try:
-                        faithfulness = faithfulness_scorer.score(parsed_answer, retrieval_context)
-                        logger.info(f"[EXECUTE]   Faithfulness: {faithfulness:.3f}")
-                    except Exception as e:
-                        logger.warning(f"[EXECUTE]   Faithfulness scoring failed: {e}")
-                
-                # Evaluate against aliases (Phase 3: multi-answer matching)
-                aliases = item.get("aliases", [item["answer"]])
-                is_exact, is_substring, f1_score = metrics_svc.check_any_alias_match(
-                    parsed_answer, aliases
-                )
-                
-                # Log run to database
-                # Store full model output (preserves CoT reasoning chain),
-                # but evaluate using parsed_answer
-                await run_service.create_run(
-                    experiment_id=experiment_id,
-                    example_id=item["id"],
-                    input_text=prompt,
-                    output_text=result.text,
-                    expected_output=item["answer"],
-                    is_correct=is_exact or is_substring,
-                    score=f1_score,
-                    tokens_input=result.tokens_input,
-                    tokens_output=result.tokens_output,
-                    latency_ms=result.latency_ms,
-                    gpu_memory_mb=result.gpu_memory_mb,
-                )
             
             # Step 8: Commit all runs
             logger.info(f"[EXECUTE] Committing {len(examples)} runs to database...")
@@ -546,6 +727,30 @@ class ExperimentService:
             logger.info(f"[EXECUTE] ✓ Metrics computed and saved")
             print(f"[EXECUTE] ✓ Metrics computed and saved")
             
+            # ─── Step 9b: Save optimization report into raw_metrics ───
+            wall_end = _time.perf_counter()
+            opt_report.total_wall_time_ms = (wall_end - wall_start) * 1000
+            opt_report.cache_stats = cache.stats() if cache else {}
+            opt_report.profiling_summary = profiler.summary()
+            opt_report.batch_stats = batch_stats
+            
+            # Update raw_metrics on the latest Result row
+            from sqlalchemy import select
+            from app.models.result import Result
+            result_row = await self.db.execute(
+                select(Result).where(Result.experiment_id == experiment_id)
+                .order_by(Result.computed_at.desc()).limit(1)
+            )
+            result_obj = result_row.scalar_one_or_none()
+            if result_obj:
+                existing_raw = result_obj.raw_metrics or {}
+                existing_raw["optimization"] = opt_report.to_dict()
+                result_obj.raw_metrics = existing_raw
+                await self.db.flush()
+                await self.db.commit()
+                logger.info(f"[EXECUTE] ✓ Optimization report saved to raw_metrics")
+                print(f"[EXECUTE] ✓ Optimization report saved to raw_metrics")
+            
             # Step 10: Cleanup
             engine.unload_model()
             
@@ -553,8 +758,8 @@ class ExperimentService:
             await self.update_status(experiment_id, ExperimentStatus.COMPLETED)
             await self.db.commit()
             
-            logger.info(f"[EXECUTE] ✅ EXECUTION COMPLETED SUCCESSFULLY")
-            print(f"[EXECUTE] ✅ EXECUTION COMPLETED SUCCESSFULLY")
+            logger.info(f"[EXECUTE] ✅ EXECUTION COMPLETED SUCCESSFULLY (wall time: {opt_report.total_wall_time_ms:.0f}ms)")
+            print(f"[EXECUTE] ✅ EXECUTION COMPLETED SUCCESSFULLY (wall time: {opt_report.total_wall_time_ms:.0f}ms)")
             
         except Exception as e:
             logger.error(f"[EXECUTE] ❌ EXECUTION FAILED: {type(e).__name__}: {str(e)}")
@@ -572,4 +777,5 @@ class ExperimentService:
             await self.db.commit()
             
             raise
+
 

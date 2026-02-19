@@ -104,6 +104,34 @@ class AgentConfig(BaseModel):
     )
 
 
+class OptimizationConfig(BaseModel):
+    """
+    Inference optimization settings (Phase 8).
+    
+    Controls batching, caching, and profiling for experiment execution.
+    """
+    enable_batching: bool = Field(
+        default=False,
+        description="Batch prompts into concurrent API calls"
+    )
+    batch_size: int = Field(
+        default=8, ge=1, le=32,
+        description="Number of prompts per batch"
+    )
+    enable_caching: bool = Field(
+        default=False,
+        description="LRU cache for identical prompts"
+    )
+    cache_max_size: int = Field(
+        default=256, ge=16, le=2048,
+        description="Maximum cache entries"
+    )
+    enable_profiling: bool = Field(
+        default=True,
+        description="Time each execution phase"
+    )
+
+
 class ExperimentConfig(BaseModel):
     """
     Complete experiment configuration.
@@ -135,6 +163,9 @@ class ExperimentConfig(BaseModel):
     
     # Agent settings (optional)
     agent: Optional[AgentConfig] = None
+    
+    # Optimization settings (Phase 8)
+    optimization: Optional[OptimizationConfig] = None
     
     # Dataset sampling
     num_samples: int = Field(

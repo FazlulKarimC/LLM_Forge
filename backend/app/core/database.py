@@ -48,12 +48,22 @@ def _get_async_database_url() -> str:
 # Create async engine
 _database_url = _get_async_database_url()
 
-engine = create_async_engine(
-    _database_url,
-    echo=settings.DEBUG,
-    pool_size=settings.DB_POOL_SIZE,
-    max_overflow=settings.DB_MAX_OVERFLOW,
-)
+# SQLite doesn't support pool_size/max_overflow — use StaticPool instead
+if _database_url.startswith("sqlite"):
+    from sqlalchemy.pool import StaticPool
+    engine = create_async_engine(
+        _database_url,
+        echo=settings.DEBUG,
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+else:
+    engine = create_async_engine(
+        _database_url,
+        echo=settings.DEBUG,
+        pool_size=settings.DB_POOL_SIZE,
+        max_overflow=settings.DB_MAX_OVERFLOW,
+    )
 
 async_session_maker = async_sessionmaker(
     engine,

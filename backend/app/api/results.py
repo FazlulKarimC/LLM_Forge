@@ -297,6 +297,53 @@ async def get_run_summaries(
     return [RunSummary.model_validate(r) for r in runs]
 
 
+@router.get("/{experiment_id}/profile")
+async def get_profile(
+    experiment_id: UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get optimization profiling data for an experiment (Phase 8).
+    
+    Returns timing breakdown, cache stats, and batch stats
+    from Result.raw_metrics["optimization"].
+    """
+    query = select(Result).where(Result.experiment_id == experiment_id)
+    result = await db.execute(query)
+    db_result = result.scalar_one_or_none()
+    
+    if not db_result:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No results found for experiment {experiment_id}"
+        )
+    
+    raw = db_result.raw_metrics or {}
+    optimization = raw.get("optimization", {})
+    
+    if not optimization:
+        return JSONResponse(
+            content={
+                "experiment_id": str(experiment_id),
+                "message": "No optimization data. Run with profiling enabled.",
+                "profiling_summary": {},
+                "cache_stats": {},
+                "batch_stats": {},
+                "total_wall_time_ms": None,
+            }
+        )
+    
+    return JSONResponse(
+        content={
+            "experiment_id": str(experiment_id),
+            "profiling_summary": optimization.get("profiling_summary", {}),
+            "cache_stats": optimization.get("cache_stats", {}),
+            "batch_stats": optimization.get("batch_stats", {}),
+            "total_wall_time_ms": optimization.get("total_wall_time_ms"),
+        }
+    )
+
+
 @router.get("/{experiment_id}/export")
 async def export_results(
     experiment_id: UUID,
