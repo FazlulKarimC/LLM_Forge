@@ -5,6 +5,7 @@ Business logic for experiment management.
 Handles CRUD operations and experiment execution orchestration.
 """
 
+import asyncio
 import json
 import logging
 import os
@@ -495,9 +496,11 @@ class ExperimentService:
                     
                     if uncached_prompts:
                         with profiler.section("api_call"):
-                            batch_gen_results = engine.generate_batch(
+                            # Run blocking sync HTTP calls in thread-pool to avoid
+                            # starving the uvicorn event loop.
+                            batch_gen_results = await asyncio.to_thread(
+                                engine.generate_batch,
                                 uncached_prompts, gen_config,
-                                max_workers=min(len(uncached_prompts), 8),
                             )
                         
                         # Store in cache
@@ -566,7 +569,11 @@ class ExperimentService:
                     # ReAct agent path
                     if reasoning_method == "react" and react_agent is not None:
                         with profiler.section("api_call"):
-                            agent_result = react_agent.run(item["question"])
+                            # react_agent.run() makes multiple sync HTTP calls;
+                            # offload to thread-pool to keep the event loop free.
+                            agent_result = await asyncio.to_thread(
+                                react_agent.run, item["question"]
+                            )
                         
                         with profiler.section("parsing"):
                             parsed_answer = ReActPromptTemplate.parse_response(agent_result.answer)
@@ -642,7 +649,11 @@ class ExperimentService:
                     # Generate response (on cache miss)
                     if result is None:
                         with profiler.section("api_call"):
-                            result = engine.generate(prompt, gen_config)
+                            # engine.generate() is sync (requests-based); run in
+                            # thread-pool so the event loop stays unblocked.
+                            result = await asyncio.to_thread(
+                                engine.generate, prompt, gen_config
+                            )
                         
                         # Store in cache
                         if cache:

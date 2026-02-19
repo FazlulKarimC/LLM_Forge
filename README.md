@@ -1,162 +1,91 @@
 # LlmForge
 
-> **A config-driven experimentation platform for systematically comparing LLM reasoning strategies, retrieval methods, and alignment techniques.**
+> A config-driven experimentation platform for systematically comparing LLM reasoning strategies — Naive Prompting, Chain-of-Thought, RAG, and ReAct Agents — with full metrics tracking and a research-grade dashboard.
+
+[![Python](https://img.shields.io/badge/Python-3.11+-3776ab?logo=python&logoColor=white)](https://python.org)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.111-009688?logo=fastapi)](https://fastapi.tiangolo.com)
+[![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=nextdotjs)](https://nextjs.org)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-NeonDB-336791?logo=postgresql&logoColor=white)](https://neon.tech)
 
 ---
 
-## Why This Project?
+## Overview
 
-Large Language Models can solve problems through multiple strategies—direct answering, step-by-step reasoning, retrieving context, or using tools. But **which approach works best, and at what cost?**
+LlmForge lets you design, run, and compare LLM experiments through a web UI or REST API. Each experiment is a combination of a **reasoning method**, **dataset**, **model**, and **hyperparameters** — all version-controlled in a database. After a run completes, the platform computes quality, performance, and cost metrics and surfaces them in an interactive dashboard.
 
-Most LLM applications choose a single strategy without rigorous comparison. This platform enables **controlled, reproducible experiments** to measure the trade-offs between accuracy, latency, cost, and reliability across different methods.
-
-### The Research Gap
-
-| Problem | What's Missing |
-|---------|----------------|
-| Reasoning methods are chosen arbitrarily | No side-by-side comparison on same dataset |
-| RAG is assumed to always help | Hallucination rates rarely measured |
-| Agents are expensive but "better" | Cost-benefit analysis missing |
-| Alignment improves helpfulness | Factuality trade-off undocumented |
-
-**LlmForge fills this gap** by providing infrastructure to run experiments, collect metrics, and generate evidence-backed findings.
+**Built as a personal learning project** to deeply understand how different LLM reasoning strategies trade off accuracy, latency, and token cost on real QA benchmarks.
 
 ---
 
-## Research Questions
+## Features
 
-This platform investigates four core hypotheses:
-
-| # | Hypothesis | Method |
-|---|------------|--------|
-| **H1** | Chain-of-Thought improves accuracy on reasoning tasks at the cost of higher latency | Compare Naive vs CoT on TriviaQA |
-| **H2** | Reranking in RAG reduces hallucinations compared to naive retrieval | Measure faithfulness across RAG variants |
-| **H3** | Tool-using agents achieve higher accuracy but at 3-5× token cost | Compare ReAct vs CoT vs RAG on multi-hop QA |
-
-### What We Measure
-
-| Category | Metrics |
-|----------|---------|
-| **Quality** | Exact Match Accuracy, F1 Score, Faithfulness (NLI-based) |
-| **Performance** | Latency (p50/p95/p99), Throughput (queries/sec) |
-| **Cost** | Input/Output tokens, GPU time, Memory usage |
-| **Reliability** | Hallucination rate, Tool failure rate, Loop detection |
+- **4 reasoning methods** — Naive, Chain-of-Thought, RAG (vector/BM25/hybrid retrieval), ReAct Agent with tools
+- **End-to-end pipeline** — create experiment → queue → inference → metrics → results, entirely from the UI
+- **Inference Providers API** — uses HuggingFace's Inference Providers (novita) — no local GPU needed
+- **Async-safe execution** — all blocking inference calls run in thread pools via `asyncio.to_thread()`, keeping the API responsive during long runs
+- **Metrics dashboard** — Accuracy, F1, Latency p50/p95, Throughput, per-run correctness grid
+- **Experiment comparison** — side-by-side metric cards across runs
+- **Inference optimization** — in-memory prompt caching (LRU), batch execution, per-section profiling
+- **ReAct agent** — iterative Thought → Action → Observation loop with Wikipedia search and Calculator tools
+- **RAG pipeline** — Qdrant vector store, configurable retrieval (dense, BM25, hybrid), faithfulness scoring
 
 ---
 
-## System Architecture
+## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                         Frontend (Next.js)                       │
-│   Dashboard │ Experiment Creation │ Results Comparison │ Traces  │
-└─────────────────────────────────────────────────────────────────┘
-                                │
-                                ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                         Backend (FastAPI)                        │
-├─────────────────┬─────────────────┬─────────────────────────────┤
-│   Experiment    │   Inference     │      Evaluation             │
-│   Service       │   Engine        │      Pipeline               │
-│                 │                 │                             │
-│ • CRUD ops      │ • HF API Engine │ • Accuracy metrics           │
-│ • Config mgmt   │ • Mock Engine   │ • Faithfulness (NLI)         │
-│ • Run logging   │ • Prompt strategies   │ • Latency percentiles │
-└────────┬────────┴────────┬────────┴────────┬────────────────────┘
-         │                 │                 │
-         ▼                 ▼                 ▼
-┌─────────────┐    ┌─────────────┐    ┌─────────────┐
-│ PostgreSQL  │    │  ChromaDB   │    │  HuggingFace│
-│ (NeonDB)    │    │ (Embedded) │    │  Inference  │
-│ Experiments │    │ RAG Chunks  │    │  API        │
-└─────────────┘    └─────────────┘    └─────────────┘
+┌──────────────────────────────────────────────────────────┐
+│                    Next.js 16 Frontend                    │
+│  Dashboard │ New Experiment │ Results │ Comparison        │
+└───────────────────────────┬──────────────────────────────┘
+                            │ HTTP
+┌───────────────────────────▼──────────────────────────────┐
+│                    FastAPI Backend                        │
+│                                                           │
+│  ┌─────────────┐  ┌──────────────┐  ┌─────────────────┐  │
+│  │  Experiment │  │  Inference   │  │   Evaluation    │  │
+│  │  Service    │  │  Engine      │  │   Pipeline      │  │
+│  │             │  │              │  │                 │  │
+│  │ CRUD + exec │  │ HFAPIEngine  │  │ Accuracy / F1   │  │
+│  │ BackgroundT │  │ MockEngine   │  │ Faithfulness    │  │
+│  │ asyncio.t_t │  │ Prompts      │  │ Latency p50/p95 │  │
+│  └──────┬──────┘  └──────┬───────┘  └────────┬────────┘  │
+└─────────┼────────────────┼────────────────────┼──────────┘
+          │                │                    │
+          ▼                ▼                    ▼
+   ┌────────────┐   ┌─────────────┐   ┌──────────────────┐
+   │ PostgreSQL │   │   Qdrant    │   │  HuggingFace     │
+   │ (NeonDB)   │   │ (Vector DB) │   │  Inference API   │
+   │ Experiments│   │ RAG Chunks  │   │  (novita)        │
+   │ Runs       │   └─────────────┘   └──────────────────┘
+   │ Results    │
+   └────────────┘
 ```
 
-### Layer Responsibilities
+---
 
-| Layer | Purpose |
-|-------|---------|
-| **Frontend** | Create experiments, visualize results, compare methods |
-| **API** | REST endpoints for experiments, runs, metrics |
-| **Services** | Business logic: experiment execution, inference, evaluation |
-| **Inference** | Model loading, prompt formatting, generation |
-| **RAG** | Document ingestion, embedding, retrieval (dense + BM25) |
-| **Agent** | ReAct loop, tool execution, trace logging |
-| **Evaluation** | Accuracy, faithfulness, latency computation |
+## Reasoning Methods
+
+| Method | Description | Best For |
+|--------|-------------|----------|
+| **Naive** | Direct `Question → Answer` prompting | Factual recall baselines |
+| **Chain-of-Thought** | Few-shot examples + `"Let's think step by step"` | Multi-step reasoning, math |
+| **RAG** | Retrieve context chunks → inject into prompt | Knowledge-grounded QA |
+| **ReAct Agent** | Thought → Action → Observation loop with tools | Multi-hop, tool-requiring tasks |
 
 ---
 
-## Methodology
+## Tech Stack
 
-### Models
-
-| Environment | Model | Parameters | Use Case |
-|-------------|-------|------------|----------|
-| Local / HF Spaces | Phi-2 | 2.7B | Development, all phases (via HF Inference API) |
-
-### Baselines
-
-| Strategy | Description |
-|----------|-------------|
-| **Naive** | Direct prompting: `Question: {q}\nAnswer:` |
-| **Chain-of-Thought** | Add "Let's think step by step" trigger |
-| **Naive RAG** | Top-5 vector retrieval → concatenate → generate |
-| **Hybrid RAG** | Dense + BM25 retrieval → merge top-5 |
-| **Reranked RAG** | Hybrid → cross-encoder rerank → top-5 |
-| **ReAct Agent** | Thought/Action/Observation loop with tools |
-
-### Datasets
-
-| Dataset | Task | Size | Source |
-|---------|------|------|--------|
-| TriviaQA | Factual QA | 100 samples | Curated local JSON |
-| HotpotQA | Multi-hop reasoning | 50 samples | Curated local JSON |
-| GSM8K | Math word problems | 50 samples | Curated local JSON |
-| Wikipedia subset | RAG knowledge base | ~500 articles | Curated local JSON |
-
-### Why These Choices?
-
-- **Phi-2**: Fits in 4GB VRAM, sufficient for methodology validation
-- **TriviaQA**: Standard factual QA benchmark with clear ground truth
-- **Curated Wikipedia**: Relevant articles aligned with TriviaQA topics for effective RAG
-- **Cross-encoder reranking**: Industry standard for RAG quality improvement
-- **ChromaDB**: Embedded vector DB, no Docker or external service needed
-
----
-
-## Expected Results
-
-> ⚠️ **Note**: These are projected outcomes. Actual results will be documented as experiments complete.
-
-### Hypothesis 1: CoT vs Naive
-
-| Method | Accuracy | Latency p50 | Tokens |
-|--------|----------|-------------|--------|
-| Naive | ~42% | ~280ms | ~5K |
-| CoT | ~58% | ~450ms | ~13K |
-
-**Expected Finding**: CoT improves accuracy by ~16% on reasoning tasks, with 60% latency increase.
-
-### Hypothesis 2: RAG Variants
-
-| Method | Accuracy | Faithfulness | Hallucination Rate |
-|--------|----------|--------------|-------------------|
-| No RAG | ~45% | N/A | ~35% |
-| Naive RAG | ~52% | 0.65 | ~28% |
-| Hybrid RAG | ~55% | 0.72 | ~22% |
-| Reranked RAG | ~58% | 0.87 | ~12% |
-
-**Expected Finding**: Reranking reduces hallucinations by ~18% compared to naive retrieval.
-
-### Hypothesis 3: Agent Cost-Benefit
-
-| Method | Accuracy | Tokens | Cost Multiplier |
-|--------|----------|--------|-----------------|
-| CoT | ~58% | ~13K | 1× |
-| RAG | ~55% | ~18K | 1.4× |
-| ReAct Agent | ~65% | ~52K | 4× |
-
-**Expected Finding**: Agents achieve +7-12% accuracy but at 4× token cost.
+| Layer | Technology |
+|-------|------------|
+| **Backend** | FastAPI, SQLAlchemy (async), Alembic, Pydantic v2 |
+| **Frontend** | Next.js 16, TypeScript, React 19, shadcn/ui, TanStack Query |
+| **Database** | PostgreSQL via NeonDB (serverless free tier) |
+| **Vector DB** | Qdrant (for RAG document retrieval) |
+| **Inference** | HuggingFace Inference Providers API (novita provider) |
+| **Embeddings** | sentence-transformers (CPU, no GPU required) |
+| **Task Queue** | FastAPI BackgroundTasks + asyncio thread pool |
 
 ---
 
@@ -166,31 +95,39 @@ This platform investigates four core hypotheses:
 
 - Python 3.11+
 - Node.js 18+
-- PostgreSQL (NeonDB free tier recommended)
+- A [NeonDB](https://neon.tech) PostgreSQL connection string (free tier)
+- A [HuggingFace](https://huggingface.co) API token with Inference API access
 
-### 1. Clone & Setup Backend
+### 1. Backend
 
 ```bash
 git clone https://github.com/yourusername/LlmForge.git
 cd LlmForge/backend
 
-# Create virtual environment
 python -m venv venv
-.\venv\Scripts\activate  # Windows
-# source venv/bin/activate  # Linux/Mac
+.\venv\Scripts\activate        # Windows
+# source venv/bin/activate     # Linux / macOS
 
-# Install dependencies
 pip install -r requirements.txt
-
-# Configure environment
-cp .env.example .env
-# Edit .env with your NeonDB connection string
-
-# Run backend
-uvicorn app.main:app --reload
 ```
 
-### 2. Setup Frontend
+Create a `.env` file:
+
+```env
+DATABASE_URL=postgresql+asyncpg://<user>:<pass>@<host>/neondb
+HF_TOKEN=hf_...
+INFERENCE_ENGINE=hf_api       # or "mock" for offline testing
+HF_PROVIDER=novita            # HF Inference Provider (default: novita)
+```
+
+Run migrations and start:
+
+```bash
+alembic upgrade head
+uvicorn app.main:app --reload --port 8000
+```
+
+### 2. Frontend
 
 ```bash
 cd ../frontend
@@ -198,98 +135,56 @@ npm install
 npm run dev
 ```
 
-### 3. Verify Installation
-
-- Backend API: http://localhost:8000/docs
-- Frontend: http://localhost:3000
+Open [http://localhost:3000](http://localhost:3000)
 
 ---
 
-## Running Experiments
+## Running an Experiment
 
-### Create Experiment (API)
+### Via the UI
+
+1. Go to **Experiments → New Experiment**
+2. Pick a model, reasoning method, and dataset
+3. Click **Create & Run** — the experiment runs in the background
+4. Results appear on the experiment detail page with live status polling
+
+### Via REST API
 
 ```bash
+# Create
 curl -X POST http://localhost:8000/api/v1/experiments \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "naive_vs_cot_trivia",
-    "method": "chain_of_thought",
-    "model": "microsoft/phi-2",
-    "dataset": "trivia_qa",
-    "num_samples": 100,
-    "seed": 42
+    "name": "cot-vs-naive-trivia",
+    "config": {
+      "model_name": "meta-llama/Llama-3.2-1B-Instruct",
+      "reasoning_method": "cot",
+      "dataset_name": "trivia_qa",
+      "num_samples": 10,
+      "hyperparameters": { "temperature": 0.1, "max_tokens": 512 }
+    }
   }'
-```
 
-### Run Experiment
-
-```bash
+# Run
 curl -X POST http://localhost:8000/api/v1/experiments/{id}/run
+
+# Results
+curl http://localhost:8000/api/v1/results/{id}/metrics
 ```
 
-### View Results
-
-Navigate to `http://localhost:3000/experiments/{id}` to see:
-- Accuracy, latency, token metrics
-- Per-example breakdown (correct/incorrect)
-- Comparison with other experiments
-
 ---
 
-## Design Decisions & Trade-offs
+## Datasets
 
-| Decision | Rationale | Trade-off |
-|----------|-----------|-----------|
-| **Config-driven experiments** | Reproducibility, version control | More setup for simple tests |
-| **Phi-2 via HF Inference API** | Free, no local GPU needed | Rate-limited, higher latency |
-| **PostgreSQL over SQLite** | Production-ready, NeonDB free tier | More complex setup |
-| **ChromaDB over Qdrant** | Embedded (no Docker), zero-cost | Less feature-rich than Qdrant |
-| **HF Spaces over Railway** | Free tier, ML ecosystem | Cold starts after 48h idle |
-
----
-
-## Limitations
-
-### Current
-
-- **Single model at a time**: No parallel model comparison
-- **HF Inference API rate limits**: Free tier has throttling
-- **HF Spaces cold starts**: Backend sleeps after 48h inactivity (30-60s wake-up)
-- **No local GPU needed**: All inference via HF API
-
-### Methodological
-
-- **Dataset size**: 100-500 samples may not capture full distribution
-- **Single seed**: Results may vary with different random seeds
-- **English only**: No multilingual evaluation
-- **Simplified faithfulness**: NLI-based metric, not human judgment
-
----
-
-## Roadmap
-
-### Phase 1-3: Foundation (✅ Complete)
-- [x] Project scaffold
-- [x] Database CRUD operations
-- [x] Basic inference with HF Inference API
-- [x] Evaluation metrics pipeline
-
-### Phase 4-6: Research Core
-- [ ] Chain-of-Thought implementation
-- [ ] RAG pipeline with ChromaDB (3 variants)
-- [ ] ReAct agent with tools
-
-### Phase 7: DPO Alignment — Skipped
-- Not viable on free tier (requires GPU for training/serving)
-
-### Phase 8: Optimization
-- [ ] Inference batching and caching
-
-### Phase 9: Polish
-- [ ] Comprehensive README with results
-- [ ] Demo video/GIF
-- [ ] Deployment (Vercel + HuggingFace Spaces)
+| Dataset | Task | Samples |
+|---------|------|---------|
+| `sample` | Mixed QA (smoke test) | 5 |
+| `trivia_qa` | Open-domain factual QA | 100 |
+| `commonsense_qa` | Everyday reasoning | 30 |
+| `multi_hop` | Multi-step reasoning | 40 |
+| `math_reasoning` | GSM8K-style word problems | 40 |
+| `react_bench` | Tool-use evaluation | 20 |
+| `knowledge_base` | RAG-focused grounded QA | 50 |
 
 ---
 
@@ -297,75 +192,70 @@ Navigate to `http://localhost:3000/experiments/{id}` to see:
 
 ```
 LlmForge/
-├── backend/                 # FastAPI application
+├── backend/
 │   ├── app/
-│   │   ├── api/            # REST endpoints
-│   │   ├── core/           # Config, database
-│   │   ├── models/         # SQLAlchemy ORM
-│   │   ├── schemas/        # Pydantic validation
-│   │   └── services/       # Business logic
-│   │       ├── inference/  # LLM engines
-│   │       ├── rag/        # Retrieval pipeline
-│   │       ├── agent/      # ReAct implementation
-│   │       └── evaluation/ # Metrics computation
-│   └── tests/
-├── frontend/                # Next.js 15 dashboard
+│   │   ├── api/            # REST endpoints (experiments, results, health)
+│   │   ├── core/           # Config, database, Redis
+│   │   ├── models/         # SQLAlchemy ORM (Experiment, Result, Run)
+│   │   ├── schemas/        # Pydantic v2 schemas
+│   │   └── services/
+│   │       ├── inference/  # HFAPIEngine, MockEngine, prompt templates
+│   │       ├── rag_service.py      # RAG pipeline + faithfulness scorer
+│   │       ├── agent_service.py    # ReAct agent + tools
+│   │       ├── experiment_service.py  # Execution orchestrator
+│   │       ├── metrics_service.py
+│   │       ├── dataset_service.py
+│   │       └── optimization.py     # Cache, profiler, batch runner
+│   ├── configs/            # cot_examples.json, dataset JSONs
+│   └── alembic/            # DB migrations
+├── frontend/
 │   └── src/
-│       ├── app/            # Page routes
-│       ├── components/     # UI components (shadcn/ui)
-│       └── lib/            # API client, utils
-├── configs/                 # Experiment configurations
-├── data/                    # Datasets, embeddings
-├── notebooks/               # Colab notebooks (DPO, eval)
-└── docs/
-    ├── PROJECT_BLUEPRINT.md
-    ├── PHASES.md
-    └── DESIGN_SYSTEM.md
+│       ├── app/            # Next.js pages (dashboard, experiments, compare)
+│       ├── components/     # Shared UI components
+│       └── lib/            # API client (api.ts), type definitions
+├── PHASES.md               # Development history by phase
+├── DESIGN_SYSTEM.md        # Frontend design guidelines
+└── README.md
 ```
 
 ---
 
-## Tech Stack
+## Metrics Collected
 
-| Layer | Technology | Why |
-|-------|------------|-----|
-| **Backend** | FastAPI | Async, auto-docs, ML ecosystem |
-| **Frontend** | Next.js 15 + shadcn/ui | SSR, great DX, elegant UI |
-| **Database** | PostgreSQL (NeonDB) | Serverless, free tier |
-| **Vector DB** | ChromaDB (embedded) | No Docker, zero-cost |
-| **Inference** | HuggingFace Inference API | Free tier, no GPU needed |
-| **Embeddings** | sentence-transformers | Fast, reliable, runs on CPU |
-| **Hosting** | Vercel + HF Spaces | Fully free deployment |
+| Category | Metrics |
+|----------|---------|
+| **Quality** | Exact Match, Substring Match, Token-level F1 (with alias support) |
+| **Performance** | Latency p50 / p95, Throughput (queries/sec) |
+| **Cost** | Total input tokens, output tokens, per-run token breakdown |
+| **RAG** | Faithfulness score (NLI-based answer grounding) |
+| **Agent** | Tool call count, iteration count, termination reason |
+
+---
+
+## Development Notes
+
+- **`asyncio.to_thread()`** — HuggingFace's `InferenceClient` is synchronous (`requests`-based). Calling it directly in an `async` FastAPI handler blocks the event loop. All inference calls are wrapped in `asyncio.to_thread()` to keep the server responsive.
+- **HF Inference Providers** — The old serverless endpoint (`api-inference.huggingface.co/models/`) is deprecated (returns 410). The platform uses the new `InferenceClient(provider="novita")` API. Provider is configurable via `HF_PROVIDER` env var.
+- **Mock engine** — Set `INFERENCE_ENGINE=mock` in `.env` to run the full pipeline offline without HF API calls. Useful for frontend development and CI.
 
 ---
 
 ## Documentation
 
-| Document | Purpose |
-|----------|---------|
-| [PROJECT_BLUEPRINT.md](./PROJECT_BLUEPRINT.md) | Full technical specification |
-| [PHASES.md](./PHASES.md) | Development phases with tasks |
-| [DESIGN_SYSTEM.md](./DESIGN_SYSTEM.md) | Frontend styling guide |
-| API Docs | http://localhost:8000/docs |
-
----
-
-## Contributing
-
-This is a personal research project, but suggestions are welcome:
-
-1. Open an issue for bugs or feature ideas
-2. Fork and submit PRs for improvements
-3. Star the repo if you find it useful
+| File | Description |
+|------|-------------|
+| [PHASES.md](./PHASES.md) | What was built in each development phase |
+| [DESIGN_SYSTEM.md](./DESIGN_SYSTEM.md) | Frontend color palette, typography, component patterns |
+| `http://localhost:8000/docs` | Auto-generated FastAPI Swagger docs |
 
 ---
 
 ## License
 
-MIT License - See [LICENSE](./LICENSE) for details.
+MIT — See [LICENSE](./LICENSE)
 
 ---
 
 <p align="center">
-  <i>Config-driven experimentation. Reproducibility by default.</i>
+  <i>Config-driven experiments. Reproducible results. No GPU required.</i>
 </p>

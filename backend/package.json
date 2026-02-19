@@ -1,0 +1,7 @@
+{
+    "name": "llmforge-backend",
+    "private": true,
+    "scripts": {
+        "dev": "set PYTHONIOENCODING=utf-8 && venv\\Scripts\\uvicorn.exe app.main:app --reload --port 8000"
+    }
+}

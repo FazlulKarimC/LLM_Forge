@@ -250,7 +250,7 @@ function DifferencesTable({ diffs, nameA, nameB }: {
                                         {d.a_correct ? "✓" : "✗"}
                                     </span>
                                     {expanded === d.example_id && d.a_output && (
-                                        <p className="mt-2 text-xs text-(--text-body) text-left max-w-xs break-words bg-(--bg-page) rounded p-2">{d.a_output}</p>
+                                        <p className="mt-2 text-xs text-(--text-body) text-left max-w-xs wrap-break-word bg-(--bg-page) rounded p-2">{d.a_output}</p>
                                     )}
                                 </td>
                                 <td className="px-4 py-3 text-center">
@@ -261,7 +261,7 @@ function DifferencesTable({ diffs, nameA, nameB }: {
                                         {d.b_correct ? "✓" : "✗"}
                                     </span>
                                     {expanded === d.example_id && d.b_output && (
-                                        <p className="mt-2 text-xs text-(--text-body) text-left max-w-xs break-words bg-(--bg-page) rounded p-2">{d.b_output}</p>
+                                        <p className="mt-2 text-xs text-(--text-body) text-left max-w-xs wrap-break-word bg-(--bg-page) rounded p-2">{d.b_output}</p>
                                     )}
                                 </td>
                                 <td className="px-4 py-3 text-sm text-(--text-muted) max-w-xs truncate">{d.expected}</td>
