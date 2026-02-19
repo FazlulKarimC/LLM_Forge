@@ -17,7 +17,7 @@ import os
 from typing import Optional, List
 
 from huggingface_hub import InferenceClient
-from tenacity import retry, stop_after_attempt, wait_exponential
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_not_exception_type
 
 from app.services.inference.base import (
     InferenceEngine,
@@ -38,8 +38,6 @@ NOVITA_SUPPORTED_MODELS = {
     "meta-llama/Llama-3.2-1B-Instruct",
     "meta-llama/Llama-3.1-8B-Instruct",
     "meta-llama/Llama-3.2-3B-Instruct",
-    "Qwen/Qwen2.5-7B-Instruct",
-    "Qwen/Qwen2.5-3B-Instruct",
 }
 
 
@@ -93,7 +91,8 @@ class HFAPIEngine(InferenceEngine):
     
     @retry(
         stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10)
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_not_exception_type(ValueError)
     )
     def generate(
         self,
@@ -144,6 +143,11 @@ class HFAPIEngine(InferenceEngine):
                 gpu_memory_mb=None,  # N/A for API
             )
 
+        except ValueError as e:
+            # Re-raise ValueError immediately without retrying
+            # so we bubble up "Model X is not supported" properly.
+            logger.error(f"HF API rejected model {self._model_name} on provider {self._provider}: {e}")
+            raise
         except Exception as e:
             latency_ms = (time.perf_counter() - start_time) * 1000
             logger.error(f"HF API inference failed (provider={self._provider}, model={self._model_name}): {e}")
@@ -184,7 +188,13 @@ class HFAPIEngine(InferenceEngine):
             }
             for future in as_completed(future_to_idx):
                 idx = future_to_idx[future]
-                results[idx] = future.result()
+                try:
+                    results[idx] = future.result()
+                except ValueError as e:
+                    # Cancel pending futures and re-raise immediately
+                    for f in future_to_idx:
+                        f.cancel()
+                    raise
         
         return results
     

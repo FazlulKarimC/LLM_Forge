@@ -12,13 +12,16 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import Link from "next/link";
 import { listExperiments, deleteExperiment, runExperiment, Experiment, ListExperimentsParams } from "@/lib/api";
+import { Eye, Play, Trash2, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 
 export default function ExperimentsPage() {
     const queryClient = useQueryClient();
     const [statusFilter, setStatusFilter] = useState("");
     const [methodFilter, setMethodFilter] = useState("");
-    // Track in-flight delete IDs so only the clicked row's button is disabled
+    // Track in-flight action IDs so only the clicked row's button is disabled
     const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
+    const [runningIds, setRunningIds] = useState<Set<string>>(new Set());
 
     const params: ListExperimentsParams = { limit: 50 };
     if (statusFilter) params.status = statusFilter;
@@ -37,19 +40,27 @@ export default function ExperimentsPage() {
         onSuccess: (_data, id) => {
             setDeletingIds(prev => { const s = new Set(prev); s.delete(id); return s; });
             queryClient.invalidateQueries({ queryKey: ["experiments"] });
+            toast.success("Experiment deleted");
         },
-        onError: (_err, id) => {
+        onError: (err, id) => {
             setDeletingIds(prev => { const s = new Set(prev); s.delete(id); return s; });
+            toast.error(`Failed to delete: ${err.message}`);
         },
     });
 
     const runMutation = useMutation({
-        mutationFn: runExperiment,
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ["experiments"] });
+        mutationFn: (id: string) => {
+            setRunningIds(prev => new Set(prev).add(id));
+            return runExperiment(id);
         },
-        onError: (err: Error) => {
-            alert(`Failed to run experiment: ${err.message}`);
+        onSuccess: (_data, id) => {
+            setRunningIds(prev => { const s = new Set(prev); s.delete(id); return s; });
+            queryClient.invalidateQueries({ queryKey: ["experiments"] });
+            toast.success("Experiment queued for execution");
+        },
+        onError: (err: Error, id) => {
+            setRunningIds(prev => { const s = new Set(prev); s.delete(id); return s; });
+            toast.error(`Failed to run experiment: ${err.message}`);
         },
     });
 
@@ -185,24 +196,35 @@ export default function ExperimentsPage() {
                                         <td className="px-6 py-4 text-sm text-(--text-muted)">{formatDate(exp.created_at)}</td>
                                         <td className="px-6 py-4">
                                             <div className="flex gap-2 items-center">
-                                                <Link href={`/experiments/${exp.id}`} className="text-primary hover:underline text-sm">
-                                                    View
+                                                <Link
+                                                    href={`/experiments/${exp.id}`}
+                                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium border border-border bg-(--bg-card) text-(--text-body) rounded-md hover:bg-(--bg-page) transition-colors shadow-xs"
+                                                >
+                                                    <Eye className="size-4" /> View
                                                 </Link>
                                                 {(exp.status === "pending" || exp.status === "failed") && (
                                                     <button
                                                         onClick={() => handleRun(exp.id)}
-                                                        disabled={runMutation.isPending}
-                                                        className="text-sm text-green-700 hover:underline disabled:opacity-50 cursor-pointer"
+                                                        disabled={runningIds.has(exp.id)}
+                                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium border border-green-200 bg-green-50 text-green-700 rounded-md hover:bg-green-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer shadow-xs"
                                                     >
-                                                        ▶ Run
+                                                        {runningIds.has(exp.id) ? (
+                                                            <><Loader2 className="size-4 animate-spin" /> Starting...</>
+                                                        ) : (
+                                                            <><Play className="size-4" /> Run</>
+                                                        )}
                                                     </button>
                                                 )}
                                                 <button
                                                     onClick={() => handleDelete(exp.id, exp.name)}
-                                                    className="text-(--error) hover:underline text-sm cursor-pointer"
+                                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium border border-red-200 bg-red-50 text-red-700 rounded-md hover:bg-red-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer shadow-xs"
                                                     disabled={deletingIds.has(exp.id)}
                                                 >
-                                                    {deletingIds.has(exp.id) ? "Deleting..." : "Delete"}
+                                                    {deletingIds.has(exp.id) ? (
+                                                        <><Loader2 className="size-4 animate-spin" /> Deleting...</>
+                                                    ) : (
+                                                        <><Trash2 className="size-4" /> Delete</>
+                                                    )}
                                                 </button>
                                             </div>
                                         </td>

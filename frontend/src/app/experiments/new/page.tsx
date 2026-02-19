@@ -23,7 +23,7 @@ export default function NewExperimentPage() {
     const { data: modelsData } = useQuery({
         queryKey: ["available-models"],
         queryFn: getAvailableModels,
-        staleTime: 1000 * 60 * 60, // 1 hour — avoids constant refetches but respects model list changes
+        staleTime: 1000 * 60 * 5, // 5 minutes (reduced from 1 hour to ensure fresh model lists)
     });
     const availableModels = modelsData?.models ?? [
         { value: "meta-llama/Llama-3.2-1B-Instruct", label: "Llama 3.2 (1B)", description: "Fast, efficient — default" },

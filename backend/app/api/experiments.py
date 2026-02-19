@@ -121,19 +121,14 @@ async def list_available_models():
                 "description": "Fast, efficient — default",
             },
             {
-                "value": "Qwen/Qwen2.5-3B-Instruct",
-                "label": "Qwen 2.5 (3B)",
-                "description": "Strong multilingual",
+                "value": "meta-llama/Llama-3.2-3B-Instruct",
+                "label": "Llama 3.2 (3B)",
+                "description": "Stronger small model",
             },
             {
-                "value": "google/gemma-2-2b-it",
-                "label": "Gemma 2 (2B)",
-                "description": "Google's compact model",
-            },
-            {
-                "value": "microsoft/Phi-3.5-mini-instruct",
-                "label": "Phi-3.5 Mini (3.8B)",
-                "description": "Strong reasoning",
+                "value": "meta-llama/Llama-3.1-8B-Instruct",
+                "label": "Llama 3.1 (8B)",
+                "description": "High capability",
             },
         ]
     }
