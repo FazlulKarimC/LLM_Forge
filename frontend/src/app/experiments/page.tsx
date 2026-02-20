@@ -11,17 +11,20 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { listExperiments, deleteExperiment, runExperiment, Experiment, ListExperimentsParams } from "@/lib/api";
-import { Eye, Play, Trash2, Loader2 } from "lucide-react";
+import { Eye, Play, Trash2, Loader2, AlertTriangle, X } from "lucide-react";
 import { toast } from "sonner";
 
 export default function ExperimentsPage() {
     const queryClient = useQueryClient();
+    const router = useRouter();
     const [statusFilter, setStatusFilter] = useState("");
     const [methodFilter, setMethodFilter] = useState("");
     // Track in-flight action IDs so only the clicked row's button is disabled
     const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
     const [runningIds, setRunningIds] = useState<Set<string>>(new Set());
+    const [experimentToDelete, setExperimentToDelete] = useState<{ id: string, name: string } | null>(null);
 
     const params: ListExperimentsParams = { limit: 50 };
     if (statusFilter) params.status = statusFilter;
@@ -41,10 +44,12 @@ export default function ExperimentsPage() {
             setDeletingIds(prev => { const s = new Set(prev); s.delete(id); return s; });
             queryClient.invalidateQueries({ queryKey: ["experiments"] });
             toast.success("Experiment deleted");
+            setExperimentToDelete(null);
         },
         onError: (err, id) => {
             setDeletingIds(prev => { const s = new Set(prev); s.delete(id); return s; });
             toast.error(`Failed to delete: ${err.message}`);
+            setExperimentToDelete(null);
         },
     });
 
@@ -67,9 +72,13 @@ export default function ExperimentsPage() {
     const experiments = data?.experiments ?? [];
     const total = data?.total ?? 0;
 
-    function handleDelete(id: string, name: string) {
-        if (!confirm(`Delete experiment "${name}"?`)) return;
-        deleteMutation.mutate(id);
+    function confirmDelete() {
+        if (!experimentToDelete) return;
+        deleteMutation.mutate(experimentToDelete.id);
+    }
+
+    function handleDeleteClick(id: string, name: string) {
+        setExperimentToDelete({ id, name });
     }
 
     function handleRun(id: string) {
@@ -177,11 +186,15 @@ export default function ExperimentsPage() {
                                 </tr>
                             ) : (
                                 experiments.map((exp) => (
-                                    <tr key={exp.id} className="hover:bg-(--bg-page)">
+                                    <tr
+                                        key={exp.id}
+                                        className="hover:bg-(--bg-page) cursor-pointer"
+                                        onClick={() => router.push(`/experiments/${exp.id}`)}
+                                    >
                                         <td className="px-6 py-4">
-                                            <Link href={`/experiments/${exp.id}`} className="text-primary hover:underline font-medium">
+                                            <span className="text-primary font-medium">
                                                 {exp.name}
-                                            </Link>
+                                            </span>
                                             {exp.description && (
                                                 <p className="text-sm text-(--text-muted) truncate max-w-xs">{exp.description}</p>
                                             )}
@@ -195,35 +208,39 @@ export default function ExperimentsPage() {
                                         </td>
                                         <td className="px-6 py-4 text-sm text-(--text-muted)">{formatDate(exp.created_at)}</td>
                                         <td className="px-6 py-4">
-                                            <div className="flex gap-2 items-center">
+                                            <div className="flex gap-2 items-center" onClick={(e) => e.stopPropagation()}>
                                                 <Link
                                                     href={`/experiments/${exp.id}`}
                                                     className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium border border-border bg-(--bg-card) text-(--text-body) rounded-md hover:bg-(--bg-page) transition-colors shadow-xs"
                                                 >
                                                     <Eye className="size-4" /> View
                                                 </Link>
-                                                {(exp.status === "pending" || exp.status === "failed") && (
-                                                    <button
-                                                        onClick={() => handleRun(exp.id)}
-                                                        disabled={runningIds.has(exp.id)}
-                                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium border border-green-200 bg-green-50 text-green-700 rounded-md hover:bg-green-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer shadow-xs"
-                                                    >
-                                                        {runningIds.has(exp.id) ? (
-                                                            <><Loader2 className="size-4 animate-spin" /> Starting...</>
-                                                        ) : (
-                                                            <><Play className="size-4" /> Run</>
-                                                        )}
-                                                    </button>
-                                                )}
+
                                                 <button
-                                                    onClick={() => handleDelete(exp.id, exp.name)}
-                                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium border border-red-200 bg-red-50 text-red-700 rounded-md hover:bg-red-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer shadow-xs"
+                                                    onClick={(e) => { e.stopPropagation(); handleRun(exp.id); }}
+                                                    disabled={runningIds.has(exp.id) || exp.status === "running" || exp.status === "queued"}
+                                                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium border rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer shadow-xs ${exp.status === "completed"
+                                                        ? "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
+                                                        : "border-green-200 bg-green-50 text-green-700 hover:bg-green-100"
+                                                        }`}
+                                                >
+                                                    {runningIds.has(exp.id) ? (
+                                                        <><Loader2 className="size-4 animate-spin" /> Starting...</>
+                                                    ) : (
+                                                        <><Play className="size-4" /> Run</>
+                                                    )}
+                                                </button>
+
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); handleDeleteClick(exp.id, exp.name); }}
+                                                    className="inline-flex items-center justify-center p-1.5 text-sm font-medium border border-red-200 bg-red-50 text-red-700 rounded-md hover:bg-red-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer shadow-xs"
                                                     disabled={deletingIds.has(exp.id)}
+                                                    title="Delete Experiment"
                                                 >
                                                     {deletingIds.has(exp.id) ? (
-                                                        <><Loader2 className="size-4 animate-spin" /> Deleting...</>
+                                                        <Loader2 className="size-4 animate-spin" />
                                                     ) : (
-                                                        <><Trash2 className="size-4" /> Delete</>
+                                                        <Trash2 className="size-4" />
                                                     )}
                                                 </button>
                                             </div>
@@ -235,7 +252,59 @@ export default function ExperimentsPage() {
                     </table>
                 </div>
             </main>
-        </div>
+
+            {/* Custom Delete Confirmation Modal */}
+            {
+                experimentToDelete && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#37322F]/40 backdrop-blur-sm animate-in fade-in">
+                        <div className="bg-(--bg-card) p-6 rounded-xl shadow-lg border border-border max-w-md w-full mx-4 animate-in zoom-in-95 relative" role="dialog" aria-modal="true">
+
+                            <button
+                                onClick={() => setExperimentToDelete(null)}
+                                className="absolute top-4 right-4 text-(--text-muted) hover:text-(--text-heading) transition-colors cursor-pointer"
+                                aria-label="Close"
+                            >
+                                <X className="size-5" />
+                            </button>
+
+                            <div className="flex gap-4 items-start mb-6">
+                                <div className="bg-red-100 p-2.5 rounded-full shrink-0 mt-1">
+                                    <AlertTriangle className="size-6 text-red-600" />
+                                </div>
+                                <div>
+                                    <h3 className="text-lg font-serif text-(--text-heading) mb-1">Delete Experiment</h3>
+                                    <p className="text-sm text-(--text-body)">
+                                        Are you sure you want to delete <span className="font-medium text-(--text-heading)">"{experimentToDelete.name}"</span>?
+                                        This action cannot be undone. All results and metrics will be permanently lost.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="flex justify-end gap-3">
+                                <button
+                                    onClick={() => setExperimentToDelete(null)}
+                                    disabled={deleteMutation.isPending}
+                                    className="px-5 py-2 text-sm font-medium text-(--text-body) border border-border rounded-full hover:bg-(--bg-page) transition-colors cursor-pointer"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={confirmDelete}
+                                    disabled={deleteMutation.isPending}
+                                    className="inline-flex items-center justify-center gap-2 px-5 py-2 text-sm font-medium text-white bg-red-600 border border-red-700 rounded-full hover:bg-red-700 transition-colors disabled:opacity-50 cursor-pointer"
+                                >
+                                    {deleteMutation.isPending ? (
+                                        <><Loader2 className="size-4 animate-spin" /> Deleting...</>
+                                    ) : (
+                                        "Delete"
+                                    )}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )
+            }
+        </div >
     );
 }
 

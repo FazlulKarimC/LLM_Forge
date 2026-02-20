@@ -13,7 +13,7 @@ from typing import List, Optional, Tuple
 from uuid import UUID
 
 import numpy as np
-from sqlalchemy import select
+from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.result import Result
@@ -127,6 +127,20 @@ class MetricsService:
         )
         
         return db_result
+    
+    async def clear_results(self, experiment_id: UUID) -> None:
+        """
+        Delete aggregated results for an experiment.
+        
+        Useful when re-running an experiment to clear old data.
+        
+        Args:
+            experiment_id: UUID of the experiment
+        """
+        await self.db.execute(
+            delete(Result).where(Result.experiment_id == experiment_id)
+        )
+        await self.db.flush()
     
     def _compute_accuracy(self, runs: List[Run]) -> dict:
         """

@@ -591,7 +591,7 @@ export default function ExperimentDetailPage({ params }: Props) {
         failed: "badge-failed",
     };
 
-    const canRun = experiment.status === "pending" || experiment.status === "failed";
+    const canRun = experiment.status === "pending" || experiment.status === "failed" || experiment.status === "completed";
     const isActive = experiment.status === "running" || experiment.status === "queued";
 
     return (

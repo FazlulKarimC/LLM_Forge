@@ -8,6 +8,7 @@ Each run represents a single LLM call with all its metadata.
 from uuid import UUID
 from typing import Optional
 
+from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.run import Run
@@ -88,6 +89,20 @@ class RunService:
         
         self.db.add(run)
         await self.db.flush()
-        await self.db.refresh(run)
         
         return run
+
+    async def clear_runs(self, experiment_id: UUID) -> None:
+        """
+        Delete all run logs for a given experiment.
+        
+        Useful when re-running an experiment to clear old data.
+        
+        Args:
+            experiment_id: Parent experiment UUID
+        """
+        await self.db.execute(
+            delete(Run).where(Run.experiment_id == experiment_id)
+        )
+        await self.db.flush()
+

@@ -164,7 +164,7 @@ export default function NewExperimentPage() {
     return (
         <div className="min-h-screen bg-(--bg-page)">
             <header className="bg-(--bg-card) shadow-sm border-b border-border">
-                <div className="max-w-3xl mx-auto px-4 py-6">
+                <div className="max-w-7xl mx-auto px-4 py-6">
                     <Link href="/experiments" className="text-primary hover:underline text-sm">
                         ← Back to Experiments
                     </Link>
@@ -174,7 +174,7 @@ export default function NewExperimentPage() {
                 </div>
             </header>
 
-            <main className="max-w-3xl mx-auto px-4 py-8">
+            <main className="max-w-7xl mx-auto px-4 py-8">
                 <form onSubmit={(e) => handleSubmit(e, false)} className="card p-6 space-y-6">
                     {/* Validation Error Display */}
                     {validationError && (

@@ -289,10 +289,17 @@ class ExperimentService:
             from app.services.metrics_service import MetricsService
             from app.services.optimization import PromptCache, ProfilerContext, OptimizationReport
 
-            # Step 2: Update status to RUNNING
-            await self.update_status(experiment_id, ExperimentStatus.RUNNING)
+            # Step 2: Initialize services and clear old data for re-runs
+            run_service = RunService(self.db)
+            metrics_svc = MetricsService(self.db)
+            
+            await run_service.clear_runs(experiment_id)
+            await metrics_svc.clear_results(experiment_id)
+            
+            # Step 2b: Update status to RUNNING
+            await self.update_status(experiment_id, ExperimentStatus.RUNNING, error_message="")
             await self.db.commit()
-            logger.info("[EXECUTE] ✓ Status: RUNNING")
+            logger.info("[EXECUTE] ✓ Status: RUNNING (and old data cleared)")
             
             # ─── Optimization setup (Phase 8) ───
             wall_start = _time.perf_counter()
@@ -490,8 +497,6 @@ class ExperimentService:
                             else:
                                 uncached_indices.append(local_idx)
                     
-                    # Generate for uncached prompts
-                    uncached_prompts = [prompts[i] for i in uncached_indices]
                     batch_gen_results = []
                     
                     if uncached_prompts:
