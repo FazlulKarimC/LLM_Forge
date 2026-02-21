@@ -13,7 +13,7 @@ import logging
 from typing import List, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -23,6 +23,7 @@ from app.schemas.experiment import (
     ExperimentListResponse,
     ExperimentStatus,
 )
+from app.core.custom_exceptions import ResourceNotFoundException, ValidationException
 from app.services.experiment_service import ExperimentService
 
 logger = logging.getLogger(__name__)
@@ -144,7 +145,7 @@ async def get_experiment(
     experiment = await service.get(experiment_id)
     
     if not experiment:
-        raise HTTPException(status_code=404, detail="Experiment not found")
+        raise ResourceNotFoundException(resource_type="Experiment", resource_id=experiment_id)
     
     return experiment
 
@@ -165,10 +166,10 @@ async def run_experiment(
     experiment = await service.get(experiment_id)
     
     if not experiment:
-        raise HTTPException(status_code=404, detail="Experiment not found")
+        raise ResourceNotFoundException(resource_type="Experiment", resource_id=experiment_id)
     
     if experiment.status in [ExperimentStatus.QUEUED, ExperimentStatus.RUNNING]:
-        raise HTTPException(status_code=409, detail="Experiment already queued or running")
+        raise ValidationException(message="Experiment already queued or running")
     
     await service.update_status(experiment_id, ExperimentStatus.QUEUED)
     await db.commit()
@@ -189,4 +190,4 @@ async def delete_experiment(
     deleted = await service.delete(experiment_id)
     
     if not deleted:
-        raise HTTPException(status_code=404, detail="Experiment not found")
+        raise ResourceNotFoundException(resource_type="Experiment", resource_id=experiment_id)
