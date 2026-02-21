@@ -165,9 +165,9 @@ class DatasetService:
                 logger.info(f"Auto-discovered dataset at {json_files[0]}")
                 return cls._parse_json_dataset(json_files[0])
         
-        # Final fallback: sample questions
-        logger.warning(f"Unknown dataset '{dataset_name}', falling back to sample questions")
-        return cls._load_sample_questions()
+        # Final fallback: fail fast instead of hiding bad dataset configs
+        logger.warning(f"Unknown dataset '{dataset_name}' requested. Failing fast.")
+        raise ValueError(f"Unknown dataset '{dataset_name}'")
     
     @classmethod
     def _parse_json_dataset(cls, path: Path) -> List[DatasetExample]:

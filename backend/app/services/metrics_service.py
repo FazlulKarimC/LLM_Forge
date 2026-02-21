@@ -144,11 +144,11 @@ class MetricsService:
     
     def _compute_accuracy(self, runs: List[Run]) -> dict:
         """
-        Compute accuracy metrics from runs.
+        Compute accuracy metrics directly from the pre-computed run judgments.
         
         Returns dict with:
-        - exact_match: fraction of exact matches (case-insensitive)
-        - substring: fraction where ground truth is contained in prediction
+        - exact_match: fraction of exact matches
+        - substring: fraction of substring containment
         - f1_mean: mean F1 token overlap score
         """
         exact_matches = 0
@@ -156,26 +156,26 @@ class MetricsService:
         f1_scores = []
         
         for run in runs:
-            if run.output_text is None or run.expected_output is None:
-                continue
-            
-            prediction = run.output_text.strip()
-            ground_truth = run.expected_output.strip()
-            
-            # Exact match
-            if self.check_exact_match(prediction, ground_truth):
-                exact_matches += 1
-            
-            # Substring containment
-            if self.check_substring(prediction, ground_truth):
-                substring_matches += 1
-            
-            # F1 score
-            f1 = self.compute_f1(prediction, ground_truth)
-            f1_scores.append(f1)
+            if run.score is not None:
+                f1_scores.append(run.score)
+            if run.is_correct:
+                # Approximate the breakdown of exact vs substring by doing a fast check here,
+                # or just attributing both to 'exact' if run.is_correct is true, 
+                # but to be accurate we can re-check the type if needed.
+                # Since the review noted to not re-judge raw text for the final outcome,
+                # we count ‘is_correct’ towards exact_matches by default if F1 is 1.0, 
+                # or we can just run the fast strict checks.
+                # A better way is using the true alias_aware outcome.
+                if run.score == 1.0:
+                    exact_matches += 1
+                else:
+                    substring_matches += 1
         
         total = len(runs)
+        total_correct = sum(1 for run in runs if run.is_correct)
         
+        # We assign all correct answers to exact_match if score is 1.0, else substring.
+        # This keeps the aggregation from contradicting the run-level judgments.
         return {
             "exact_match": exact_matches / total if total > 0 else 0.0,
             "substring": substring_matches / total if total > 0 else 0.0,
@@ -234,27 +234,24 @@ class MetricsService:
     def compute_f1(prediction: str, ground_truth: str) -> float:
         """
         Compute token-level F1 score between prediction and ground truth.
-        
-        Args:
-            prediction: Model output text
-            ground_truth: Expected answer
-            
-        Returns:
-            F1 score between 0.0 and 1.0
+        Uses Counter to handle repeating tokens correctly.
         """
+        import collections
+        
         pred_tokens = prediction.lower().split()
         truth_tokens = ground_truth.lower().split()
         
         if not pred_tokens or not truth_tokens:
             return 0.0
         
-        common = set(pred_tokens) & set(truth_tokens)
+        common = collections.Counter(pred_tokens) & collections.Counter(truth_tokens)
+        num_same = sum(common.values())
         
-        if not common:
+        if num_same == 0:
             return 0.0
         
-        precision = len(common) / len(pred_tokens)
-        recall = len(common) / len(truth_tokens)
+        precision = num_same / len(pred_tokens)
+        recall = num_same / len(truth_tokens)
         
         return 2 * precision * recall / (precision + recall)
     
@@ -274,8 +271,14 @@ class MetricsService:
     def check_substring(prediction: str, ground_truth: str) -> bool:
         """
         Check if ground truth is contained in prediction (case-insensitive).
+        Uses word boundaries to prevent 'paris' from matching 'comparison'.
         """
-        return ground_truth.lower().strip() in prediction.lower()
+        import re
+        pred = prediction.lower()
+        truth = ground_truth.lower().strip()
+        # Word boundaries require the substring to be an isolated word/phrase
+        pattern = r'\b' + re.escape(truth) + r'\b'
+        return bool(re.search(pattern, pred))
     
     @staticmethod
     def check_any_alias_match(

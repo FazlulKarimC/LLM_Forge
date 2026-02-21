@@ -46,6 +46,7 @@ export default function NewExperimentPage() {
         batch_size: number;
         enable_caching: boolean;
         cache_max_size: number;
+        seed: number | "";
     }>({
         name: "",
         description: "",
@@ -63,6 +64,7 @@ export default function NewExperimentPage() {
         batch_size: 8,
         enable_caching: false,
         cache_max_size: 256,
+        seed: "",
     });
 
     const [runAfterCreate, setRunAfterCreate] = useState(false);
@@ -121,6 +123,7 @@ export default function NewExperimentPage() {
             hyperparameters: {
                 temperature: formData.temperature,
                 max_tokens: formData.max_tokens,
+                ...(formData.seed !== "" ? { seed: formData.seed as number } : {})
             },
             num_samples: formData.num_samples,
         };
@@ -293,6 +296,17 @@ export default function NewExperimentPage() {
                                     value={formData.max_tokens}
                                     onChange={(e) => setFormData({ ...formData, max_tokens: parseInt(e.target.value) })}
                                     className="mt-1 block w-full border border-border rounded-lg px-3 py-2 bg-(--bg-card) text-(--text-body)"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-(--text-body)">Seed (Optional)</label>
+                                <input
+                                    type="number"
+                                    min="0"
+                                    value={formData.seed}
+                                    onChange={(e) => setFormData({ ...formData, seed: e.target.value === "" ? "" : parseInt(e.target.value) })}
+                                    className="mt-1 block w-full border border-border rounded-lg px-3 py-2 bg-(--bg-card) text-(--text-body)"
+                                    placeholder="Random"
                                 />
                             </div>
                             <div>

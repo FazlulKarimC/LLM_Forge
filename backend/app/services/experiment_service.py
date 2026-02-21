@@ -498,6 +498,7 @@ class ExperimentService:
                                 uncached_indices.append(local_idx)
                     
                     batch_gen_results = []
+                    uncached_prompts = [prompts[idx] for idx in uncached_indices] if uncached_indices else []
                     
                     if uncached_prompts:
                         with profiler.section("api_call"):
@@ -710,6 +711,8 @@ class ExperimentService:
                         tokens_output=result.tokens_output,
                         latency_ms=result.latency_ms,
                         gpu_memory_mb=result.gpu_memory_mb,
+                        faithfulness_score=faithfulness,
+                        retrieved_chunks={"chunks": context_chunks} if use_rag else None,
                     )
             
             # Step 8: Commit all runs

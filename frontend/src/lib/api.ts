@@ -155,6 +155,8 @@ export interface RunSummary {
     input_text: string;
     output_text?: string;
     expected_output?: string;
+    faithfulness_score?: number;
+    retrieved_chunks?: any;
 }
 
 export interface ModelOption {

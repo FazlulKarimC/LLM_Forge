@@ -75,8 +75,8 @@ class HFAPIEngine(InferenceEngine):
         logger.info(f"HFAPIEngine initialized: provider={self._provider}, model={self._model_name}")
 
     def _make_client(self) -> InferenceClient:
-        """Create an InferenceClient with the configured provider."""
-        return InferenceClient(provider=self._provider, api_key=self._api_key)
+        """Create an InferenceClient with the configured provider and a strict timeout to prevent silent hangs."""
+        return InferenceClient(provider=self._provider, api_key=self._api_key, timeout=60)
     
     def load_model(self, model_name: str) -> None:
         """
@@ -116,13 +116,17 @@ class HFAPIEngine(InferenceEngine):
         
         try:
             # Use chat_completion with explicit model — provider routes it
-            response = self._client.chat_completion(
-                model=self._model_name,
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=config.max_tokens,
-                temperature=max(config.temperature, 0.01),  # API requires > 0
-                top_p=config.top_p,
-            )
+            api_kwargs = {
+                "model": self._model_name,
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": config.max_tokens,
+                "temperature": max(config.temperature, 0.01),  # API requires > 0
+                "top_p": config.top_p,
+            }
+            if hasattr(config, "seed") and config.seed is not None:
+                api_kwargs["seed"] = config.seed
+
+            response = self._client.chat_completion(**api_kwargs)
 
             # Extract generated text
             generated_text = response.choices[0].message.content

@@ -49,6 +49,8 @@ class RunService:
         gpu_memory_mb: Optional[float] = None,
         agent_trace: Optional[dict] = None,
         tool_calls: Optional[int] = None,
+        faithfulness_score: Optional[float] = None,
+        retrieved_chunks: Optional[dict] = None,
     ) -> Run:
         """
         Create a new run log entry.
@@ -67,6 +69,8 @@ class RunService:
             gpu_memory_mb: GPU memory usage (optional)
             agent_trace: Full agent Thought/Action/Observation trace (optional)
             tool_calls: Number of tool invocations (optional)
+            faithfulness_score: RAG faithfulness evaluation (optional)
+            retrieved_chunks: RAG retrieved documents (optional)
         
         Returns:
             Created Run instance
@@ -85,6 +89,8 @@ class RunService:
             gpu_memory_mb=gpu_memory_mb,
             agent_trace=agent_trace,
             tool_calls=tool_calls,
+            faithfulness_score=faithfulness_score,
+            retrieved_chunks=retrieved_chunks,
         )
         
         self.db.add(run)
