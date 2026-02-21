@@ -16,6 +16,14 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.api import experiments, results, health
+from app.core.middleware import RequestContextMiddleware
+from app.core.custom_exceptions import AppException
+from fastapi.exceptions import RequestValidationError
+from app.core.exception_handlers import (
+    app_exception_handler,
+    validation_exception_handler,
+    global_exception_handler,
+)
 
 # ── Logging setup ──────────────────────────────────────────────────────────
 # Configure logging early so all modules (including uvicorn workers in
@@ -89,6 +97,14 @@ def create_application() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    
+    # Add our custom Request ID middleware
+    app.add_middleware(RequestContextMiddleware)
+    
+    # Register global exception handlers
+    app.add_exception_handler(AppException, app_exception_handler)
+    app.add_exception_handler(RequestValidationError, validation_exception_handler)
+    app.add_exception_handler(Exception, global_exception_handler)
     
     # Register routers
     app.include_router(health.router, tags=["Health"])

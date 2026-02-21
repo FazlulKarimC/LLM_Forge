@@ -5,6 +5,20 @@
  * Handles error handling and response parsing.
  */
 
+export class ApiError extends Error {
+    public statusCode: number;
+    public requestId?: string;
+    public details?: any;
+
+    constructor(message: string, statusCode: number, requestId?: string, details?: any) {
+        super(message);
+        this.name = 'ApiError';
+        this.statusCode = statusCode;
+        this.requestId = requestId;
+        this.details = details;
+    }
+}
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
 
 // Warn loudly in production if the env var is not configured.
@@ -35,8 +49,21 @@ async function fetchAPI<T>(
     });
 
     if (!response.ok) {
-        const error = await response.json().catch(() => ({}));
-        throw new Error(error.detail || `API Error: ${response.status}`);
+        let errorMessage = `API Error: ${response.status}`;
+        let requestId: string | undefined;
+        let details: any;
+
+        try {
+            const errorData = await response.json();
+            errorMessage = errorData.message || errorData.detail || errorMessage;
+            requestId = errorData.request_id || response.headers.get('X-Request-ID');
+            details = errorData.details;
+        } catch (e) {
+            // Non-JSON response (e.g., 502 Bad Gateway from a proxy)
+            requestId = response.headers.get('X-Request-ID') || undefined;
+        }
+
+        throw new ApiError(errorMessage, response.status, requestId, details);
     }
 
     // Handle 204 No Content
