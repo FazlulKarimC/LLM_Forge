@@ -250,7 +250,12 @@ class ExperimentService:
         await self.db.flush()
         return True
     
-    async def execute(self, experiment_id: UUID) -> None:
+    async def execute(
+        self, 
+        experiment_id: UUID, 
+        custom_base_url: Optional[str] = None, 
+        custom_api_key: Optional[str] = None
+    ) -> None:
         """
         Execute an experiment.
         
@@ -315,6 +320,7 @@ class ExperimentService:
                 opt_config.enable_caching, opt_config.enable_profiling,
             )
             
+            
             # Step 3: Initialize inference engine
             model_name = experiment_response.config.model_name
             engine_type = settings.INFERENCE_ENGINE
@@ -323,11 +329,21 @@ class ExperimentService:
             if "mock" in model_name.lower():
                 engine_type = "mock"
                 logger.info("[EXECUTE] Auto-detected mock model '%s', using MockEngine", model_name)
+            elif custom_base_url:
+                engine_type = "openai_compatible"
+                logger.info("[EXECUTE] Custom base URL detected, using OpenAIEngine")
             
             logger.info("[EXECUTE] Engine type: %s", engine_type)
             
             if engine_type == "hf_api":
                 engine = HFAPIEngine(model_name=model_name)
+            elif engine_type == "openai_compatible":
+                from app.services.inference.openai_engine import OpenAIEngine
+                engine = OpenAIEngine(
+                    base_url=custom_base_url, 
+                    api_key=custom_api_key, 
+                    model_name=model_name
+                )
             else:
                 engine = MockEngine()
             

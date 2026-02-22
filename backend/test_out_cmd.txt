@@ -1,0 +1,637 @@
+============================= test session starts =============================
+platform win32 -- Python 3.12.3, pytest-9.0.2, pluggy-1.6.0
+rootdir: C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend
+configfile: pytest.ini
+plugins: anyio-4.12.0
+collected 135 items
+
+tests\test_agent.py .....................................                [ 27%]
+tests\test_api.py .....F                                                 [ 31%]
+tests\test_metrics.py ...................                                [ 45%]
+tests\test_openai_engine.py ...F.                                        [ 49%]
+tests\test_optimization.py ................                              [ 61%]
+tests\test_prompting.py .........................                        [ 80%]
+tests\test_rag.py ................                                       [ 91%]
+tests\test_statistical.py ...........                                    [100%]
+
+================================== FAILURES ===================================
+___ TestExperimentRunCustomHeaders.test_run_experiment_with_custom_headers ____
+
+self = <ProactorEventLoop running=False closed=True debug=False>
+callback = <bound method BaseProtocol._on_waiter_completed of <asyncpg.protocol.protocol.Protocol object at 0x0000023E2194FE30>>
+context = <_contextvars.Context object at 0x0000023E24073380>
+args = (<Future finished exception=RuntimeError('Event loop is closed')>,)
+
+    def call_soon(self, callback, *args, context=None):
+        """Arrange for a callback to be called as soon as possible.
+    
+        This operates as a FIFO queue: callbacks are called in the
+        order in which they are registered.  Each callback will be
+        called exactly once.
+    
+        Any positional arguments after the callback will be passed to
+        the callback when it is called.
+        """
+>       self._check_closed()
+
+C:\Python312\Lib\asyncio\base_events.py:795: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <ProactorEventLoop running=False closed=True debug=False>
+
+    def _check_closed(self):
+        if self._closed:
+>           raise RuntimeError('Event loop is closed')
+E           RuntimeError: Event loop is closed
+
+C:\Python312\Lib\asyncio\base_events.py:541: RuntimeError
+
+The above exception was the direct cause of the following exception:
+
+self = <tests.test_api.TestExperimentRunCustomHeaders object at 0x0000023E218DA630>
+client = <starlette.testclient.TestClient object at 0x0000023E240B58B0>
+
+    def test_run_experiment_with_custom_headers(self, client):
+        """Test /run endpoint parses the custom headers correctly."""
+        # 1. Create a mock experiment first
+        config = {
+            "model_name": "custom_hosted",
+            "reasoning_method": "naive",
+            "dataset_name": "sample",
+            "num_samples": 2,
+            "hyperparameters": {
+                "temperature": 0.1,
+                "max_tokens": 10
+            }
+        }
+>       create_resp = client.post(
+            f"{settings.API_V1_PREFIX}/experiments/",
+            json={"name": "Test Custom Headers", "config": config}
+        )
+
+tests\test_api.py:104: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+venv\Lib\site-packages\starlette\testclient.py:546: in post
+    return super().post(
+venv\Lib\site-packages\httpx\_client.py:1144: in post
+    return self.request(
+venv\Lib\site-packages\starlette\testclient.py:445: in request
+    return super().request(
+venv\Lib\site-packages\httpx\_client.py:825: in request
+    return self.send(request, auth=auth, follow_redirects=follow_redirects)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+venv\Lib\site-packages\httpx\_client.py:914: in send
+    response = self._send_handling_auth(
+venv\Lib\site-packages\httpx\_client.py:942: in _send_handling_auth
+    response = self._send_handling_redirects(
+venv\Lib\site-packages\httpx\_client.py:979: in _send_handling_redirects
+    response = self._send_single_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+venv\Lib\site-packages\httpx\_client.py:1014: in _send_single_request
+    response = transport.handle_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+venv\Lib\site-packages\starlette\testclient.py:348: in handle_request
+    raise exc
+venv\Lib\site-packages\starlette\testclient.py:345: in handle_request
+    portal.call(self.app, scope, receive, send)
+venv\Lib\site-packages\anyio\from_thread.py:326: in call
+    return cast(T_Retval, self.start_task_soon(func, *args).result())
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Python312\Lib\concurrent\futures\_base.py:456: in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+C:\Python312\Lib\concurrent\futures\_base.py:401: in __get_result
+    raise self._exception
+venv\Lib\site-packages\anyio\from_thread.py:257: in _call_func
+    retval = await retval_or_awaitable
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+venv\Lib\site-packages\fastapi\applications.py:1135: in __call__
+    await super().__call__(scope, receive, send)
+venv\Lib\site-packages\starlette\applications.py:107: in __call__
+    await self.middleware_stack(scope, receive, send)
+venv\Lib\site-packages\starlette\middleware\errors.py:186: in __call__
+    raise exc
+venv\Lib\site-packages\starlette\middleware\errors.py:164: in __call__
+    await self.app(scope, receive, _send)
+venv\Lib\site-packages\starlette\middleware\base.py:191: in __call__
+    with recv_stream, send_stream, collapse_excgroups():
+C:\Python312\Lib\contextlib.py:158: in __exit__
+    self.gen.throw(value)
+venv\Lib\site-packages\starlette\_utils.py:85: in collapse_excgroups
+    raise exc
+venv\Lib\site-packages\starlette\middleware\base.py:193: in __call__
+    response = await self.dispatch_func(request, call_next)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app\core\middleware.py:19: in dispatch
+    response = await call_next(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^
+venv\Lib\site-packages\starlette\middleware\base.py:168: in call_next
+    raise app_exc from app_exc.__cause__ or app_exc.__context__
+venv\Lib\site-packages\starlette\middleware\base.py:144: in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+venv\Lib\site-packages\starlette\middleware\cors.py:85: in __call__
+    await self.app(scope, receive, send)
+venv\Lib\site-packages\starlette\middleware\exceptions.py:63: in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+venv\Lib\site-packages\starlette\_exception_handler.py:53: in wrapped_app
+    raise exc
+venv\Lib\site-packages\starlette\_exception_handler.py:42: in wrapped_app
+    await app(scope, receive, sender)
+venv\Lib\site-packages\fastapi\middleware\asyncexitstack.py:18: in __call__
+    await self.app(scope, receive, send)
+venv\Lib\site-packages\starlette\routing.py:716: in __call__
+    await self.middleware_stack(scope, receive, send)
+venv\Lib\site-packages\starlette\routing.py:736: in app
+    await route.handle(scope, receive, send)
+venv\Lib\site-packages\starlette\routing.py:290: in handle
+    await self.app(scope, receive, send)
+venv\Lib\site-packages\fastapi\routing.py:115: in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+venv\Lib\site-packages\starlette\_exception_handler.py:53: in wrapped_app
+    raise exc
+venv\Lib\site-packages\starlette\_exception_handler.py:42: in wrapped_app
+    await app(scope, receive, sender)
+venv\Lib\site-packages\fastapi\routing.py:101: in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+venv\Lib\site-packages\fastapi\routing.py:355: in app
+    raw_response = await run_endpoint_function(
+venv\Lib\site-packages\fastapi\routing.py:243: in run_endpoint_function
+    return await dependant.call(**values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app\api\experiments.py:101: in create_experiment
+    return await service.create(experiment)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app\services\experiment_service.py:95: in create
+    await self.db.flush()
+venv\Lib\site-packages\sqlalchemy\ext\asyncio\session.py:787: in flush
+    await greenlet_spawn(self.sync_session.flush, objects=objects)
+venv\Lib\site-packages\sqlalchemy\util\_concurrency_py3k.py:201: in greenlet_spawn
+    result = context.throw(*sys.exc_info())
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+venv\Lib\site-packages\sqlalchemy\orm\session.py:4331: in flush
+    self._flush(objects)
+venv\Lib\site-packages\sqlalchemy\orm\session.py:4466: in _flush
+    with util.safe_reraise():
+venv\Lib\site-packages\sqlalchemy\util\langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+venv\Lib\site-packages\sqlalchemy\orm\session.py:4427: in _flush
+    flush_context.execute()
+venv\Lib\site-packages\sqlalchemy\orm\unitofwork.py:466: in execute
+    rec.execute(self)
+venv\Lib\site-packages\sqlalchemy\orm\unitofwork.py:642: in execute
+    util.preloaded.orm_persistence.save_obj(
+venv\Lib\site-packages\sqlalchemy\orm\persistence.py:93: in save_obj
+    _emit_insert_statements(
+venv\Lib\site-packages\sqlalchemy\orm\persistence.py:1233: in _emit_insert_statements
+    result = connection.execute(
+venv\Lib\site-packages\sqlalchemy\engine\base.py:1419: in execute
+    return meth(
+venv\Lib\site-packages\sqlalchemy\sql\elements.py:527: in _execute_on_connection
+    return connection._execute_clauseelement(
+venv\Lib\site-packages\sqlalchemy\engine\base.py:1641: in _execute_clauseelement
+    ret = self._execute_context(
+venv\Lib\site-packages\sqlalchemy\engine\base.py:1846: in _execute_context
+    return self._exec_single_context(
+venv\Lib\site-packages\sqlalchemy\engine\base.py:1986: in _exec_single_context
+    self._handle_dbapi_exception(
+venv\Lib\site-packages\sqlalchemy\engine\base.py:2366: in _handle_dbapi_exception
+    raise exc_info[1].with_traceback(exc_info[2])
+venv\Lib\site-packages\sqlalchemy\engine\base.py:1967: in _exec_single_context
+    self.dialect.do_execute(
+venv\Lib\site-packages\sqlalchemy\engine\default.py:952: in do_execute
+    cursor.execute(statement, parameters)
+venv\Lib\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py:585: in execute
+    self._adapt_connection.await_(
+venv\Lib\site-packages\sqlalchemy\util\_concurrency_py3k.py:132: in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+venv\Lib\site-packages\sqlalchemy\util\_concurrency_py3k.py:196: in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+venv\Lib\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py:520: in _prepare_and_execute
+    await adapt_connection._start_transaction()
+venv\Lib\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py:850: in _start_transaction
+    self._handle_exception(error)
+venv\Lib\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py:799: in _handle_exception
+    raise error
+venv\Lib\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py:848: in _start_transaction
+    await self._transaction.start()
+venv\Lib\site-packages\asyncpg\transaction.py:146: in start
+    await self._connection.execute(query)
+venv\Lib\site-packages\asyncpg\connection.py:354: in execute
+    result = await self._protocol.query(query, timeout)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+asyncpg/protocol/protocol.pyx:369: in query
+    ???
+asyncpg/protocol/protocol.pyx:362: in asyncpg.protocol.protocol.BaseProtocol.query
+    ???
+asyncpg/protocol/coreproto.pyx:1174: in asyncpg.protocol.protocol.CoreProtocol._simple_query
+    ???
+asyncpg/protocol/protocol.pyx:956: in asyncpg.protocol.protocol.BaseProtocol._write
+    ???
+C:\Python312\Lib\asyncio\sslproto.py:222: in write
+    self._ssl_protocol._write_appdata((data,))
+C:\Python312\Lib\asyncio\sslproto.py:697: in _write_appdata
+    self._fatal_error(ex, 'Fatal error on SSL protocol')
+C:\Python312\Lib\asyncio\sslproto.py:915: in _fatal_error
+    self._transport._force_close(exc)
+C:\Python312\Lib\asyncio\proactor_events.py:152: in _force_close
+    self._loop.call_soon(self._call_connection_lost, exc)
+C:\Python312\Lib\asyncio\base_events.py:795: in call_soon
+    self._check_closed()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <ProactorEventLoop running=False closed=True debug=False>
+
+    def _check_closed(self):
+        if self._closed:
+>           raise RuntimeError('Event loop is closed')
+E           RuntimeError: Event loop is closed
+
+C:\Python312\Lib\asyncio\base_events.py:541: RuntimeError
+------------------------------ Captured log call ------------------------------
+ERROR    app.core.exception_handlers:exception_handlers.py:85 Unhandled Exception on POST http://testserver/api/v1/experiments/ [RequestID: 6d9ba67f-14f6-4af2-b7a9-8c613caf85d6]
+Traceback (most recent call last):
+  File "C:\Python312\Lib\asyncio\base_events.py", line 795, in call_soon
+    self._check_closed()
+  File "C:\Python312\Lib\asyncio\base_events.py", line 541, in _check_closed
+    raise RuntimeError('Event loop is closed')
+RuntimeError: Event loop is closed
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\venv\Lib\site-packages\starlette\middleware\errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\venv\Lib\site-packages\starlette\middleware\base.py", line 191, in __call__
+    with recv_stream, send_stream, collapse_excgroups():
+  File "C:\Python312\Lib\contextlib.py", line 158, in __exit__
+    self.gen.throw(value)
+  File "C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\venv\Lib\site-packages\starlette\_utils.py", line 85, in collapse_excgroups
+    raise exc
+  File "C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\venv\Lib\site-packages\starlette\middleware\base.py", line 193, in __call__
+    response = await self.dispatch_func(request, call_next)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\app\core\middleware.py", line 19, in dispatch
+    response = await call_next(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\venv\Lib\site-packages\starlette\middleware\base.py", line 168, in call_next
+    raise app_exc from app_exc.__cause__ or app_exc.__context__
+  File "C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\venv\Lib\site-packages\starlette\middleware\base.py", line 144, in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+  File "C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\venv\Lib\site-packages\starlette\middleware\cors.py", line 85, in __call__
+    await self.app(scope, receive, send)
+  File "C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\venv\Lib\site-packages\starlette\middleware\exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\venv\Lib\site-packages\starlette\_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\venv\Lib\site-packages\starlette\_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\venv\Lib\site-packages\fastapi\middleware\asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\venv\Lib\site-packages\starlette\routing.py", line 716, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\venv\Lib\site-packages\starlette\routing.py", line 736, in app
+    await route.handle(scope, receive, send)
+  File "C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\venv\Lib\site-packages\starlette\routing.py", line 290, in handle
+    await self.app(scope, receive, send)
+  File "C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\venv\Lib\site-packages\fastapi\routing.py", line 115, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\venv\Lib\site-packages\starlette\_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\venv\Lib\site-packages\starlette\_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\venv\Lib\site-packages\fastapi\routing.py", line 101, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\venv\Lib\site-packages\fastapi\routing.py", line 355, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\venv\Lib\site-packages\fastapi\routing.py", line 243, in run_endpoint_function
+    return await dependant.call(**values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\app\api\experiments.py", line 101, in create_experiment
+    return await service.create(experiment)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\app\services\experiment_service.py", line 95, in create
+    await self.db.flush()
+  File "C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\venv\Lib\site-packages\sqlalchemy\ext\asyncio\session.py", line 787, in flush
+    await greenlet_spawn(self.sync_session.flush, objects=objects)
+  File "C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\venv\Lib\site-packages\sqlalchemy\util\_concurrency_py3k.py", line 201, in greenlet_spawn
+    result = context.throw(*sys.exc_info())
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\venv\Lib\site-packages\sqlalchemy\orm\session.py", line 4331, in flush
+    self._flush(objects)
+  File "C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\venv\Lib\site-packages\sqlalchemy\orm\session.py", line 4466, in _flush
+    with util.safe_reraise():
+  File "C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\venv\Lib\site-packages\sqlalchemy\util\langhelpers.py", line 224, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\venv\Lib\site-packages\sqlalchemy\orm\session.py", line 4427, in _flush
+    flush_context.execute()
+  File "C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\venv\Lib\site-packages\sqlalchemy\orm\unitofwork.py", line 466, in execute
+    rec.execute(self)
+  File "C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\venv\Lib\site-packages\sqlalchemy\orm\unitofwork.py", line 642, in execute
+    util.preloaded.orm_persistence.save_obj(
+  File "C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\venv\Lib\site-packages\sqlalchemy\orm\persistence.py", line 93, in save_obj
+    _emit_insert_statements(
+  File "C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\venv\Lib\site-packages\sqlalchemy\orm\persistence.py", line 1233, in _emit_insert_statements
+    result = connection.execute(
+             ^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1419, in execute
+    return meth(
+           ^^^^^
+  File "C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\venv\Lib\site-packages\sqlalchemy\sql\elements.py", line 527, in _execute_on_connection
+    return connection._execute_clauseelement(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1641, in _execute_clauseelement
+    ret = self._execute_context(
+          ^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1846, in _execute_context
+    return self._exec_single_context(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1986, in _exec_single_context
+    self._handle_dbapi_exception(
+  File "C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 2366, in _handle_dbapi_exception
+    raise exc_info[1].with_traceback(exc_info[2])
+  File "C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\venv\Lib\site-packages\sqlalchemy\engine\default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+  File "C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\venv\Lib\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py", line 585, in execute
+    self._adapt_connection.await_(
+  File "C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\venv\Lib\site-packages\sqlalchemy\util\_concurrency_py3k.py", line 132, in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\venv\Lib\site-packages\sqlalchemy\util\_concurrency_py3k.py", line 196, in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+  File "C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\venv\Lib\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py", line 520, in _prepare_and_execute
+    await adapt_connection._start_transaction()
+  File "C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\venv\Lib\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py", line 850, in _start_transaction
+    self._handle_exception(error)
+  File "C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\venv\Lib\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py", line 799, in _handle_exception
+    raise error
+  File "C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\venv\Lib\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py", line 848, in _start_transaction
+    await self._transaction.start()
+  File "C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\venv\Lib\site-packages\asyncpg\transaction.py", line 146, in start
+    await self._connection.execute(query)
+  File "C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\venv\Lib\site-packages\asyncpg\connection.py", line 354, in execute
+    result = await self._protocol.query(query, timeout)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "asyncpg/protocol/protocol.pyx", line 369, in query
+  File "asyncpg/protocol/protocol.pyx", line 362, in asyncpg.protocol.protocol.BaseProtocol.query
+  File "asyncpg/protocol/coreproto.pyx", line 1174, in asyncpg.protocol.protocol.CoreProtocol._simple_query
+  File "asyncpg/protocol/protocol.pyx", line 956, in asyncpg.protocol.protocol.BaseProtocol._write
+  File "C:\Python312\Lib\asyncio\sslproto.py", line 222, in write
+    self._ssl_protocol._write_appdata((data,))
+  File "C:\Python312\Lib\asyncio\sslproto.py", line 697, in _write_appdata
+    self._fatal_error(ex, 'Fatal error on SSL protocol')
+  File "C:\Python312\Lib\asyncio\sslproto.py", line 915, in _fatal_error
+    self._transport._force_close(exc)
+  File "C:\Python312\Lib\asyncio\proactor_events.py", line 152, in _force_close
+    self._loop.call_soon(self._call_connection_lost, exc)
+  File "C:\Python312\Lib\asyncio\base_events.py", line 795, in call_soon
+    self._check_closed()
+  File "C:\Python312\Lib\asyncio\base_events.py", line 541, in _check_closed
+    raise RuntimeError('Event loop is closed')
+RuntimeError: Event loop is closed
+___________________ TestOpenAIEngine.test_generate_failure ____________________
+
+self = <app.services.inference.openai_engine.OpenAIEngine object at 0x0000023E25C81FD0>
+prompt = 'Hello world'
+config = GenerationConfig(max_tokens=100, temperature=0.5, top_p=0.9, top_k=None, stop_sequences=None, seed=None)
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_not_exception_type(ValueError)  # Don't retry on validation errors
+    )
+    def generate(
+        self,
+        prompt: str,
+        config: GenerationConfig,
+    ) -> GenerationResult:
+        """
+        Generate text from a prompt via OpenAI API format.
+        """
+        if not self.is_loaded:
+            raise RuntimeError("Engine not initialized. Call load_model() first.")
+    
+        start_time = time.perf_counter()
+    
+        try:
+            api_kwargs = {
+                "model": self._model_name,
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": config.max_tokens,
+                "temperature": max(config.temperature, 0.01),  # Prevent absolute 0
+                "top_p": config.top_p,
+            }
+            if hasattr(config, "seed") and config.seed is not None:
+                api_kwargs["seed"] = config.seed
+    
+>           response = self._client.chat.completions.create(**api_kwargs)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+app\services\inference\openai_engine.py:91: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+C:\Python312\Lib\unittest\mock.py:1134: in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Python312\Lib\unittest\mock.py:1138: in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Python312\Lib\unittest\mock.py:1193: in _execute_mock_call
+    raise effect
+app\services\inference\openai_engine.py:91: in generate
+    response = self._client.chat.completions.create(**api_kwargs)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Python312\Lib\unittest\mock.py:1134: in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Python312\Lib\unittest\mock.py:1138: in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Python312\Lib\unittest\mock.py:1193: in _execute_mock_call
+    raise effect
+app\services\inference\openai_engine.py:91: in generate
+    response = self._client.chat.completions.create(**api_kwargs)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Python312\Lib\unittest\mock.py:1134: in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Python312\Lib\unittest\mock.py:1138: in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <MagicMock name='OpenAI().chat.completions.create' id='2465945096352'>
+args = ()
+kwargs = {'max_tokens': 100, 'messages': [{'content': 'Hello world', 'role': 'user'}], 'model': 'test-model', 'temperature': 0.5, ...}
+effect = ValueError('API Error')
+
+    def _execute_mock_call(self, /, *args, **kwargs):
+        # separate from _increment_mock_call so that awaited functions are
+        # executed separately from their call, also AsyncMock overrides this method
+    
+        effect = self.side_effect
+        if effect is not None:
+            if _is_exception(effect):
+>               raise effect
+E               ValueError: API Error
+
+C:\Python312\Lib\unittest\mock.py:1193: ValueError
+
+The above exception was the direct cause of the following exception:
+
+self = <Retrying object at 0x23e25c820c0 (stop=<tenacity.stop.stop_after_attempt object at 0x0000023E218FE480>, wait=<tenacit...8FE570>, before=<function before_nothing at 0x0000023E08C46C00>, after=<function after_nothing at 0x0000023E08C46E80>)>
+fn = <function OpenAIEngine.generate at 0x0000023E240194E0>
+args = (<app.services.inference.openai_engine.OpenAIEngine object at 0x0000023E25C81FD0>, 'Hello world', GenerationConfig(max_tokens=100, temperature=0.5, top_p=0.9, top_k=None, stop_sequences=None, seed=None))
+kwargs = {}
+retry_state = <RetryCallState 2465945100384: attempt #3; slept for 4.0; last result: failed (RuntimeError Custom OpenAI API inference failed: API Error)>
+do = <tenacity.DoAttempt object at 0x0000023E25C91610>
+
+    def __call__(
+        self,
+        fn: t.Callable[..., WrappedFnReturnT],
+        *args: t.Any,
+        **kwargs: t.Any,
+    ) -> WrappedFnReturnT:
+        self.begin()
+    
+        retry_state = RetryCallState(retry_object=self, fn=fn, args=args, kwargs=kwargs)
+        while True:
+            do = self.iter(retry_state=retry_state)
+            if isinstance(do, DoAttempt):
+                try:
+>                   result = fn(*args, **kwargs)
+                             ^^^^^^^^^^^^^^^^^^^
+
+venv\Lib\site-packages\tenacity\__init__.py:480: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <app.services.inference.openai_engine.OpenAIEngine object at 0x0000023E25C81FD0>
+prompt = 'Hello world'
+config = GenerationConfig(max_tokens=100, temperature=0.5, top_p=0.9, top_k=None, stop_sequences=None, seed=None)
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_not_exception_type(ValueError)  # Don't retry on validation errors
+    )
+    def generate(
+        self,
+        prompt: str,
+        config: GenerationConfig,
+    ) -> GenerationResult:
+        """
+        Generate text from a prompt via OpenAI API format.
+        """
+        if not self.is_loaded:
+            raise RuntimeError("Engine not initialized. Call load_model() first.")
+    
+        start_time = time.perf_counter()
+    
+        try:
+            api_kwargs = {
+                "model": self._model_name,
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": config.max_tokens,
+                "temperature": max(config.temperature, 0.01),  # Prevent absolute 0
+                "top_p": config.top_p,
+            }
+            if hasattr(config, "seed") and config.seed is not None:
+                api_kwargs["seed"] = config.seed
+    
+            response = self._client.chat.completions.create(**api_kwargs)
+    
+            generated_text = response.choices[0].message.content or ""
+            latency_ms = (time.perf_counter() - start_time) * 1000
+    
+            # OpenAI completion tokens usage
+            tokens_input = response.usage.prompt_tokens if response.usage else len(prompt.split())
+            tokens_output = response.usage.completion_tokens if response.usage else len(generated_text.split())
+            finish_reason = response.choices[0].finish_reason if response.choices else "stop"
+    
+            return GenerationResult(
+                text=generated_text,
+                tokens_input=tokens_input,
+                tokens_output=tokens_output,
+                latency_ms=latency_ms,
+                finish_reason=str(finish_reason),
+                gpu_memory_mb=None,
+            )
+    
+        except Exception as e:
+            latency_ms = (time.perf_counter() - start_time) * 1000
+            logger.error(f"Custom OpenAI API inference failed (url={self._base_url}, model={self._model_name}): {e}")
+>           raise RuntimeError(f"Custom OpenAI API inference failed: {str(e)}") from e
+E           RuntimeError: Custom OpenAI API inference failed: API Error
+
+app\services\inference\openai_engine.py:113: RuntimeError
+
+The above exception was the direct cause of the following exception:
+
+self = <tests.test_openai_engine.TestOpenAIEngine object at 0x0000023E24025670>
+mock_openai = <MagicMock name='OpenAI' id='2465915921632'>
+
+    @patch('app.services.inference.openai_engine.OpenAI')
+    # Note: Because of tenacious retry, we might want to mock time or disable retry, but let's test a ValueError so it doesn't retry
+    def test_generate_failure(self, mock_openai):
+        mock_client = MagicMock()
+        mock_openai.return_value = mock_client
+        mock_client.chat.completions.create.side_effect = ValueError("API Error")
+    
+        engine = OpenAIEngine(base_url="http://test.local/v1", api_key="key", model_name="test-model")
+        config = GenerationConfig(temperature=0.5, max_tokens=100, top_p=0.9)
+    
+        with pytest.raises(ValueError, match="API Error"):
+>           engine.generate("Hello world", config)
+
+tests\test_openai_engine.py:65: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+venv\Lib\site-packages\tenacity\__init__.py:338: in wrapped_f
+    return copy(f, *args, **kw)
+           ^^^^^^^^^^^^^^^^^^^^
+venv\Lib\site-packages\tenacity\__init__.py:477: in __call__
+    do = self.iter(retry_state=retry_state)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+venv\Lib\site-packages\tenacity\__init__.py:378: in iter
+    result = action(retry_state)
+             ^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+rs = <RetryCallState 2465945100384: attempt #3; slept for 4.0; last result: failed (RuntimeError Custom OpenAI API inference failed: API Error)>
+
+    def exc_check(rs: "RetryCallState") -> None:
+        fut = t.cast(Future, rs.outcome)
+        retry_exc = self.retry_error_cls(fut)
+        if self.reraise:
+            raise retry_exc.reraise()
+>       raise retry_exc from fut.exception()
+E       tenacity.RetryError: RetryError[<Future at 0x23e25c91640 state=finished raised RuntimeError>]
+
+venv\Lib\site-packages\tenacity\__init__.py:421: RetryError
+------------------------------ Captured log call ------------------------------
+ERROR    app.services.inference.openai_engine:openai_engine.py:112 Custom OpenAI API inference failed (url=http://test.local/v1, model=test-model): API Error
+ERROR    app.services.inference.openai_engine:openai_engine.py:112 Custom OpenAI API inference failed (url=http://test.local/v1, model=test-model): API Error
+ERROR    app.services.inference.openai_engine:openai_engine.py:112 Custom OpenAI API inference failed (url=http://test.local/v1, model=test-model): API Error
+============================== warnings summary ===============================
+app\schemas\result.py:47
+  C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\app\schemas\result.py:47: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
+    class RunSummary(BaseModel):
+
+app\schemas\result.py:71
+  C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\app\schemas\result.py:71: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
+    class ResultResponse(BaseModel):
+
+app\schemas\run.py:37
+  C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\app\schemas\run.py:37: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
+    class RunResponse(BaseModel):
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/test_api.py::TestExperimentRunCustomHeaders::test_run_experiment_with_custom_headers
+FAILED tests/test_openai_engine.py::TestOpenAIEngine::test_generate_failure
+================= 2 failed, 133 passed, 3 warnings in 18.49s ==================

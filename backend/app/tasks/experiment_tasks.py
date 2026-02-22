@@ -18,7 +18,11 @@ from uuid import UUID
 logger = logging.getLogger(__name__)
 
 
-def run_experiment_task(experiment_id: str) -> None:
+def run_experiment_task(
+    experiment_id: str,
+    custom_base_url: Optional[str] = None,
+    custom_api_key: Optional[str] = None
+) -> None:
     """
     RQ task wrapper for experiment execution.
     
@@ -38,7 +42,11 @@ def run_experiment_task(experiment_id: str) -> None:
     print(f"[RQ TASK] Starting experiment: {experiment_id}")
     
     try:
-        asyncio.run(_run_experiment_async(UUID(experiment_id)))
+        asyncio.run(_run_experiment_async(
+            UUID(experiment_id), 
+            custom_base_url=custom_base_url, 
+            custom_api_key=custom_api_key
+        ))
         logger.info(f"[RQ TASK] Completed experiment: {experiment_id}")
         print(f"[RQ TASK] ✅ Completed experiment: {experiment_id}")
     except Exception as e:
@@ -47,7 +55,11 @@ def run_experiment_task(experiment_id: str) -> None:
         raise  # Let RQ handle the failure
 
 
-async def _run_experiment_async(experiment_id: UUID) -> None:
+async def _run_experiment_async(
+    experiment_id: UUID,
+    custom_base_url: Optional[str] = None,
+    custom_api_key: Optional[str] = None
+) -> None:
     """
     Async implementation of experiment execution.
     
@@ -60,4 +72,8 @@ async def _run_experiment_async(experiment_id: UUID) -> None:
     
     async with async_session_maker() as db:
         service = ExperimentService(db)
-        await service.execute(experiment_id)
+        await service.execute(
+            experiment_id, 
+            custom_base_url=custom_base_url, 
+            custom_api_key=custom_api_key
+        )

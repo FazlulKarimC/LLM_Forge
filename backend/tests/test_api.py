@@ -84,3 +84,65 @@ class TestExperimentCoreEndpoints:
         """Test random missing endpoint behavior."""
         response = client.get("/api/v1/does-not-exist")
         assert response.status_code == 404
+
+from unittest.mock import patch, MagicMock
+
+class TestExperimentRunCustomHeaders:
+    """Tests for starting an experiment with custom headers."""
+
+    @patch('app.api.experiments.ExperimentService.get')
+    @patch('app.api.experiments.ExperimentService.update_status')
+    @patch('app.api.experiments._enqueue_or_fallback')
+    def test_run_experiment_with_custom_headers(self, mock_enqueue, mock_update, mock_get, client):
+        """Test /run endpoint parses the custom headers correctly."""
+        class MockHyperParams:
+            temperature = 0.1
+            max_tokens = 10
+            top_p = 0.9
+            top_k = None
+            seed = 42
+        
+        class MockConfig:
+            model_name = "custom_hosted"
+            reasoning_method = "naive"
+            dataset_name = "sample"
+            num_samples = 2
+            rag = None
+            agent = None
+            optimization = None
+            hyperparameters = MockHyperParams()
+            
+        class MockExperiment:
+            id = "00000000-0000-0000-0000-000000000000"
+            name = "Test"
+            description = ""
+            status = "pending"
+            error_message = None
+            started_at = None
+            completed_at = None
+            created_at = "2025-01-01T00:00:00Z"
+            updated_at = "2025-01-01T00:00:00Z"
+            config = MockConfig()
+
+        mock_exp = MockExperiment()
+        
+        # When run_experiment calls service.get() it returns our mock
+        mock_get.return_value = mock_exp
+
+        # 2. Run the experiment with headers
+        headers = {
+            "X-Custom-LLM-Base": "http://mock-base.local/v1",
+            "X-Custom-LLM-Key": "mock-api-key"
+        }
+        
+        run_resp = client.post(
+            f"{settings.API_V1_PREFIX}/experiments/{mock_exp.id}/run",
+            headers=headers
+        )
+        assert run_resp.status_code == 200, run_resp.text
+        
+        # Verify enqueue was called with custom headers
+        mock_enqueue.assert_called_once()
+        kwargs = mock_enqueue.call_args.kwargs
+        assert kwargs.get("custom_base_url") == "http://mock-base.local/v1"
+        assert kwargs.get("custom_api_key") == "mock-api-key"

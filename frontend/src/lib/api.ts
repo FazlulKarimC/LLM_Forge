@@ -266,8 +266,19 @@ export async function getExperiment(id: string): Promise<Experiment> {
 /**
  * Run an experiment (trigger execution).
  */
-export async function runExperiment(id: string): Promise<Experiment> {
-    return fetchAPI<Experiment>(`/experiments/${id}/run`, { method: 'POST' });
+export async function runExperiment(
+    id: string,
+    customBaseUrl?: string,
+    customApiKey?: string
+): Promise<Experiment> {
+    const headers: Record<string, string> = {};
+    if (customBaseUrl) headers['X-Custom-LLM-Base'] = customBaseUrl;
+    if (customApiKey) headers['X-Custom-LLM-Key'] = customApiKey;
+
+    return fetchAPI<Experiment>(`/experiments/${id}/run`, {
+        method: 'POST',
+        headers: Object.keys(headers).length > 0 ? headers : undefined
+    });
 }
 
 /**

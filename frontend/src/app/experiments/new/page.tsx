@@ -71,6 +71,20 @@ export default function NewExperimentPage() {
     const [validationError, setValidationError] = useState<string | null>(null);
     const [runError, setRunError] = useState<string | null>(null);
 
+    // Custom LLM States
+    const [customBaseUrl, setCustomBaseUrl] = useState(() => {
+        if (typeof window !== "undefined") return localStorage.getItem("customBaseUrl") || "http://localhost:8000/v1";
+        return "http://localhost:8000/v1";
+    });
+    const [customApiKey, setCustomApiKey] = useState(() => {
+        if (typeof window !== "undefined") return localStorage.getItem("customApiKey") || "";
+        return "";
+    });
+    const [customModelId, setCustomModelId] = useState(() => {
+        if (typeof window !== "undefined") return localStorage.getItem("customModelId") || "";
+        return "";
+    });
+
     const createMutation = useMutation({
         mutationFn: createExperiment,
         onSuccess: async (experiment) => {
@@ -79,7 +93,11 @@ export default function NewExperimentPage() {
 
             if (runAfterCreate) {
                 try {
-                    await runExperiment(experiment.id);
+                    await runExperiment(
+                        experiment.id,
+                        formData.model_name === "custom_hosted" ? customBaseUrl : undefined,
+                        formData.model_name === "custom_hosted" ? customApiKey : undefined
+                    );
                 } catch (err) {
                     // Surface the error as a banner — user can retry from the detail page
                     setRunError(
@@ -115,9 +133,19 @@ export default function NewExperimentPage() {
         }
         setValidationError(null);
         setRunAfterCreate(shouldRun);
+        if (formData.model_name === "custom_hosted") {
+            if (!customBaseUrl.trim() || !customModelId.trim()) {
+                setValidationError("Base URL and Model ID are required for custom hosted models.");
+                return;
+            }
+            // Save to local storage for future use
+            localStorage.setItem("customBaseUrl", customBaseUrl);
+            localStorage.setItem("customApiKey", customApiKey);
+            localStorage.setItem("customModelId", customModelId);
+        }
 
         const config: ExperimentConfig = {
-            model_name: formData.model_name,
+            model_name: formData.model_name === "custom_hosted" ? customModelId : formData.model_name,
             reasoning_method: formData.reasoning_method,
             dataset_name: formData.dataset_name,
             hyperparameters: {
@@ -246,15 +274,22 @@ export default function NewExperimentPage() {
                                     onChange={(e) => setFormData({ ...formData, model_name: e.target.value })}
                                     className="mt-1 block w-full border border-border rounded-lg px-3 py-2 bg-(--bg-card) text-(--text-body)"
                                 >
-                                    {availableModels.map(model => (
-                                        <option key={model.value} value={model.value}>
-                                            {model.label}
-                                        </option>
-                                    ))}
+                                    <optgroup label="Free HF Serverless API">
+                                        {availableModels.map(model => (
+                                            <option key={model.value} value={model.value}>
+                                                {model.label}
+                                            </option>
+                                        ))}
+                                    </optgroup>
+                                    <optgroup label="Custom Options">
+                                        <option value="custom_hosted">🔌 Custom Hosted Model (OpenAI-Compatible)</option>
+                                    </optgroup>
                                 </select>
-                                {selectedModel && (
+                                {formData.model_name === "custom_hosted" ? (
+                                    <p className="text-xs text-(--text-muted) mt-1">Connect to vLLM, Ollama, Together AI, groq, or any OpenAI-compatible API endpoint.</p>
+                                ) : selectedModel ? (
                                     <p className="text-xs text-(--text-muted) mt-1">{selectedModel.description}</p>
-                                )}
+                                ) : null}
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-(--text-body)">Reasoning Method</label>
@@ -269,6 +304,55 @@ export default function NewExperimentPage() {
                                 </select>
                             </div>
                         </div>
+
+                        {/* Custom Model Settings */}
+                        {formData.model_name === "custom_hosted" && (
+                            <div className="mt-4 p-4 bg-(--bg-page) rounded-lg border border-border space-y-4">
+                                <h3 className="text-sm font-semibold text-(--text-heading) flex items-center gap-2">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                        <path d="m10 13-2 2-2-2m2 2v-6m7 0 2 2-2 2m-2-2v6m-4-7V4h8v3" />
+                                    </svg>
+                                    Custom API Endpoint Settings
+                                </h3>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-(--text-body)">Base URL *</label>
+                                        <input
+                                            type="url"
+                                            required={formData.model_name === "custom_hosted"}
+                                            value={customBaseUrl}
+                                            onChange={(e) => setCustomBaseUrl(e.target.value)}
+                                            className="mt-1 block w-full border border-border rounded-lg px-3 py-2 bg-(--bg-card) text-(--text-body) font-mono text-sm"
+                                            placeholder="http://localhost:8000/v1"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-(--text-body)">API Key (Optional)</label>
+                                        <input
+                                            type="password"
+                                            value={customApiKey}
+                                            onChange={(e) => setCustomApiKey(e.target.value)}
+                                            className="mt-1 block w-full border border-border rounded-lg px-3 py-2 bg-(--bg-card) text-(--text-body) font-mono text-sm"
+                                            placeholder="sk-..."
+                                        />
+                                        <p className="text-xs text-(--text-muted) mt-1">Not saved to DB. Only sent when running.</p>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-(--text-body)">Model ID *</label>
+                                        <input
+                                            type="text"
+                                            required={formData.model_name === "custom_hosted"}
+                                            value={customModelId}
+                                            onChange={(e) => setCustomModelId(e.target.value)}
+                                            className="mt-1 block w-full border border-border rounded-lg px-3 py-2 bg-(--bg-card) text-(--text-body) font-mono text-sm"
+                                            placeholder="e.g., Llama-3-8B-Instruct"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                     </section>
 
                     {/* Hyperparameters */}

@@ -31,7 +31,11 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-async def _execute_inline(experiment_id: UUID) -> None:
+async def _execute_inline(
+    experiment_id: UUID, 
+    custom_base_url: Optional[str] = None, 
+    custom_api_key: Optional[str] = None
+) -> None:
     """
     Execute experiment inline using a fresh DB session.
     Used as fallback when Redis/RQ is unavailable.
@@ -41,12 +45,18 @@ async def _execute_inline(experiment_id: UUID) -> None:
     logger.info(f"[INLINE] Running experiment {experiment_id} inline (no Redis)")
     async with async_session_maker() as session:
         svc = ExperimentService(session)
-        await svc.execute(experiment_id)
+        await svc.execute(
+            experiment_id, 
+            custom_base_url=custom_base_url, 
+            custom_api_key=custom_api_key
+        )
 
 
 def _enqueue_or_fallback(
     background_tasks: BackgroundTasks,
     experiment_id: UUID,
+    custom_base_url: Optional[str] = None,
+    custom_api_key: Optional[str] = None,
 ) -> str:
     """
     Try to enqueue via RQ (Redis). If Redis is unavailable or
@@ -61,18 +71,23 @@ def _enqueue_or_fallback(
     # In development, always use inline execution (no RQ worker running)
     if settings.ENVIRONMENT == "development":
         logger.info("Development mode: using inline execution (no RQ worker)")
-        background_tasks.add_task(_execute_inline, experiment_id)
+        background_tasks.add_task(_execute_inline, experiment_id, custom_base_url, custom_api_key)
         return "inline"
     
     try:
         from app.core.redis import get_queue
         from app.tasks.experiment_tasks import run_experiment_task
         queue = get_queue()
-        queue.enqueue(run_experiment_task, str(experiment_id))
+        queue.enqueue(
+            run_experiment_task, 
+            str(experiment_id), 
+            custom_base_url=custom_base_url, 
+            custom_api_key=custom_api_key
+        )
         return "rq"
     except Exception as e:
         logger.warning(f"Redis unavailable ({e}), falling back to inline execution")
-        background_tasks.add_task(_execute_inline, experiment_id)
+        background_tasks.add_task(_execute_inline, experiment_id, custom_base_url, custom_api_key)
         return "inline"
 
 
@@ -131,6 +146,11 @@ async def list_available_models():
                 "label": "Llama 3.1 (8B)",
                 "description": "High capability",
             },
+            {
+                "value": "Qwen/Qwen2.5-72B-Instruct",
+                "label": "Qwen 2.5 (72B)",
+                "description": "Powerful 72B model",
+            },
         ]
     }
 
@@ -150,11 +170,15 @@ async def get_experiment(
     return experiment
 
 
+from fastapi import Header
+
 @router.post("/{experiment_id}/run", response_model=ExperimentResponse)
 async def run_experiment(
     experiment_id: UUID,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
+    x_custom_llm_base: Optional[str] = Header(None, alias="X-Custom-LLM-Base"),
+    x_custom_llm_key: Optional[str] = Header(None, alias="X-Custom-LLM-Key"),
 ):
     """
     Trigger experiment execution.
@@ -174,7 +198,12 @@ async def run_experiment(
     await service.update_status(experiment_id, ExperimentStatus.QUEUED)
     await db.commit()
     
-    _enqueue_or_fallback(background_tasks, experiment_id)
+    _enqueue_or_fallback(
+        background_tasks, 
+        experiment_id, 
+        custom_base_url=x_custom_llm_base, 
+        custom_api_key=x_custom_llm_key
+    )
     
     return await service.get(experiment_id)
 

@@ -15,6 +15,7 @@ alembic>=1.13.0
 
 # --- Inference (HuggingFace API - lightweight, no PyTorch) ---
 huggingface-hub>=0.20.0
+openai>=1.0.0
 
 # --- Metrics Computation ---
 numpy>=1.24.0

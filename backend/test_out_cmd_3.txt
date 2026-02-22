@@ -1,0 +1,270 @@
+============================= test session starts =============================
+platform win32 -- Python 3.12.3, pytest-9.0.2, pluggy-1.6.0
+rootdir: C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend
+configfile: pytest.ini
+plugins: anyio-4.12.0
+collected 135 items
+
+tests\test_agent.py .....................................                [ 27%]
+tests\test_api.py .....F                                                 [ 31%]
+tests\test_metrics.py ...................                                [ 45%]
+tests\test_openai_engine.py .....                                        [ 49%]
+tests\test_optimization.py ................                              [ 61%]
+tests\test_prompting.py .........................                        [ 80%]
+tests\test_rag.py ................                                       [ 91%]
+tests\test_statistical.py ...........                                    [100%]
+
+================================== FAILURES ===================================
+___ TestExperimentRunCustomHeaders.test_run_experiment_with_custom_headers ____
+
+self = <tests.test_api.TestExperimentRunCustomHeaders object at 0x000001A3FFE4E510>
+mock_enqueue = <MagicMock name='_enqueue_or_fallback' id='1801913281968'>
+mock_update = <AsyncMock name='update_status' id='1801913760512'>
+mock_get = <AsyncMock name='get' id='1801917336224'>
+client = <starlette.testclient.TestClient object at 0x000001A38A6693A0>
+
+    @patch('app.api.experiments.ExperimentService.get')
+    @patch('app.api.experiments.ExperimentService.update_status')
+    @patch('app.api.experiments._enqueue_or_fallback')
+    def test_run_experiment_with_custom_headers(self, mock_enqueue, mock_update, mock_get, client):
+        """Test /run endpoint parses the custom headers correctly."""
+        # Mock experiment
+        mock_exp = MagicMock()
+        mock_exp.id = "00000000-0000-0000-0000-000000000000"
+        mock_exp.status = "created"
+    
+        # When run_experiment calls service.get() it returns our mock
+        mock_get.return_value = mock_exp
+    
+        # 2. Run the experiment with headers
+        headers = {
+            "X-Custom-LLM-Base": "http://mock-base.local/v1",
+            "X-Custom-LLM-Key": "mock-api-key"
+        }
+    
+>       run_resp = client.post(
+            f"{settings.API_V1_PREFIX}/experiments/{mock_exp.id}/run",
+            headers=headers
+        )
+
+tests\test_api.py:112: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+venv\Lib\site-packages\starlette\testclient.py:546: in post
+    return super().post(
+venv\Lib\site-packages\httpx\_client.py:1144: in post
+    return self.request(
+venv\Lib\site-packages\starlette\testclient.py:445: in request
+    return super().request(
+venv\Lib\site-packages\httpx\_client.py:825: in request
+    return self.send(request, auth=auth, follow_redirects=follow_redirects)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+venv\Lib\site-packages\httpx\_client.py:914: in send
+    response = self._send_handling_auth(
+venv\Lib\site-packages\httpx\_client.py:942: in _send_handling_auth
+    response = self._send_handling_redirects(
+venv\Lib\site-packages\httpx\_client.py:979: in _send_handling_redirects
+    response = self._send_single_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+venv\Lib\site-packages\httpx\_client.py:1014: in _send_single_request
+    response = transport.handle_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+venv\Lib\site-packages\starlette\testclient.py:348: in handle_request
+    raise exc
+venv\Lib\site-packages\starlette\testclient.py:345: in handle_request
+    portal.call(self.app, scope, receive, send)
+venv\Lib\site-packages\anyio\from_thread.py:326: in call
+    return cast(T_Retval, self.start_task_soon(func, *args).result())
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Python312\Lib\concurrent\futures\_base.py:456: in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+C:\Python312\Lib\concurrent\futures\_base.py:401: in __get_result
+    raise self._exception
+venv\Lib\site-packages\anyio\from_thread.py:257: in _call_func
+    retval = await retval_or_awaitable
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+venv\Lib\site-packages\fastapi\applications.py:1135: in __call__
+    await super().__call__(scope, receive, send)
+venv\Lib\site-packages\starlette\applications.py:107: in __call__
+    await self.middleware_stack(scope, receive, send)
+venv\Lib\site-packages\starlette\middleware\errors.py:186: in __call__
+    raise exc
+venv\Lib\site-packages\starlette\middleware\errors.py:164: in __call__
+    await self.app(scope, receive, _send)
+venv\Lib\site-packages\starlette\middleware\base.py:191: in __call__
+    with recv_stream, send_stream, collapse_excgroups():
+C:\Python312\Lib\contextlib.py:158: in __exit__
+    self.gen.throw(value)
+venv\Lib\site-packages\starlette\_utils.py:85: in collapse_excgroups
+    raise exc
+venv\Lib\site-packages\starlette\middleware\base.py:193: in __call__
+    response = await self.dispatch_func(request, call_next)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app\core\middleware.py:19: in dispatch
+    response = await call_next(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^
+venv\Lib\site-packages\starlette\middleware\base.py:168: in call_next
+    raise app_exc from app_exc.__cause__ or app_exc.__context__
+venv\Lib\site-packages\starlette\middleware\base.py:144: in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+venv\Lib\site-packages\starlette\middleware\cors.py:85: in __call__
+    await self.app(scope, receive, send)
+venv\Lib\site-packages\starlette\middleware\exceptions.py:63: in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+venv\Lib\site-packages\starlette\_exception_handler.py:53: in wrapped_app
+    raise exc
+venv\Lib\site-packages\starlette\_exception_handler.py:42: in wrapped_app
+    await app(scope, receive, sender)
+venv\Lib\site-packages\fastapi\middleware\asyncexitstack.py:18: in __call__
+    await self.app(scope, receive, send)
+venv\Lib\site-packages\starlette\routing.py:716: in __call__
+    await self.middleware_stack(scope, receive, send)
+venv\Lib\site-packages\starlette\routing.py:736: in app
+    await route.handle(scope, receive, send)
+venv\Lib\site-packages\starlette\routing.py:290: in handle
+    await self.app(scope, receive, send)
+venv\Lib\site-packages\fastapi\routing.py:115: in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+venv\Lib\site-packages\starlette\_exception_handler.py:53: in wrapped_app
+    raise exc
+venv\Lib\site-packages\starlette\_exception_handler.py:42: in wrapped_app
+    await app(scope, receive, sender)
+venv\Lib\site-packages\fastapi\routing.py:101: in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+venv\Lib\site-packages\fastapi\routing.py:377: in app
+    content = await serialize_response(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    async def serialize_response(
+        *,
+        field: Optional[ModelField] = None,
+        response_content: Any,
+        include: Optional[IncEx] = None,
+        exclude: Optional[IncEx] = None,
+        by_alias: bool = True,
+        exclude_unset: bool = False,
+        exclude_defaults: bool = False,
+        exclude_none: bool = False,
+        is_coroutine: bool = True,
+        endpoint_ctx: Optional[EndpointContext] = None,
+    ) -> Any:
+        if field:
+            errors = []
+            if is_coroutine:
+                value, errors_ = field.validate(response_content, {}, loc=("response",))
+            else:
+                value, errors_ = await run_in_threadpool(
+                    field.validate, response_content, {}, loc=("response",)
+                )
+            if isinstance(errors_, list):
+                errors.extend(errors_)
+            if errors:
+                ctx = endpoint_ctx or EndpointContext()
+>               raise ResponseValidationError(
+                    errors=errors,
+                    body=response_content,
+                    endpoint_ctx=ctx,
+                )
+E               fastapi.exceptions.ResponseValidationError: 12 validation errors:
+E                 {'type': 'string_type', 'loc': ('response', 'name'), 'msg': 'Input should be a valid string', 'input': <MagicMock name='get().name' id='1801912033616'>}
+E                 {'type': 'string_type', 'loc': ('response', 'description'), 'msg': 'Input should be a valid string', 'input': <MagicMock name='get().description' id='1801917359520'>}
+E                 {'type': 'string_type', 'loc': ('response', 'config', 'model_name'), 'msg': 'Input should be a valid string', 'input': <MagicMock name='get().config.model_name' id='1801917399840'>}
+E                 {'type': 'enum', 'loc': ('response', 'config', 'reasoning_method'), 'msg': "Input should be 'naive', 'cot' or 'react'", 'input': <MagicMock name='get().config.reasoning_method' id='1801917403680'>, 'ctx': {'expected': "'naive', 'cot' or 'react'"}}
+E                 {'type': 'string_type', 'loc': ('response', 'config', 'dataset_name'), 'msg': 'Input should be a valid string', 'input': <MagicMock name='get().config.dataset_name' id='1801913248624'>}
+E                 {'type': 'enum', 'loc': ('response', 'config', 'rag', 'retrieval_method'), 'msg': "Input should be 'none', 'naive', 'hybrid' or 'reranked'", 'input': <MagicMock name='get().config.rag.retrieval_method' id='1801917339392'>, 'ctx': {'expected': "'none', 'naive', 'hybrid' or 'reranked'"}}
+E                 {'type': 'greater_than_equal', 'loc': ('response', 'config', 'rag', 'chunk_size'), 'msg': 'Input should be greater than or equal to 64', 'input': <MagicMock name='get().config.rag.chunk_size' id='1801917494720'>, 'ctx': {'ge': 64}}
+E                 {'type': 'string_type', 'loc': ('response', 'config', 'rag', 'rerank_model'), 'msg': 'Input should be a valid string', 'input': <MagicMock name='get().config.rag.rerank_model' id='1801917534992'>}
+E                 {'type': 'value_error', 'loc': ('response', 'config', 'agent'), 'msg': 'Value error, Agent config only valid for ReAct method', 'input': <MagicMock name='get().config.agent' id='1801917538688'>, 'ctx': {'error': ValueError('Agent config only valid for ReAct method')}}
+E                 {'type': 'greater_than_equal', 'loc': ('response', 'config', 'optimization', 'cache_max_size'), 'msg': 'Input should be greater than or equal to 16', 'input': <MagicMock name='get().config.optimization.cache_max_size' id='1801917698976'>, 'ctx': {'ge': 16}}
+E                 {'type': 'enum', 'loc': ('response', 'status'), 'msg': "Input should be 'pending', 'queued', 'running', 'completed' or 'failed'", 'input': 'created', 'ctx': {'expected': "'pending', 'queued', 'running', 'completed' or 'failed'"}}
+E                 {'type': 'string_type', 'loc': ('response', 'error_message'), 'msg': 'Input should be a valid string', 'input': <MagicMock name='get().error_message' id='1801917777152'>}
+E               
+E                 File "C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\app\api\experiments.py", line 175, in run_experiment
+E                   POST /api/v1/experiments/{experiment_id}/run
+
+venv\Lib\site-packages\fastapi\routing.py:215: ResponseValidationError
+------------------------------ Captured log call ------------------------------
+ERROR    app.core.exception_handlers:exception_handlers.py:85 Unhandled Exception on POST http://testserver/api/v1/experiments/00000000-0000-0000-0000-000000000000/run [RequestID: e8bc93e1-3c84-4db1-bf1d-9f161922f675]
+Traceback (most recent call last):
+  File "C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\venv\Lib\site-packages\starlette\middleware\errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\venv\Lib\site-packages\starlette\middleware\base.py", line 191, in __call__
+    with recv_stream, send_stream, collapse_excgroups():
+  File "C:\Python312\Lib\contextlib.py", line 158, in __exit__
+    self.gen.throw(value)
+  File "C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\venv\Lib\site-packages\starlette\_utils.py", line 85, in collapse_excgroups
+    raise exc
+  File "C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\venv\Lib\site-packages\starlette\middleware\base.py", line 193, in __call__
+    response = await self.dispatch_func(request, call_next)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\app\core\middleware.py", line 19, in dispatch
+    response = await call_next(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\venv\Lib\site-packages\starlette\middleware\base.py", line 168, in call_next
+    raise app_exc from app_exc.__cause__ or app_exc.__context__
+  File "C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\venv\Lib\site-packages\starlette\middleware\base.py", line 144, in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+  File "C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\venv\Lib\site-packages\starlette\middleware\cors.py", line 85, in __call__
+    await self.app(scope, receive, send)
+  File "C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\venv\Lib\site-packages\starlette\middleware\exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\venv\Lib\site-packages\starlette\_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\venv\Lib\site-packages\starlette\_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\venv\Lib\site-packages\fastapi\middleware\asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\venv\Lib\site-packages\starlette\routing.py", line 716, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\venv\Lib\site-packages\starlette\routing.py", line 736, in app
+    await route.handle(scope, receive, send)
+  File "C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\venv\Lib\site-packages\starlette\routing.py", line 290, in handle
+    await self.app(scope, receive, send)
+  File "C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\venv\Lib\site-packages\fastapi\routing.py", line 115, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\venv\Lib\site-packages\starlette\_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\venv\Lib\site-packages\starlette\_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\venv\Lib\site-packages\fastapi\routing.py", line 101, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\venv\Lib\site-packages\fastapi\routing.py", line 377, in app
+    content = await serialize_response(
+              ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\venv\Lib\site-packages\fastapi\routing.py", line 215, in serialize_response
+    raise ResponseValidationError(
+fastapi.exceptions.ResponseValidationError: 12 validation errors:
+  {'type': 'string_type', 'loc': ('response', 'name'), 'msg': 'Input should be a valid string', 'input': <MagicMock name='get().name' id='1801912033616'>}
+  {'type': 'string_type', 'loc': ('response', 'description'), 'msg': 'Input should be a valid string', 'input': <MagicMock name='get().description' id='1801917359520'>}
+  {'type': 'string_type', 'loc': ('response', 'config', 'model_name'), 'msg': 'Input should be a valid string', 'input': <MagicMock name='get().config.model_name' id='1801917399840'>}
+  {'type': 'enum', 'loc': ('response', 'config', 'reasoning_method'), 'msg': "Input should be 'naive', 'cot' or 'react'", 'input': <MagicMock name='get().config.reasoning_method' id='1801917403680'>, 'ctx': {'expected': "'naive', 'cot' or 'react'"}}
+  {'type': 'string_type', 'loc': ('response', 'config', 'dataset_name'), 'msg': 'Input should be a valid string', 'input': <MagicMock name='get().config.dataset_name' id='1801913248624'>}
+  {'type': 'enum', 'loc': ('response', 'config', 'rag', 'retrieval_method'), 'msg': "Input should be 'none', 'naive', 'hybrid' or 'reranked'", 'input': <MagicMock name='get().config.rag.retrieval_method' id='1801917339392'>, 'ctx': {'expected': "'none', 'naive', 'hybrid' or 'reranked'"}}
+  {'type': 'greater_than_equal', 'loc': ('response', 'config', 'rag', 'chunk_size'), 'msg': 'Input should be greater than or equal to 64', 'input': <MagicMock name='get().config.rag.chunk_size' id='1801917494720'>, 'ctx': {'ge': 64}}
+  {'type': 'string_type', 'loc': ('response', 'config', 'rag', 'rerank_model'), 'msg': 'Input should be a valid string', 'input': <MagicMock name='get().config.rag.rerank_model' id='1801917534992'>}
+  {'type': 'value_error', 'loc': ('response', 'config', 'agent'), 'msg': 'Value error, Agent config only valid for ReAct method', 'input': <MagicMock name='get().config.agent' id='1801917538688'>, 'ctx': {'error': ValueError('Agent config only valid for ReAct method')}}
+  {'type': 'greater_than_equal', 'loc': ('response', 'config', 'optimization', 'cache_max_size'), 'msg': 'Input should be greater than or equal to 16', 'input': <MagicMock name='get().config.optimization.cache_max_size' id='1801917698976'>, 'ctx': {'ge': 16}}
+  {'type': 'enum', 'loc': ('response', 'status'), 'msg': "Input should be 'pending', 'queued', 'running', 'completed' or 'failed'", 'input': 'created', 'ctx': {'expected': "'pending', 'queued', 'running', 'completed' or 'failed'"}}
+  {'type': 'string_type', 'loc': ('response', 'error_message'), 'msg': 'Input should be a valid string', 'input': <MagicMock name='get().error_message' id='1801917777152'>}
+
+  File "C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\app\api\experiments.py", line 175, in run_experiment
+    POST /api/v1/experiments/{experiment_id}/run
+============================== warnings summary ===============================
+app\schemas\result.py:47
+  C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\app\schemas\result.py:47: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
+    class RunSummary(BaseModel):
+
+app\schemas\result.py:71
+  C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\app\schemas\result.py:71: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
+    class ResultResponse(BaseModel):
+
+app\schemas\run.py:37
+  C:\Users\FAZLUL\Desktop\MainProject\LlmForge\backend\app\schemas\run.py:37: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
+    class RunResponse(BaseModel):
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/test_api.py::TestExperimentRunCustomHeaders::test_run_experiment_with_custom_headers
+================= 1 failed, 134 passed, 3 warnings in 12.25s ==================
