@@ -139,9 +139,19 @@ export default function NewExperimentPage() {
                 return;
             }
             // Save to local storage for future use
-            localStorage.setItem("customBaseUrl", customBaseUrl);
-            localStorage.setItem("customApiKey", customApiKey);
-            localStorage.setItem("customModelId", customModelId);
+            if (typeof window !== "undefined") {
+                try {
+                    const settings = JSON.parse(localStorage.getItem("customLLMSettings") || "{}");
+                    settings[customModelId] = { baseUrl: customBaseUrl, apiKey: customApiKey };
+                    localStorage.setItem("customLLMSettings", JSON.stringify(settings));
+                } catch (e) {
+                    console.error("Failed to save custom LLM settings", e);
+                }
+                // Backward compatibility
+                localStorage.setItem("customBaseUrl", customBaseUrl);
+                localStorage.setItem("customApiKey", customApiKey);
+                localStorage.setItem("customModelId", customModelId);
+            }
         }
 
         const config: ExperimentConfig = {

@@ -2,7 +2,7 @@ import logging
 import time
 from typing import Optional, List
 
-from openai import OpenAI
+from openai import OpenAI, APIConnectionError, APIError, NotFoundError, RateLimitError
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_not_exception_type
 
 from app.services.inference.base import (
@@ -62,7 +62,7 @@ class OpenAIEngine(InferenceEngine):
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=10),
-        retry=retry_if_not_exception_type(ValueError)  # Don't retry on validation errors
+        retry=retry_if_not_exception_type((ValueError, NotFoundError))  # Don't retry on validation errors or 404s
     )
     def generate(
         self,
@@ -107,10 +107,22 @@ class OpenAIEngine(InferenceEngine):
                 gpu_memory_mb=None,
             )
 
+        except NotFoundError as e:
+            latency_ms = (time.perf_counter() - start_time) * 1000
+            logger.error(f"Model not found on custom endpoint (url={self._base_url}, model={self._model_name}): {e}")
+            raise RuntimeError(f"Model '{self._model_name}' not found on the provided endpoint. Please verify the model ID.") from e
+        except RateLimitError as e:
+            latency_ms = (time.perf_counter() - start_time) * 1000
+            logger.error(f"Rate limit exceeded (url={self._base_url}, model={self._model_name}): {e}")
+            raise RuntimeError(f"Rate limit exceeded on custom endpoint: {str(e)}") from e
+        except (APIConnectionError, APIError) as e:
+            latency_ms = (time.perf_counter() - start_time) * 1000
+            logger.error(f"Custom OpenAI API Error (url={self._base_url}, model={self._model_name}): {e}")
+            raise RuntimeError(f"API Error from custom endpoint: {str(e)}") from e
         except Exception as e:
             latency_ms = (time.perf_counter() - start_time) * 1000
-            logger.error(f"Custom OpenAI API inference failed (url={self._base_url}, model={self._model_name}): {e}")
-            raise RuntimeError(f"Custom OpenAI API inference failed: {str(e)}") from e
+            logger.error(f"Unexpected custom API inference failure (url={self._base_url}, model={self._model_name}): {e}")
+            raise RuntimeError(f"Unexpected inference failure: {str(e)}") from e
     
     def generate_batch(
         self,

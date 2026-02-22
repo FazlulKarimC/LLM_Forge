@@ -565,7 +565,30 @@ export default function ExperimentDetailPage({ params }: Props) {
     });
 
     const runMutation = useMutation({
-        mutationFn: () => runExperiment(id),
+        mutationFn: () => {
+            let customBaseUrl: string | undefined = undefined;
+            let customApiKey: string | undefined = undefined;
+
+            // Check if there are saved settings for the current experiment's model
+            if (experiment?.config.model_name && typeof window !== "undefined") {
+                try {
+                    const settings = JSON.parse(localStorage.getItem("customLLMSettings") || "{}");
+                    const modelSettings = settings[experiment.config.model_name];
+
+                    if (modelSettings) {
+                        customBaseUrl = modelSettings.baseUrl;
+                        customApiKey = modelSettings.apiKey;
+                    } else if (localStorage.getItem("customModelId") === experiment.config.model_name) {
+                        // Fallback to legacy single-model storage
+                        customBaseUrl = localStorage.getItem("customBaseUrl") || undefined;
+                        customApiKey = localStorage.getItem("customApiKey") || undefined;
+                    }
+                } catch (e) {
+                    console.error("Failed to parse customLLMSettings during run", e);
+                }
+            }
+            return runExperiment(id, customBaseUrl, customApiKey);
+        },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["experiment", id] });
             queryClient.invalidateQueries({ queryKey: ["experiments"] });
