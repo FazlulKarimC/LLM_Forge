@@ -11,6 +11,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { use, useState } from "react";
 import Link from "next/link";
+import { motion } from "framer-motion";
 import {
     getExperiment,
     getMetrics,
@@ -708,7 +709,12 @@ export default function ExperimentDetailPage({ params }: Props) {
                 </div>
             </header>
 
-            <main className="max-w-7xl mx-auto px-4 py-8">
+            <motion.main
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5 }}
+                className="max-w-7xl mx-auto px-4 py-8"
+            >
                 {/* Run Error Display */}
                 {runMutation.error && (
                     <div className="card p-4 mb-6 border-l-4 border-l-(--error)">
@@ -807,7 +813,7 @@ export default function ExperimentDetailPage({ params }: Props) {
                         <ProfileDashboard experimentId={id} />
                     </div>
                 )}
-            </main>
+            </motion.main>
         </div>
     );
 }

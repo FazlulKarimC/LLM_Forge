@@ -12,6 +12,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { motion } from "framer-motion";
 import { listExperiments, deleteExperiment, runExperiment, Experiment, ListExperimentsParams } from "@/lib/api";
 import { Eye, Play, Trash2, Loader2, AlertTriangle, X } from "lucide-react";
 import { toast } from "sonner";
@@ -105,7 +106,7 @@ export default function ExperimentsPage() {
             <header className="bg-(--bg-card) shadow-sm border-b border-border">
                 <div className="max-w-7xl mx-auto px-4 py-6 flex justify-between items-center">
                     <div>
-                        <Link href="/" className="text-primary hover:underline text-sm">
+                        <Link href="/dashboard" className="text-primary hover:underline text-sm">
                             ← Dashboard
                         </Link>
                         <h1 className="text-2xl font-serif text-(--text-heading) mt-1">
@@ -123,7 +124,12 @@ export default function ExperimentsPage() {
                 </div>
             </header>
 
-            <main className="max-w-7xl mx-auto px-4 py-8">
+            <motion.main
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5 }}
+                className="max-w-7xl mx-auto px-4 py-8"
+            >
                 {error && (
                     <div className="mb-6 bg-red-50 border border-red-200 rounded-xl p-4">
                         <p className="text-red-700">{error instanceof Error ? error.message : "Failed to load"}</p>
@@ -251,7 +257,7 @@ export default function ExperimentsPage() {
                         </tbody>
                     </table>
                 </div>
-            </main>
+            </motion.main>
 
             {/* Custom Delete Confirmation Modal */}
             {

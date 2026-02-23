@@ -12,6 +12,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
+import { motion } from "framer-motion";
 import { createExperiment, runExperiment, getAvailableModels, ExperimentConfig, CreateExperimentRequest, AgentConfig } from "@/lib/api";
 
 
@@ -215,7 +216,12 @@ export default function NewExperimentPage() {
                 </div>
             </header>
 
-            <main className="max-w-7xl mx-auto px-4 py-8">
+            <motion.main
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5 }}
+                className="max-w-7xl mx-auto px-4 py-8"
+            >
                 <form onSubmit={(e) => handleSubmit(e, false)} className="card p-6 space-y-6">
                     {/* Validation Error Display */}
                     {validationError && (
@@ -650,7 +656,7 @@ export default function NewExperimentPage() {
                         </button>
                     </div>
                 </form>
-            </main>
+            </motion.main>
         </div>
     );
 }

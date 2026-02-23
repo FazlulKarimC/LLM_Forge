@@ -1,316 +1,245 @@
 "use client";
 
-/**
- * LLM Research Platform - Dashboard
- * 
- * Main dashboard showing stats, recent experiments, and quick actions.
- * Uses TanStack Query for data fetching.
- * Styled with DESIGN_SYSTEM.md (4-color palette, Instrument Serif headings).
- */
-
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { motion, Variants } from "framer-motion";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { getDashboardStats, listExperiments, deleteExperiment, runExperiment, Experiment } from "@/lib/api";
-import { Play, Trash2, Eye, Loader2, AlertTriangle } from "lucide-react";
-import { toast } from "sonner";
+import Image from "next/image";
+import { ArrowRight, BarChart3, Binary, Share2, Sparkles, Zap, Search, ShieldCheck } from "lucide-react";
 
-export default function DashboardPage() {
-  const queryClient = useQueryClient();
-  const router = useRouter();
+const fadeIn: Variants = {
+    hidden: { opacity: 0, y: 20 },
+    visible: { opacity: 1, y: 0, transition: { duration: 0.6, ease: "easeOut" } }
+};
 
-  // Track in-flight action IDs
-  const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
-  const [runningIds, setRunningIds] = useState<Set<string>>(new Set());
-  const [experimentToDelete, setExperimentToDelete] = useState<{ id: string, name: string } | null>(null);
-
-  const statsQuery = useQuery({
-    queryKey: ["dashboard-stats"],
-    queryFn: getDashboardStats,
-  });
-
-  const experimentsQuery = useQuery({
-    queryKey: ["experiments", "recent"],
-    queryFn: () => listExperiments({ limit: 5 }),
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: (id: string) => {
-      setDeletingIds(prev => new Set(prev).add(id));
-      return deleteExperiment(id);
-    },
-    onSuccess: (_data, id) => {
-      setDeletingIds(prev => { const s = new Set(prev); s.delete(id); return s; });
-      queryClient.invalidateQueries({ queryKey: ["experiments"] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
-      toast.success("Experiment deleted");
-      setExperimentToDelete(null);
-    },
-    onError: (err, id) => {
-      setDeletingIds(prev => { const s = new Set(prev); s.delete(id); return s; });
-      toast.error(`Failed to delete: ${err.message}`);
-      setExperimentToDelete(null);
-    },
-  });
-
-  const runMutation = useMutation({
-    mutationFn: (id: string) => {
-      setRunningIds(prev => new Set(prev).add(id));
-      return runExperiment(id);
-    },
-    onSuccess: (_data, id) => {
-      setRunningIds(prev => { const s = new Set(prev); s.delete(id); return s; });
-      queryClient.invalidateQueries({ queryKey: ["experiments"] });
-      toast.success("Experiment started");
-    },
-    onError: (err, id) => {
-      setRunningIds(prev => { const s = new Set(prev); s.delete(id); return s; });
-      toast.error(`Failed to start: ${err.message}`);
-    },
-  });
-
-  const handleRun = async (id: string) => {
-    runMutation.mutate(id);
-  };
-
-  const handleDeleteClick = (id: string, name: string) => {
-    setExperimentToDelete({ id, name });
-  };
-
-  const confirmDelete = () => {
-    if (experimentToDelete) {
-      deleteMutation.mutate(experimentToDelete.id);
+const staggerContainer: Variants = {
+    hidden: { opacity: 0 },
+    visible: {
+        opacity: 1,
+        transition: {
+            staggerChildren: 0.15
+        }
     }
-  };
+};
 
-  const stats = statsQuery.data;
-  const recentExperiments = experimentsQuery.data?.experiments ?? [];
-  const loading = statsQuery.isLoading || experimentsQuery.isLoading;
-  const error = statsQuery.error || experimentsQuery.error;
+export default function LandingPage() {
+    return (
+        <div className="min-h-screen bg-(--bg-page) selection:bg-[#37322F] selection:text-[#F7F5F3] overflow-hidden">
+            {/* Hero Section */}
+            <section className="relative pt-32 pb-20 lg:pt-48 lg:pb-32 px-6">
+                <div className="max-w-7xl mx-auto flex flex-col items-center text-center">
+                    <motion.div
+                        initial="hidden"
+                        animate="visible"
+                        variants={staggerContainer}
+                        className="max-w-3xl"
+                    >
+                        <motion.div variants={fadeIn} className="mb-6 flex justify-center">
+                            <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white border border-[#E0DEDB] text-xs font-medium text-[#37322F] shadow-sm">
+                                <span className="flex size-2 bg-green-500 rounded-full animate-pulse"></span>
+                                Free & Open Source Learning Project
+                            </span>
+                        </motion.div>
 
-  return (
-    <div className="min-h-screen bg-(--bg-page)">
-      {/* Header */}
-      <header className="bg-(--bg-card) shadow-sm border-b border-border">
-        <div className="max-w-7xl mx-auto px-4 py-6">
-          <h1 className="text-3xl font-serif text-(--text-heading)">
-            LLM Research Platform
-          </h1>
-          <p className="mt-1 text-(--text-body)">
-            Config-driven experimentation for reasoning, retrieval, and alignment
-          </p>
-        </div>
-      </header>
+                        <motion.h1
+                            variants={fadeIn}
+                            className="text-[52px] md:text-[80px] font-serif leading-[1.05] text-[#37322F] tracking-tight mb-8"
+                        >
+                            Systematic LLM <br />
+                            <span className="text-[#605A57]">Experimentation.</span>
+                        </motion.h1>
 
-      <main className="max-w-7xl mx-auto px-4 py-8">
-        {/* Error State */}
-        {error && (
-          <div className="mb-8 bg-red-50 border border-red-200 rounded-xl p-4">
-            <p className="text-red-700">
-              <strong>Error:</strong> {error instanceof Error ? error.message : 'Failed to load'}
-            </p>
-            <p className="text-sm text-red-600 mt-1">
-              Make sure the backend is running at http://localhost:8000
-            </p>
-          </div>
-        )}
+                        <motion.p
+                            variants={fadeIn}
+                            className="text-lg md:text-xl text-[#605A57] leading-relaxed mb-10 max-w-2xl mx-auto"
+                        >
+                            A config-driven platform to systematically compare reasoning strategies like Naive Prompting, Chain-of-Thought, RAG, and ReAct Agents with comprehensive metrics tracking.
+                        </motion.p>
 
-        {/* Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          <StatCard
-            title="Total Experiments"
-            value={loading ? "..." : stats?.totalExperiments ?? 0}
-            loading={loading}
-          />
-          <StatCard
-            title="Completed"
-            value={loading ? "..." : stats?.completedExperiments ?? 0}
-            loading={loading}
-          />
-          <StatCard
-            title="Running"
-            value={loading ? "..." : stats?.runningExperiments ?? 0}
-            loading={loading}
-          />
-          <StatCard
-            title="Pending"
-            value={loading ? "..." : stats?.pendingExperiments ?? 0}
-            loading={loading}
-          />
-        </div>
+                        <motion.div
+                            variants={fadeIn}
+                            className="flex flex-col sm:flex-row gap-4 justify-center items-center"
+                        >
+                            <Link
+                                href="/dashboard"
+                                className="group relative inline-flex items-center justify-center gap-2 px-8 py-4 bg-[#37322F] text-white rounded-full font-medium overflow-hidden transition-transform hover:scale-105 active:scale-95"
+                            >
+                                <div className="absolute inset-0 bg-white/10 translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
+                                <span className="relative">Launch Dashboard</span>
+                                <ArrowRight className="relative size-4 group-hover:translate-x-1 transition-transform" />
+                            </Link>
+                            <a
+                                href="https://github.com/FazlulKarimC/LLM_Forge"
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center justify-center gap-2 px-8 py-4 bg-white border border-[#E0DEDB] text-[#37322F] rounded-full font-medium hover:bg-[#F7F5F3] shadow-[0px_2px_0px_0px_rgba(55,50,47,0.04)] transition-all hover:-translate-y-0.5"
+                            >
+                                View on GitHub
+                            </a>
+                        </motion.div>
+                    </motion.div>
+                </div>
 
-        {/* Quick Actions */}
-        <div className="card p-6 mb-8">
-          <h2 className="text-xl font-serif text-(--text-heading) mb-4">Quick Actions</h2>
-          <div className="flex gap-4">
-            <Link
-              href="/experiments/new"
-              className="btn-primary"
-            >
-              New Experiment
-            </Link>
-            <Link
-              href="/experiments"
-              className="px-6 py-2 rounded-full border border-border text-(--text-body) hover:bg-(--bg-page) transition-colors"
-            >
-              View All Experiments
-            </Link>
-          </div>
-        </div>
+                {/* Abstract design elements */}
+                <div className="absolute top-1/2 left-0 -translate-y-1/2 w-64 h-64 bg-linear-to-tr from-[#E0DEDB]/40 to-transparent rounded-full blur-3xl -z-10" />
+                <div className="absolute bottom-0 right-10 w-96 h-96 bg-linear-to-bl from-[#605A57]/10 to-transparent rounded-full blur-3xl -z-10" />
+            </section>
 
-        {/* Recent Experiments */}
-        <div className="card p-6">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-serif text-(--text-heading)">Recent Experiments</h2>
-            <Link href="/experiments" className="text-primary hover:underline text-sm">
-              View all →
-            </Link>
-          </div>
+            {/* Features Grid */}
+            <section className="py-24 bg-white border-y border-[#E0DEDB]">
+                <div className="max-w-7xl mx-auto px-6">
+                    <div className="mb-16 md:text-center max-w-2xl mx-auto">
+                        <h2 className="text-3xl md:text-4xl font-serif text-[#37322F] mb-4">Research-grade methodology, accessible to everyone.</h2>
+                        <p className="text-[#605A57] text-lg">Designed to deeply understand the trade-offs in accuracy, latency, and tokens across different AI architectures.</p>
+                    </div>
 
-          {loading ? (
-            <div className="space-y-3">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="animate-pulse h-16 bg-(--bg-page) rounded-lg" />
-              ))}
-            </div>
-          ) : recentExperiments.length === 0 ? (
-            <p className="text-(--text-muted) text-center py-8">
-              No experiments yet. Create your first experiment to get started.
-            </p>
-          ) : (
-            <div className="space-y-3">
-              {recentExperiments.map((exp) => (
-                <div
-                  key={exp.id}
-                  className="block border border-border rounded-lg p-4 hover:bg-(--bg-page) transition-colors cursor-pointer shadow-xs"
-                  onClick={() => router.push(`/experiments/${exp.id}`)}
+                    <motion.div
+                        initial="hidden"
+                        whileInView="visible"
+                        viewport={{ once: true, margin: "-100px" }}
+                        variants={staggerContainer}
+                        className="grid grid-cols-1 md:grid-cols-3 gap-8"
+                    >
+                        {features.map((feature, i) => (
+                            <motion.div
+                                key={i}
+                                variants={fadeIn}
+                                className="group p-8 rounded-2xl bg-[#F7F5F3] border border-[#E0DEDB] hover:border-[#605A57]/30 transition-colors"
+                            >
+                                <div className="size-12 rounded-xl bg-white border border-[#E0DEDB] flex items-center justify-center mb-6 shadow-sm group-hover:scale-110 transition-transform duration-300">
+                                    <feature.icon className="size-5 text-[#37322F]" />
+                                </div>
+                                <h3 className="text-xl font-serif text-[#37322F] mb-3">{feature.title}</h3>
+                                <p className="text-[#605A57] leading-relaxed">{feature.description}</p>
+                            </motion.div>
+                        ))}
+                    </motion.div>
+                </div>
+            </section>
+
+            {/* Orchestration Concept Section */}
+            <section className="py-24 px-6 overflow-hidden">
+                <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center gap-16">
+                    <motion.div
+                        initial={{ opacity: 0, x: -30 }}
+                        whileInView={{ opacity: 1, x: 0 }}
+                        viewport={{ once: true }}
+                        transition={{ duration: 0.8 }}
+                        className="flex-1"
+                    >
+                        <h2 className="text-4xl md:text-5xl font-serif text-[#37322F] mb-6 leading-tight">
+                            Compare strategies side-by-side.
+                        </h2>
+                        <p className="text-lg text-[#605A57] mb-8 leading-relaxed">
+                            Don't guess what works best. Forge clear hypotheses and run direct technical comparisons. Uncover the exact latency overhead of Chain-of-Thought versus the accuracy gain it yields on complex benchmarks.
+                        </p>
+                        <ul className="space-y-4">
+                            {['Naive Prompting Models', 'Iterative Chain-of-Thought', 'RAG with Vector Retrieval', 'ReAct Tool-use Agents'].map((item, i) => (
+                                <li key={i} className="flex items-center gap-3 text-[#37322F] font-medium">
+                                    <div className="size-5 rounded-full bg-[#E0DEDB] flex items-center justify-center">
+                                        <div className="size-2 rounded-full bg-[#37322F]" />
+                                    </div>
+                                    {item}
+                                </li>
+                            ))}
+                        </ul>
+                    </motion.div>
+                    <motion.div
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        whileInView={{ opacity: 1, scale: 1 }}
+                        viewport={{ once: true }}
+                        transition={{ duration: 0.8 }}
+                        className="flex-1 w-full relative"
+                    >
+                        <div className="aspect-4/3 rounded-2xl bg-white border border-[#E0DEDB] shadow-xl overflow-hidden flex flex-col">
+                            <div className="h-12 border-b border-[#E0DEDB] bg-[#F7F5F3] flex items-center px-4 gap-2">
+                                <div className="flex gap-1.5">
+                                    <div className="size-3 rounded-full bg-red-400" />
+                                    <div className="size-3 rounded-full bg-amber-400" />
+                                    <div className="size-3 rounded-full bg-green-400" />
+                                </div>
+                            </div>
+                            <div className="flex-1 p-6 flex flex-col gap-4 bg-[#F7F5F3]/50">
+                                <div className="h-4 w-32 bg-[#E0DEDB] rounded-full" />
+                                <div className="flex-1 grid grid-cols-2 gap-4">
+                                    <div className="p-4 bg-white border border-[#E0DEDB] rounded-lg shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow">
+                                        <div className="h-3 w-16 bg-blue-100 rounded-full" />
+                                        <div>
+                                            <div className="text-3xl font-serif text-[#37322F] mb-1">92%</div>
+                                            <div className="text-xs text-[#605A57]">CoT Accuracy</div>
+                                        </div>
+                                    </div>
+                                    <div className="p-4 bg-white border border-[#E0DEDB] rounded-lg shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow">
+                                        <div className="h-3 w-16 bg-gray-200 rounded-full" />
+                                        <div>
+                                            <div className="text-3xl font-serif text-[#37322F] mb-1">68%</div>
+                                            <div className="text-xs text-[#605A57]">Naive Accuracy</div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="h-24 bg-white border border-[#E0DEDB] rounded-lg p-4 flex gap-4 items-end">
+                                    <div className="w-1/4 bg-[#E0DEDB] rounded-t-sm" style={{ height: '40%' }} />
+                                    <div className="w-1/4 bg-[#37322F] rounded-t-sm" style={{ height: '80%' }} />
+                                    <div className="w-1/4 bg-[#E0DEDB] rounded-t-sm" style={{ height: '55%' }} />
+                                    <div className="w-1/4 bg-[#605A57] rounded-t-sm" style={{ height: '95%' }} />
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Decorative dots grid behind screen */}
+                        <div className="absolute -bottom-8 -right-8 w-48 h-48 -z-10 grid grid-cols-6 grid-rows-6 gap-2 opacity-20">
+                            {Array.from({ length: 36 }).map((_, i) => (
+                                <div key={i} className="size-2 rounded-full bg-[#37322F]" />
+                            ))}
+                        </div>
+                    </motion.div>
+                </div>
+            </section>
+
+            {/* CTA Footer */}
+            <footer className="py-16 text-center border-t border-[#E0DEDB] bg-white">
+                <h2 className="text-2xl font-serif text-[#37322F] mb-6">Start your first experiment today.</h2>
+                <Link
+                    href="/dashboard"
+                    className="inline-flex items-center justify-center px-8 py-3 bg-[#37322F] text-white rounded-full font-medium transition-transform hover:scale-105"
                 >
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <h3 className="font-medium text-(--text-heading)">{exp.name}</h3>
-                      <p className="text-sm text-(--text-muted)">
-                        {exp.config.model_name} • {exp.config.reasoning_method}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-4">
-                      <span className={`text-xs px-2 py-1 rounded-full badge-${exp.status}`}>
-                        {exp.status}
-                      </span>
-
-                      <div className="flex gap-2 items-center" onClick={(e) => e.stopPropagation()}>
-                        <Link
-                          href={`/experiments/${exp.id}`}
-                          className="inline-flex items-center justify-center p-1.5 text-sm font-medium border border-border bg-(--bg-card) text-(--text-body) rounded-md hover:bg-(--bg-page) transition-colors shadow-xs"
-                          title="View Detail"
-                        >
-                          <Eye className="size-4" />
-                        </Link>
-
-                        <button
-                          onClick={(e) => { e.stopPropagation(); handleRun(exp.id); }}
-                          disabled={runningIds.has(exp.id) || exp.status === "running" || exp.status === "queued"}
-                          className={`inline-flex items-center justify-center p-1.5 text-sm font-medium border rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer shadow-xs ${exp.status === "completed"
-                            ? "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
-                            : "border-green-200 bg-green-50 text-green-700 hover:bg-green-100"
-                            }`}
-                          title="Run Experiment"
-                        >
-                          {runningIds.has(exp.id) ? (
-                            <Loader2 className="size-4 animate-spin" />
-                          ) : (
-                            <Play className="size-4" />
-                          )}
-                        </button>
-
-                        <button
-                          onClick={(e) => { e.stopPropagation(); handleDeleteClick(exp.id, exp.name); }}
-                          className="inline-flex items-center justify-center p-1.5 text-sm font-medium border border-red-200 bg-red-50 text-red-700 rounded-md hover:bg-red-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer shadow-xs"
-                          disabled={deletingIds.has(exp.id)}
-                          title="Delete Experiment"
-                        >
-                          {deletingIds.has(exp.id) ? (
-                            <Loader2 className="size-4 animate-spin" />
-                          ) : (
-                            <Trash2 className="size-4" />
-                          )}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+                    Open Dashboard
+                </Link>
+                <p className="mt-12 text-sm text-[#605A57]">
+                    Built as a personal learning project by Fazlul Karim. <br className="md:hidden" /> Open source and free to explore.
+                </p>
+            </footer>
         </div>
-      </main>
-
-      {/* Custom Delete Confirmation Modal */}
-      {experimentToDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
-          <div
-            className="bg-(--bg-card) border border-border rounded-xl shadow-xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="p-6">
-              <div className="flex items-start gap-4">
-                <div className="p-2 bg-red-50 rounded-full shrink-0">
-                  <AlertTriangle className="size-6 text-red-600" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-serif text-(--text-heading)">Delete Experiment</h3>
-                  <p className="mt-2 text-sm text-(--text-muted) leading-relaxed">
-                    Are you sure you want to delete <span className="font-medium text-(--text-heading)">{experimentToDelete.name}</span>?
-                    This action cannot be undone.
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="px-6 py-4 bg-(--bg-page) border-t border-border flex items-center justify-end gap-3">
-              <button
-                onClick={() => setExperimentToDelete(null)}
-                disabled={deleteMutation.isPending}
-                className="px-4 py-2 text-sm font-medium text-(--text-body) bg-white border border-border rounded-lg hover:bg-gray-50 hover:text-gray-900 transition-colors disabled:opacity-50 cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={confirmDelete}
-                disabled={deleteMutation.isPending}
-                className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-red-600 border border-transparent rounded-lg hover:bg-red-700 transition-colors focus:ring-2 focus:ring-red-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-xs cursor-pointer"
-              >
-                {deleteMutation.isPending ? (
-                  <><Loader2 className="size-4 animate-spin" /> Deleting...</>
-                ) : (
-                  <><Trash2 className="size-4" /> Delete</>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
+    );
 }
 
-function StatCard({
-  title,
-  value,
-  loading,
-}: {
-  title: string;
-  value: string | number;
-  loading?: boolean;
-}) {
-  return (
-    <div className="card p-6">
-      <dt className="text-sm font-medium text-(--text-muted)">{title}</dt>
-      <dd className={`mt-1 text-3xl font-serif text-(--text-heading) ${loading ? "animate-pulse" : ""}`}>
-        {value}
-      </dd>
-    </div>
-  );
-}
-
-
+const features = [
+    {
+        icon: Binary,
+        title: "Methodology Comparison",
+        description: "Run head-to-head tests between standard prompting, Chain-of-Thought, RAG pipelines, and ReAct agent workflows."
+    },
+    {
+        icon: BarChart3,
+        title: "Deep Analytics",
+        description: "Track model accuracy, performance latency, exact matches, token-level F1 scores, and inference cost natively."
+    },
+    {
+        icon: Share2,
+        title: "Orchestrated Execution",
+        description: "Submit experiments matching datasets to models. Background queues handle API failures and batch processing reliably."
+    },
+    {
+        icon: Zap,
+        title: "Fast & Interactive",
+        description: "Designed using React 19, Next.js 16, and FastAPI. Zero database locks on long generations thanks to asyncio threading."
+    },
+    {
+        icon: Search,
+        title: "Retrieval Testing",
+        description: "Examine how knowledge graph injection and dense vector retrieval modify response accuracy compared to zero-shot approaches."
+    },
+    {
+        icon: ShieldCheck,
+        title: "Guardrails & Alignment",
+        description: "Implement custom moderation prompts to test boundaries safely, comparing how strictly different LLMs adhere to system instructions."
+    }
+];

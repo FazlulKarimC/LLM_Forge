@@ -24,7 +24,7 @@ export default function NotFound() {
                 {/* Actions */}
                 <div className="pt-6 flex flex-col sm:flex-row items-center justify-center gap-4">
                     <Link
-                        href="/"
+                        href="/dashboard"
                         className="inline-flex items-center justify-center gap-2 px-6 py-3 text-sm font-medium text-white bg-primary rounded-lg hover:bg-primary/90 transition-colors shadow-sm w-full sm:w-auto"
                     >
                         <ArrowLeft className="size-4" />
