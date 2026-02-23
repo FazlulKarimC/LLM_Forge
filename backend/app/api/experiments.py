@@ -86,9 +86,9 @@ def _enqueue_or_fallback(
         )
         return "rq"
     except Exception as e:
-        logger.warning(f"Redis unavailable ({e}), falling back to inline execution")
-        background_tasks.add_task(_execute_inline, experiment_id, custom_base_url, custom_api_key)
-        return "inline"
+        logger.warning(f"Redis enqueue failed ({e})")
+        from fastapi import HTTPException
+        raise HTTPException(status_code=503, detail="Task queue unavailable")
 
 
 @router.post("/", response_model=ExperimentResponse, status_code=201)
@@ -147,9 +147,9 @@ async def list_available_models():
                 "description": "High capability",
             },
             {
-                "value": "Qwen/Qwen2.5-72B-Instruct",
-                "label": "Qwen 2.5 (72B)",
-                "description": "Powerful 72B model",
+                "value": "Qwen/Qwen2.5-7B-Instruct",
+                "label": "Qwen 2.5 (7B)",
+                "description": "Powerful 7B model (Free-tier safe)",
             },
         ]
     }
@@ -194,6 +194,10 @@ async def run_experiment(
     
     if experiment.status in [ExperimentStatus.QUEUED, ExperimentStatus.RUNNING]:
         raise ValidationException(message="Experiment already queued or running")
+        
+    from app.core.config import settings
+    if x_custom_llm_base and settings.ENVIRONMENT != "development":
+        raise ValidationException(message="Custom LLM execution is only allowed in development mode")
     
     await service.update_status(experiment_id, ExperimentStatus.QUEUED)
     await db.commit()

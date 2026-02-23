@@ -23,7 +23,8 @@ from datetime import datetime
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
-from app.core.database import async_session_factory
+from app.core.database import async_session_maker
+from app.schemas.experiment import ExperimentCreate, ExperimentConfig
 from app.services.experiment_service import ExperimentService
 from app.models.experiment import Experiment
 from sqlalchemy import select
@@ -102,19 +103,21 @@ async def run_benchmark(num_samples: int = 10, output_file: str = "benchmark_res
             }
 
             # Create experiment via service
-            async with async_session_factory() as db:
+            async with async_session_maker() as db:
                 service = ExperimentService(db)
                 experiment = await service.create(
-                    name=exp_name,
-                    description=f"Benchmark: {method} + {opt_name}",
-                    config=config,
+                    ExperimentCreate(
+                        name=exp_name,
+                        description=f"Benchmark: {method} + {opt_name}",
+                        config=ExperimentConfig(**config),
+                    )
                 )
                 exp_id = experiment.id
                 await db.commit()
 
             # Run experiment
             start = time.time()
-            async with async_session_factory() as db:
+            async with async_session_maker() as db:
                 service = ExperimentService(db)
                 try:
                     await service.execute(exp_id)
@@ -125,7 +128,7 @@ async def run_benchmark(num_samples: int = 10, output_file: str = "benchmark_res
             elapsed = time.time() - start
 
             # Collect results
-            async with async_session_factory() as db:
+            async with async_session_maker() as db:
                 from app.models.result import Result
                 query = select(Result).where(Result.experiment_id == exp_id)
                 res = await db.execute(query)

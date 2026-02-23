@@ -13,6 +13,7 @@ Architecture:
 
 import asyncio
 import logging
+from typing import Optional
 from uuid import UUID
 
 logger = logging.getLogger(__name__)

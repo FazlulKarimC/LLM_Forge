@@ -60,6 +60,7 @@ class Result(Base):
         ForeignKey("experiments.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
+        unique=True,
     )
     
     # ----- Quality Metrics -----

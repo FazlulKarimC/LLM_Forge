@@ -55,9 +55,9 @@ async def readiness_check(db: AsyncSession = Depends(get_db)):
         "models": "not_implemented",
     }
     
-    # TODO: Implement actual checks
     try:
-        # Placeholder - will ping database
+        from sqlalchemy import text
+        await db.execute(text("SELECT 1"))
         checks["database"] = "healthy"
     except Exception as e:
         checks["database"] = f"unhealthy: {str(e)}"

@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 
 # Resolve project root once at import time so path lookups are stable
 # regardless of the working directory.
-_PROJECT_ROOT = Path(__file__).resolve().parents[4]
+_PROJECT_ROOT = Path(__file__).resolve().parents[3]
 _COT_EXAMPLES_PATH = _PROJECT_ROOT / "configs" / "cot_examples.json"
 
 
@@ -214,9 +214,8 @@ class ExperimentService:
         elif status in (ExperimentStatus.COMPLETED, ExperimentStatus.FAILED):
             experiment.completed_at = now
         
-        # Set error message if provided
-        if error_message:
-            experiment.error_message = error_message
+        # Set error message if provided (or clear it if rerun passing None/"")
+        experiment.error_message = error_message if error_message is not None else ""
         
         await self.db.flush()
         await self.db.refresh(experiment)
