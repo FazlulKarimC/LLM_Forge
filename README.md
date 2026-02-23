@@ -1,6 +1,6 @@
 # LlmForge
 
-> A config-driven experimentation platform for systematically comparing LLM reasoning strategies — Naive Prompting, Chain-of-Thought, RAG, and ReAct Agents — with full metrics tracking and a research-grade dashboard.
+> A config-driven experimentation platform for systematically comparing LLM reasoning strategies — Naive Prompting, Chain-of-Thought, RAG, and ReAct Agents — with full metrics tracking, a research-grade dashboard, and support for both HuggingFace and Custom Hosted OpenAI-compatible models.
 
 [![Python](https://img.shields.io/badge/Python-3.11+-3776ab?logo=python&logoColor=white)](https://python.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.111-009688?logo=fastapi)](https://fastapi.tiangolo.com)
@@ -11,94 +11,76 @@
 
 ## Overview
 
-LlmForge lets you design, run, and compare LLM experiments through a web UI or REST API. Each experiment is a combination of a **reasoning method**, **dataset**, **model**, and **hyperparameters** — all version-controlled in a database. After a run completes, the platform computes quality, performance, and cost metrics and surfaces them in an interactive dashboard.
+LlmForge lets you design, run, and compare LLM experiments through a polished web UI or REST API. Each experiment is a combination of a **reasoning method**, **dataset**, **model**, **target endpoint**, and **hyperparameters** — all version-controlled in a database. After a run completes, the platform computes quality, performance, and cost metrics, surfacing them in an interactive, clickable dashboard.
 
-**Built as a personal learning project** to deeply understand how different LLM reasoning strategies trade off accuracy, latency, and token cost on real QA benchmarks.
+Built to deeply understand how different LLM reasoning strategies trade off accuracy, latency, and token cost on real QA benchmarks.
 
 ---
 
 ## Features
 
-- **4 reasoning methods** — Naive, Chain-of-Thought, RAG (vector/BM25/hybrid retrieval), ReAct Agent with tools
-- **End-to-end pipeline** — create experiment → queue → inference → metrics → results, entirely from the UI
-- **Inference Providers API** — uses HuggingFace's Inference Providers (novita) — no local GPU needed
-- **Async-safe execution** — all blocking inference calls run in thread pools via `asyncio.to_thread()`, keeping the API responsive during long runs
-- **Metrics dashboard** — Accuracy, F1, Latency p50/p95, Throughput, per-run correctness grid
-- **Experiment comparison** — side-by-side metric cards across runs
-- **Inference optimization** — in-memory prompt caching (LRU), batch execution, per-section profiling
-- **ReAct agent** — iterative Thought → Action → Observation loop with Wikipedia search and Calculator tools
-- **RAG pipeline** — Qdrant vector store, configurable retrieval (dense, BM25, hybrid), faithfulness scoring
+- **4 Reasoning Methods** — Naive, Chain-of-Thought, RAG (vector/BM25/hybrid retrieval), and ReAct Agent with dynamic tool calling (Wikipedia / Calculator).
+- **End-to-end Pipeline** — Create, queue, execute, and evaluate experiments entirely from a sleek, glassmorphic UI featuring auto-polling and unified global navigation.
+- **Flexible Inference Engines** — Run experiments against **HuggingFace Inference Providers** (hosted serverless) *or* **Custom Hosted LLMs** (any OpenAI-compatible endpoint like local vLLM, Ollama, or third-party providers).
+- **Inference Optimization** — Built-in support for **Batch Execution** (parallel API calls via thread pools) and **Prompt Caching** (LRU cache for identical runs) to drastically reduce api latency and cost.
+- **Async-Safe Execution** — All blocking inference calls run reliably in thread pools via `asyncio.to_thread()`, keeping the FASTAPI event loop buttery smooth during heavy loads.
+- **Robust Error Handling** — Global exception middleware handles validation errors seamlessly, assigning unique Request IDs and gracefully rendering user-friendly alerts.
+- **Metrics Dashboard** — Compare Accuracy, Token-level F1, Latency (p50/p95), Throughput, and view a per-run correctness grid for granular output analysis.
 
 ---
 
 ## Architecture
 
-```
+```text
 ┌──────────────────────────────────────────────────────────┐
-│                    Next.js 16 Frontend                    │
-│  Dashboard │ New Experiment │ Results │ Comparison        │
+│                    Next.js 16 Frontend                   │
+│  Dashboard │ New Experiment │ Results │ Comparison       │
 └───────────────────────────┬──────────────────────────────┘
                             │ HTTP
 ┌───────────────────────────▼──────────────────────────────┐
-│                    FastAPI Backend                        │
-│                                                           │
+│                    FastAPI Backend                       │
 │  ┌─────────────┐  ┌──────────────┐  ┌─────────────────┐  │
-│  │  Experiment │  │  Inference   │  │   Evaluation    │  │
-│  │  Service    │  │  Engine      │  │   Pipeline      │  │
+│  │ Experiment  │  │  Inference   │  │   Evaluation    │  │
+│  │ Service     │  │  Engines     │  │   Pipeline      │  │
 │  │             │  │              │  │                 │  │
-│  │ CRUD + exec │  │ HFAPIEngine  │  │ Accuracy / F1   │  │
-│  │ BackgroundT │  │ MockEngine   │  │ Faithfulness    │  │
-│  │ asyncio.t_t │  │ Prompts      │  │ Latency p50/p95 │  │
+│  │ CRUD + Queue│  │ HFAPIEngine  │  │ Accuracy / F1   │  │
+│  │ Async/Batch │  │ OpenAIEngine │  │ Faithfulness    │  │
+│  │ Cache/Prof  │  │ MockEngine   │  │ Latency p50/p95 │  │
 │  └──────┬──────┘  └──────┬───────┘  └────────┬────────┘  │
 └─────────┼────────────────┼────────────────────┼──────────┘
           │                │                    │
           ▼                ▼                    ▼
    ┌────────────┐   ┌─────────────┐   ┌──────────────────┐
-   │ PostgreSQL │   │   Qdrant    │   │  HuggingFace     │
-   │ (NeonDB)   │   │ (Vector DB) │   │  Inference API   │
-   │ Experiments│   │ RAG Chunks  │   │  (novita)        │
-   │ Runs       │   └─────────────┘   └──────────────────┘
-   │ Results    │
-   └────────────┘
+   │ PostgreSQL │   │   Qdrant    │   │  HuggingFace API │
+   │ (NeonDB)   │   │ (Vector DB) │   │  / Custom Models │
+   └────────────┘   └─────────────┘   └──────────────────┘
 ```
 
 ---
 
-## Reasoning Methods
-
-| Method | Description | Best For |
-|--------|-------------|----------|
-| **Naive** | Direct `Question → Answer` prompting | Factual recall baselines |
-| **Chain-of-Thought** | Few-shot examples + `"Let's think step by step"` | Multi-step reasoning, math |
-| **RAG** | Retrieve context chunks → inject into prompt | Knowledge-grounded QA |
-| **ReAct Agent** | Thought → Action → Observation loop with tools | Multi-hop, tool-requiring tasks |
-
----
-
-## Tech Stack
+## Technical Stack
 
 | Layer | Technology |
 |-------|------------|
 | **Backend** | FastAPI, SQLAlchemy (async), Alembic, Pydantic v2 |
-| **Frontend** | Next.js 16, TypeScript, React 19, shadcn/ui, TanStack Query |
+| **Frontend** | Next.js 16, TypeScript, React 19, Tailwind v4, shadcn/ui, TanStack Query |
 | **Database** | PostgreSQL via NeonDB (serverless free tier) |
 | **Vector DB** | Qdrant (for RAG document retrieval) |
-| **Inference** | HuggingFace Inference Providers API (novita provider) |
-| **Embeddings** | sentence-transformers (CPU, no GPU required) |
-| **Task Queue** | FastAPI BackgroundTasks + asyncio thread pool |
+| **Inference** | HuggingFace Inference API (novita) **OR** OpenAI-compatible APIs |
+| **Embeddings** | sentence-transformers (CPU-friendly) |
+| **Task Queue** | FastAPI BackgroundTasks + `asyncio` ThreadPoolExecutors |
 
 ---
 
 ## Quick Start
 
 ### Prerequisites
-
 - Python 3.11+
 - Node.js 18+
 - A [NeonDB](https://neon.tech) PostgreSQL connection string (free tier)
-- A [HuggingFace](https://huggingface.co) API token with Inference API access
+- An Inference API token (HuggingFace token OR any Custom LLM provider key)
 
-### 1. Backend
+### 1. Backend Setup
 
 ```bash
 git clone https://github.com/yourusername/LlmForge.git
@@ -111,23 +93,23 @@ python -m venv venv
 pip install -r requirements.txt
 ```
 
-Create a `.env` file:
+Create a `.env` file in the `/backend` directory:
 
 ```env
 DATABASE_URL=postgresql+asyncpg://<user>:<pass>@<host>/neondb
 HF_TOKEN=hf_...
-INFERENCE_ENGINE=hf_api       # or "mock" for offline testing
-HF_PROVIDER=novita            # HF Inference Provider (default: novita)
+INFERENCE_ENGINE=hf_api       # OR "mock" for offline frontend dev
+HF_PROVIDER=novita            # HF Inference Provider
 ```
 
-Run migrations and start:
+Run migrations and start the server:
 
 ```bash
 alembic upgrade head
 uvicorn app.main:app --reload --port 8000
 ```
 
-### 2. Frontend
+### 2. Frontend Setup
 
 ```bash
 cd ../frontend
@@ -141,112 +123,61 @@ Open [http://localhost:3000](http://localhost:3000)
 
 ## Running an Experiment
 
-### Via the UI
+### Via the User Interface
 
-1. Go to **Experiments → New Experiment**
-2. Pick a model, reasoning method, and dataset
-3. Click **Create & Run** — the experiment runs in the background
-4. Results appear on the experiment detail page with live status polling
+1. Navigate to **Experiments → New Experiment** via the global navbar.
+2. Select your reasoning strategy: **Naive, CoT, RAG, or ReAct**.
+3. *[Optional]* Provide a **Custom Base URL & API Key** if you are benchmarking an external LLM (e.g., local Ollama, vLLM instance).
+4. *[Optional]* Enable **Batching** or **Caching** in the Optimization section for rapid datasets.
+5. Click **Create & Run**. The UI will auto-poll backend background tasks.
+6. Once complete, click the row to dive into the Results grid and Optimization timings.
 
 ### Via REST API
 
 ```bash
-# Create
+# Create Custom Endpoint Experiment
 curl -X POST http://localhost:8000/api/v1/experiments \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "cot-vs-naive-trivia",
+    "name": "custom_llm_benchmark",
     "config": {
-      "model_name": "meta-llama/Llama-3.2-1B-Instruct",
-      "reasoning_method": "cot",
+      "model_name": "llama-3-8b",
+      "reasoning_method": "naive",
       "dataset_name": "trivia_qa",
       "num_samples": 10,
       "hyperparameters": { "temperature": 0.1, "max_tokens": 512 }
     }
   }'
 
-# Run
-curl -X POST http://localhost:8000/api/v1/experiments/{id}/run
+# Run directly pointing to a custom URL
+curl -X POST "http://localhost:8000/api/v1/experiments/{id}/run?custom_base_url=http://localhost:11434/v1&custom_api_key=sk-123"
 
-# Results
+# Fetch Computed Results & Optimization Profile
 curl http://localhost:8000/api/v1/results/{id}/metrics
 ```
 
 ---
 
-## Datasets
+## Supported Datasets
 
-| Dataset | Task | Samples |
-|---------|------|---------|
-| `sample` | Mixed QA (smoke test) | 5 |
-| `trivia_qa` | Open-domain factual QA | 100 |
-| `commonsense_qa` | Everyday reasoning | 30 |
-| `multi_hop` | Multi-step reasoning | 40 |
-| `math_reasoning` | GSM8K-style word problems | 40 |
-| `react_bench` | Tool-use evaluation | 20 |
-| `knowledge_base` | RAG-focused grounded QA | 50 |
-
----
-
-## Project Structure
-
-```
-LlmForge/
-├── backend/
-│   ├── app/
-│   │   ├── api/            # REST endpoints (experiments, results, health)
-│   │   ├── core/           # Config, database, Redis
-│   │   ├── models/         # SQLAlchemy ORM (Experiment, Result, Run)
-│   │   ├── schemas/        # Pydantic v2 schemas
-│   │   └── services/
-│   │       ├── inference/  # HFAPIEngine, MockEngine, prompt templates
-│   │       ├── rag_service.py      # RAG pipeline + faithfulness scorer
-│   │       ├── agent_service.py    # ReAct agent + tools
-│   │       ├── experiment_service.py  # Execution orchestrator
-│   │       ├── metrics_service.py
-│   │       ├── dataset_service.py
-│   │       └── optimization.py     # Cache, profiler, batch runner
-│   ├── configs/            # cot_examples.json, dataset JSONs
-│   └── alembic/            # DB migrations
-├── frontend/
-│   └── src/
-│       ├── app/            # Next.js pages (dashboard, experiments, compare)
-│       ├── components/     # Shared UI components
-│       └── lib/            # API client (api.ts), type definitions
-├── PHASES.md               # Development history by phase
-├── DESIGN_SYSTEM.md        # Frontend design guidelines
-└── README.md
-```
+| Dataset | Task Category | Samples |
+|---------|---------------|---------|
+| `sample` | Mixed QA (Smoke Testing) | 5 |
+| `trivia_qa` | Open-domain Factual QA | 100 |
+| `commonsense_qa` | Everyday Logic & Reasoning | 30 |
+| `multi_hop` | Composite/Bridged Reasoning | 40 |
+| `math_reasoning` | GSM8K-style Word Problems | 40 |
+| `react_bench` | Tool-use and Iterative Evaluation | 20 |
+| `knowledge_base` | RAG-focused Grounded QA | 50 |
 
 ---
 
-## Metrics Collected
+## Internal Code Documentation
 
-| Category | Metrics |
-|----------|---------|
-| **Quality** | Exact Match, Substring Match, Token-level F1 (with alias support) |
-| **Performance** | Latency p50 / p95, Throughput (queries/sec) |
-| **Cost** | Total input tokens, output tokens, per-run token breakdown |
-| **RAG** | Faithfulness score (NLI-based answer grounding) |
-| **Agent** | Tool call count, iteration count, termination reason |
-
----
-
-## Development Notes
-
-- **`asyncio.to_thread()`** — HuggingFace's `InferenceClient` is synchronous (`requests`-based). Calling it directly in an `async` FastAPI handler blocks the event loop. All inference calls are wrapped in `asyncio.to_thread()` to keep the server responsive.
-- **HF Inference Providers** — The old serverless endpoint (`api-inference.huggingface.co/models/`) is deprecated (returns 410). The platform uses the new `InferenceClient(provider="novita")` API. Provider is configurable via `HF_PROVIDER` env var.
-- **Mock engine** — Set `INFERENCE_ENGINE=mock` in `.env` to run the full pipeline offline without HF API calls. Useful for frontend development and CI.
-
----
-
-## Documentation
-
-| File | Description |
-|------|-------------|
-| [PHASES.md](./PHASES.md) | What was built in each development phase |
-| [DESIGN_SYSTEM.md](./DESIGN_SYSTEM.md) | Frontend color palette, typography, component patterns |
-| `http://localhost:8000/docs` | Auto-generated FastAPI Swagger docs |
+- **[DESIGN_SYSTEM.md](./DESIGN_SYSTEM.md)** — Frontend component UI rules, Tailwind v4 specs, 4-color unified palette.
+- **[OPTIMIZATION_GUIDE.md](./OPTIMIZATION_GUIDE.md)** — Core architectures regarding `PromptCache`, batch `ThreadPoolExecutor` parallelization, and `ProfilerContext` bottlenecks.
+- **[PHASES.md](./PHASES.md)** — Historical context log of the project's entire build genesis.
+- **Swagger Docs:** `http://localhost:8000/docs`
 
 ---
 
@@ -255,7 +186,6 @@ LlmForge/
 MIT — See [LICENSE](./LICENSE)
 
 ---
-
 <p align="center">
-  <i>Config-driven experiments. Reproducible results. No GPU required.</i>
+  <i>Config-driven experiments. Built for scale. Deep insights.</i>
 </p>
