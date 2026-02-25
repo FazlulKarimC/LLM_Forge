@@ -1,0 +1,27 @@
+[
+    {
+        "question": "If a train travels at 60 km/h for the first half of a journey's distance, and 40 km/h for the second half, what is the average speed for the entire journey?",
+        "reasoning": "This is a common misconception problem. The average speed is NOT simply (60+40)/2 = 50 km/h, because the train spends different amounts of time at each speed. Let's say the total distance is D. The first half is D/2 at 60 km/h, taking time t1 = (D/2)/60. The second half is D/2 at 40 km/h, taking time t2 = (D/2)/40. Total time = D/120 + D/80 = (2D + 3D)/240 = 5D/240 = D/48. Average speed = total distance / total time = D / (D/48) = 48 km/h.",
+        "answer": "48 km/h"
+    },
+    {
+        "question": "A bat and a ball cost $1.10 in total. The bat costs $1.00 more than the ball. How much does the ball cost?",
+        "reasoning": "The intuitive answer is $0.10, but that's wrong. If the ball costs $0.10, then the bat costs $1.10 (which is $1.00 more), making the total $1.20 — not $1.10. Let's set up the algebra: let ball = x, bat = x + 1.00. Then x + (x + 1.00) = 1.10, so 2x = 0.10, hence x = 0.05. Verification: ball = $0.05, bat = $1.05, total = $1.10 ✓, and bat - ball = $1.00 ✓.",
+        "answer": "$0.05"
+    },
+    {
+        "question": "Three friends split a hotel bill of $30, each paying $10. The manager realizes the bill should only be $25 and gives $5 to the bellboy to return. The bellboy keeps $2 and gives $1 back to each friend. Now each friend paid $9 (total $27), plus the bellboy has $2, which equals $29. Where is the missing dollar?",
+        "reasoning": "This is a classic misdirection puzzle. The error is in how the numbers are added. The $27 the friends paid already INCLUDES the $2 the bellboy kept. Here's the correct accounting: The friends paid $27 total. Of that $27, $25 went to the hotel and $2 went to the bellboy. $25 + $2 = $27 ✓. The original $30 is accounted for as: $25 (hotel) + $2 (bellboy) + $3 (returned to friends) = $30. There is no missing dollar — the puzzle tricks you by adding $27 + $2, which mixes what was paid with what was kept.",
+        "answer": "There is no missing dollar"
+    },
+    {
+        "question": "In a knockout tournament with 127 players, where each match eliminates one player, how many matches are needed to determine the winner?",
+        "reasoning": "In a knockout tournament, every match eliminates exactly one player. To go from 127 players down to 1 winner, we need to eliminate 126 players. Since each match eliminates exactly one player, we need exactly 126 matches. This works regardless of byes or bracket structure — the total number of matches always equals the number of players minus one.",
+        "answer": "126 matches"
+    },
+    {
+        "question": "You have 12 balls, one of which is either heavier or lighter than the rest. Using a balance scale only 3 times, can you identify the odd ball and determine whether it is heavier or lighter?",
+        "reasoning": "Yes, with a systematic approach using ternary logic. Each weighing has 3 outcomes (left heavy, balanced, right heavy), so 3 weighings give 3^3 = 27 possible outcomes. We need to distinguish 24 possibilities (12 balls × 2 states each), which fits within 27. The strategy: Divide balls into 3 groups of 4. Weighing 1: Compare group A (balls 1-4) vs group B (balls 5-8). This narrows down the suspects and gives information about heavier/lighter. Weighing 2: Rearrange suspects strategically, moving some from each side and introducing known-good balls. Weighing 3: Final identification. Each outcome path uniquely identifies the odd ball and its nature.",
+        "answer": "Yes"
+    }
+]

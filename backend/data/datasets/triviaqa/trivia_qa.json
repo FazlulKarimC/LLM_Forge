@@ -1,0 +1,602 @@
+[
+    {
+        "id": "tq001",
+        "question": "What is the capital of France?",
+        "answer": "Paris",
+        "aliases": ["Paris", "paris", "City of Paris"]
+    },
+    {
+        "id": "tq002",
+        "question": "Who wrote 'Romeo and Juliet'?",
+        "answer": "William Shakespeare",
+        "aliases": ["William Shakespeare", "Shakespeare", "W. Shakespeare"]
+    },
+    {
+        "id": "tq003",
+        "question": "What is the largest planet in our solar system?",
+        "answer": "Jupiter",
+        "aliases": ["Jupiter"]
+    },
+    {
+        "id": "tq004",
+        "question": "In which year did World War II end?",
+        "answer": "1945",
+        "aliases": ["1945"]
+    },
+    {
+        "id": "tq005",
+        "question": "Who painted the Mona Lisa?",
+        "answer": "Leonardo da Vinci",
+        "aliases": ["Leonardo da Vinci", "Da Vinci", "Leonardo"]
+    },
+    {
+        "id": "tq006",
+        "question": "What is the chemical symbol for gold?",
+        "answer": "Au",
+        "aliases": ["Au"]
+    },
+    {
+        "id": "tq007",
+        "question": "What is the smallest country in the world by area?",
+        "answer": "Vatican City",
+        "aliases": ["Vatican City", "Vatican", "Holy See"]
+    },
+    {
+        "id": "tq008",
+        "question": "Who developed the theory of relativity?",
+        "answer": "Albert Einstein",
+        "aliases": ["Albert Einstein", "Einstein", "A. Einstein"]
+    },
+    {
+        "id": "tq009",
+        "question": "What is the longest river in the world?",
+        "answer": "Nile",
+        "aliases": ["Nile", "River Nile", "The Nile"]
+    },
+    {
+        "id": "tq010",
+        "question": "Which element has the atomic number 1?",
+        "answer": "Hydrogen",
+        "aliases": ["Hydrogen", "H"]
+    },
+    {
+        "id": "tq011",
+        "question": "What is the capital of Japan?",
+        "answer": "Tokyo",
+        "aliases": ["Tokyo"]
+    },
+    {
+        "id": "tq012",
+        "question": "Who was the first person to walk on the Moon?",
+        "answer": "Neil Armstrong",
+        "aliases": ["Neil Armstrong", "Armstrong", "Neil A. Armstrong"]
+    },
+    {
+        "id": "tq013",
+        "question": "What is the hardest natural substance on Earth?",
+        "answer": "Diamond",
+        "aliases": ["Diamond", "diamond"]
+    },
+    {
+        "id": "tq014",
+        "question": "In which country is the Great Wall located?",
+        "answer": "China",
+        "aliases": ["China", "People's Republic of China", "PRC"]
+    },
+    {
+        "id": "tq015",
+        "question": "What is the speed of light in meters per second?",
+        "answer": "299792458",
+        "aliases": ["299792458", "299,792,458", "3 × 10^8", "approximately 300,000 km/s"]
+    },
+    {
+        "id": "tq016",
+        "question": "Who wrote 'A Brief History of Time'?",
+        "answer": "Stephen Hawking",
+        "aliases": ["Stephen Hawking", "Hawking", "S. Hawking"]
+    },
+    {
+        "id": "tq017",
+        "question": "What is the largest ocean on Earth?",
+        "answer": "Pacific Ocean",
+        "aliases": ["Pacific Ocean", "Pacific", "The Pacific"]
+    },
+    {
+        "id": "tq018",
+        "question": "Which planet is known as the Red Planet?",
+        "answer": "Mars",
+        "aliases": ["Mars"]
+    },
+    {
+        "id": "tq019",
+        "question": "What is the currency of the United Kingdom?",
+        "answer": "Pound sterling",
+        "aliases": ["Pound sterling", "British pound", "GBP", "Pound"]
+    },
+    {
+        "id": "tq020",
+        "question": "Who discovered penicillin?",
+        "answer": "Alexander Fleming",
+        "aliases": ["Alexander Fleming", "Fleming", "Sir Alexander Fleming"]
+    },
+    {
+        "id": "tq021",
+        "question": "What is the tallest mountain in the world?",
+        "answer": "Mount Everest",
+        "aliases": ["Mount Everest", "Everest", "Mt. Everest", "Sagarmatha"]
+    },
+    {
+        "id": "tq022",
+        "question": "In which year did the Titanic sink?",
+        "answer": "1912",
+        "aliases": ["1912"]
+    },
+    {
+        "id": "tq023",
+        "question": "What is the most abundant gas in Earth's atmosphere?",
+        "answer": "Nitrogen",
+        "aliases": ["Nitrogen", "N2"]
+    },
+    {
+        "id": "tq024",
+        "question": "Who was the first President of the United States?",
+        "answer": "George Washington",
+        "aliases": ["George Washington", "Washington", "G. Washington"]
+    },
+    {
+        "id": "tq025",
+        "question": "What is the largest continent by area?",
+        "answer": "Asia",
+        "aliases": ["Asia"]
+    },
+    {
+        "id": "tq026",
+        "question": "What is the square root of 144?",
+        "answer": "12",
+        "aliases": ["12", "twelve"]
+    },
+    {
+        "id": "tq027",
+        "question": "Which country is known as the Land of the Rising Sun?",
+        "answer": "Japan",
+        "aliases": ["Japan"]
+    },
+    {
+        "id": "tq028",
+        "question": "Who composed 'The Four Seasons'?",
+        "answer": "Antonio Vivaldi",
+        "aliases": ["Antonio Vivaldi", "Vivaldi", "A. Vivaldi"]
+    },
+    {
+        "id": "tq029",
+        "question": "What is the largest desert in the world?",
+        "answer": "Antarctic Desert",
+        "aliases": ["Antarctic Desert", "Antarctica", "Antarctic"]
+    },
+    {
+        "id": "tq030",
+        "question": "What is the boiling point of water in Celsius?",
+        "answer": "100",
+        "aliases": ["100", "100°C", "100 degrees", "100 degrees Celsius"]
+    },
+    {
+        "id": "tq031",
+        "question": "Who wrote 'The Origin of Species'?",
+        "answer": "Charles Darwin",
+        "aliases": ["Charles Darwin", "Darwin", "C. Darwin"]
+    },
+    {
+        "id": "tq032",
+        "question": "What is the chemical formula for water?",
+        "answer": "H2O",
+        "aliases": ["H2O", "h2o"]
+    },
+    {
+        "id": "tq033",
+        "question": "What planet is closest to the Sun?",
+        "answer": "Mercury",
+        "aliases": ["Mercury"]
+    },
+    {
+        "id": "tq034",
+        "question": "In which city was the first modern Olympic Games held?",
+        "answer": "Athens",
+        "aliases": ["Athens", "Athens, Greece"]
+    },
+    {
+        "id": "tq035",
+        "question": "What type of animal is a Komodo dragon?",
+        "answer": "Lizard",
+        "aliases": ["Lizard", "Monitor lizard", "Reptile"]
+    },
+    {
+        "id": "tq036",
+        "question": "Who invented the telephone?",
+        "answer": "Alexander Graham Bell",
+        "aliases": ["Alexander Graham Bell", "Graham Bell", "A. G. Bell"]
+    },
+    {
+        "id": "tq037",
+        "question": "What is the national flower of Japan?",
+        "answer": "Cherry blossom",
+        "aliases": ["Cherry blossom", "Sakura", "Cherry blossoms"]
+    },
+    {
+        "id": "tq038",
+        "question": "How many bones are there in the adult human body?",
+        "answer": "206",
+        "aliases": ["206"]
+    },
+    {
+        "id": "tq039",
+        "question": "What is the capital of Australia?",
+        "answer": "Canberra",
+        "aliases": ["Canberra"]
+    },
+    {
+        "id": "tq040",
+        "question": "Who wrote '1984'?",
+        "answer": "George Orwell",
+        "aliases": ["George Orwell", "Orwell", "Eric Arthur Blair"]
+    },
+    {
+        "id": "tq041",
+        "question": "What is the largest mammal in the world?",
+        "answer": "Blue whale",
+        "aliases": ["Blue whale", "Blue Whale"]
+    },
+    {
+        "id": "tq042",
+        "question": "Which gas do plants absorb from the atmosphere during photosynthesis?",
+        "answer": "Carbon dioxide",
+        "aliases": ["Carbon dioxide", "CO2"]
+    },
+    {
+        "id": "tq043",
+        "question": "What is the smallest planet in our solar system?",
+        "answer": "Mercury",
+        "aliases": ["Mercury"]
+    },
+    {
+        "id": "tq044",
+        "question": "Who painted 'Starry Night'?",
+        "answer": "Vincent van Gogh",
+        "aliases": ["Vincent van Gogh", "Van Gogh", "van Gogh"]
+    },
+    {
+        "id": "tq045",
+        "question": "What is the deepest ocean trench?",
+        "answer": "Mariana Trench",
+        "aliases": ["Mariana Trench", "Marianas Trench"]
+    },
+    {
+        "id": "tq046",
+        "question": "In what year did the Berlin Wall fall?",
+        "answer": "1989",
+        "aliases": ["1989"]
+    },
+    {
+        "id": "tq047",
+        "question": "What is the main ingredient in traditional Japanese miso soup?",
+        "answer": "Soybean paste",
+        "aliases": ["Soybean paste", "Miso paste", "Miso", "Fermented soybean paste"]
+    },
+    {
+        "id": "tq048",
+        "question": "Who is known as the father of modern physics?",
+        "answer": "Albert Einstein",
+        "aliases": ["Albert Einstein", "Einstein"]
+    },
+    {
+        "id": "tq049",
+        "question": "What is the largest island in the world?",
+        "answer": "Greenland",
+        "aliases": ["Greenland"]
+    },
+    {
+        "id": "tq050",
+        "question": "How many chromosomes do humans have?",
+        "answer": "46",
+        "aliases": ["46", "23 pairs"]
+    },
+    {
+        "id": "tq051",
+        "question": "What is the capital of Brazil?",
+        "answer": "Brasilia",
+        "aliases": ["Brasilia", "Brasília"]
+    },
+    {
+        "id": "tq052",
+        "question": "Who invented the World Wide Web?",
+        "answer": "Tim Berners-Lee",
+        "aliases": ["Tim Berners-Lee", "Berners-Lee", "Sir Tim Berners-Lee"]
+    },
+    {
+        "id": "tq053",
+        "question": "What is the most spoken language in the world by number of native speakers?",
+        "answer": "Mandarin Chinese",
+        "aliases": ["Mandarin Chinese", "Mandarin", "Chinese"]
+    },
+    {
+        "id": "tq054",
+        "question": "What is the freezing point of water in Fahrenheit?",
+        "answer": "32",
+        "aliases": ["32", "32°F", "32 degrees Fahrenheit"]
+    },
+    {
+        "id": "tq055",
+        "question": "Which organ in the human body produces insulin?",
+        "answer": "Pancreas",
+        "aliases": ["Pancreas", "The pancreas"]
+    },
+    {
+        "id": "tq056",
+        "question": "What is the second largest country in the world by area?",
+        "answer": "Canada",
+        "aliases": ["Canada"]
+    },
+    {
+        "id": "tq057",
+        "question": "Who wrote 'Pride and Prejudice'?",
+        "answer": "Jane Austen",
+        "aliases": ["Jane Austen", "Austen", "J. Austen"]
+    },
+    {
+        "id": "tq058",
+        "question": "What is the main language spoken in Brazil?",
+        "answer": "Portuguese",
+        "aliases": ["Portuguese", "Brazilian Portuguese"]
+    },
+    {
+        "id": "tq059",
+        "question": "How many sides does a heptagon have?",
+        "answer": "7",
+        "aliases": ["7", "seven", "Seven"]
+    },
+    {
+        "id": "tq060",
+        "question": "Which vitamin is primarily produced when human skin is exposed to sunlight?",
+        "answer": "Vitamin D",
+        "aliases": ["Vitamin D", "Vitamin D3", "D"]
+    },
+    {
+        "id": "tq061",
+        "question": "What is the capital of Egypt?",
+        "answer": "Cairo",
+        "aliases": ["Cairo"]
+    },
+    {
+        "id": "tq062",
+        "question": "Who discovered gravity after an apple fell on his head?",
+        "answer": "Isaac Newton",
+        "aliases": ["Isaac Newton", "Newton", "Sir Isaac Newton"]
+    },
+    {
+        "id": "tq063",
+        "question": "What is the largest bird in the world?",
+        "answer": "Ostrich",
+        "aliases": ["Ostrich", "Common ostrich"]
+    },
+    {
+        "id": "tq064",
+        "question": "In which year was the United Nations founded?",
+        "answer": "1945",
+        "aliases": ["1945"]
+    },
+    {
+        "id": "tq065",
+        "question": "What is the rarest blood type?",
+        "answer": "AB negative",
+        "aliases": ["AB negative", "AB-", "AB Negative"]
+    },
+    {
+        "id": "tq066",
+        "question": "Who was the ancient Greek god of the sea?",
+        "answer": "Poseidon",
+        "aliases": ["Poseidon"]
+    },
+    {
+        "id": "tq067",
+        "question": "What is the diameter of Earth in kilometers, approximately?",
+        "answer": "12742",
+        "aliases": ["12742", "12,742", "approximately 12,742 km"]
+    },
+    {
+        "id": "tq068",
+        "question": "Which country gifted the Statue of Liberty to the United States?",
+        "answer": "France",
+        "aliases": ["France"]
+    },
+    {
+        "id": "tq069",
+        "question": "What is the pH level of pure water?",
+        "answer": "7",
+        "aliases": ["7", "seven"]
+    },
+    {
+        "id": "tq070",
+        "question": "Who wrote 'The Great Gatsby'?",
+        "answer": "F. Scott Fitzgerald",
+        "aliases": ["F. Scott Fitzgerald", "Fitzgerald", "Francis Scott Fitzgerald"]
+    },
+    {
+        "id": "tq071",
+        "question": "What is the largest organ in the human body?",
+        "answer": "Skin",
+        "aliases": ["Skin", "The skin"]
+    },
+    {
+        "id": "tq072",
+        "question": "Which planet has the most known natural satellites?",
+        "answer": "Saturn",
+        "aliases": ["Saturn"]
+    },
+    {
+        "id": "tq073",
+        "question": "In which year was the first iPhone released?",
+        "answer": "2007",
+        "aliases": ["2007"]
+    },
+    {
+        "id": "tq074",
+        "question": "What is the chemical symbol for sodium?",
+        "answer": "Na",
+        "aliases": ["Na"]
+    },
+    {
+        "id": "tq075",
+        "question": "Who was the first woman to win a Nobel Prize?",
+        "answer": "Marie Curie",
+        "aliases": ["Marie Curie", "Curie", "Madame Curie"]
+    },
+    {
+        "id": "tq076",
+        "question": "What is the capital of South Korea?",
+        "answer": "Seoul",
+        "aliases": ["Seoul"]
+    },
+    {
+        "id": "tq077",
+        "question": "How many hearts does an octopus have?",
+        "answer": "3",
+        "aliases": ["3", "three", "Three"]
+    },
+    {
+        "id": "tq078",
+        "question": "What is the longest bone in the human body?",
+        "answer": "Femur",
+        "aliases": ["Femur", "Thighbone", "Thigh bone"]
+    },
+    {
+        "id": "tq079",
+        "question": "Which country has the most official languages?",
+        "answer": "Zimbabwe",
+        "aliases": ["Zimbabwe"]
+    },
+    {
+        "id": "tq080",
+        "question": "What is the name of the first artificial satellite launched into space?",
+        "answer": "Sputnik 1",
+        "aliases": ["Sputnik 1", "Sputnik", "Sputnik I"]
+    },
+    {
+        "id": "tq081",
+        "question": "Who is credited with inventing the printing press?",
+        "answer": "Johannes Gutenberg",
+        "aliases": ["Johannes Gutenberg", "Gutenberg", "Johann Gutenberg"]
+    },
+    {
+        "id": "tq082",
+        "question": "What is the capital of Turkey?",
+        "answer": "Ankara",
+        "aliases": ["Ankara"]
+    },
+    {
+        "id": "tq083",
+        "question": "Which element has the chemical symbol Fe?",
+        "answer": "Iron",
+        "aliases": ["Iron"]
+    },
+    {
+        "id": "tq084",
+        "question": "How many players are on a standard soccer team on the field?",
+        "answer": "11",
+        "aliases": ["11", "eleven", "Eleven"]
+    },
+    {
+        "id": "tq085",
+        "question": "What is the most abundant element in the universe?",
+        "answer": "Hydrogen",
+        "aliases": ["Hydrogen", "H"]
+    },
+    {
+        "id": "tq086",
+        "question": "Who painted the ceiling of the Sistine Chapel?",
+        "answer": "Michelangelo",
+        "aliases": ["Michelangelo", "Michelangelo Buonarroti", "Michelangelo di Lodovico"]
+    },
+    {
+        "id": "tq087",
+        "question": "What is the capital of Canada?",
+        "answer": "Ottawa",
+        "aliases": ["Ottawa"]
+    },
+    {
+        "id": "tq088",
+        "question": "In which ocean is the Bermuda Triangle located?",
+        "answer": "Atlantic Ocean",
+        "aliases": ["Atlantic Ocean", "Atlantic", "North Atlantic"]
+    },
+    {
+        "id": "tq089",
+        "question": "What is the national animal of Scotland?",
+        "answer": "Unicorn",
+        "aliases": ["Unicorn", "The unicorn"]
+    },
+    {
+        "id": "tq090",
+        "question": "Who wrote 'To Kill a Mockingbird'?",
+        "answer": "Harper Lee",
+        "aliases": ["Harper Lee", "Nelle Harper Lee"]
+    },
+    {
+        "id": "tq091",
+        "question": "What is the hottest planet in our solar system?",
+        "answer": "Venus",
+        "aliases": ["Venus"]
+    },
+    {
+        "id": "tq092",
+        "question": "How many rings are on the Olympic flag?",
+        "answer": "5",
+        "aliases": ["5", "five", "Five"]
+    },
+    {
+        "id": "tq093",
+        "question": "Who developed the first successful polio vaccine?",
+        "answer": "Jonas Salk",
+        "aliases": ["Jonas Salk", "Salk", "Dr. Jonas Salk"]
+    },
+    {
+        "id": "tq094",
+        "question": "What is the largest freshwater lake in the world by surface area?",
+        "answer": "Lake Superior",
+        "aliases": ["Lake Superior", "Superior"]
+    },
+    {
+        "id": "tq095",
+        "question": "In what year did the French Revolution begin?",
+        "answer": "1789",
+        "aliases": ["1789"]
+    },
+    {
+        "id": "tq096",
+        "question": "What is the chemical symbol for potassium?",
+        "answer": "K",
+        "aliases": ["K"]
+    },
+    {
+        "id": "tq097",
+        "question": "Which Italian city is famous for its leaning tower?",
+        "answer": "Pisa",
+        "aliases": ["Pisa"]
+    },
+    {
+        "id": "tq098",
+        "question": "How many teeth does a typical adult human have?",
+        "answer": "32",
+        "aliases": ["32", "thirty-two"]
+    },
+    {
+        "id": "tq099",
+        "question": "Who wrote 'The Communist Manifesto'?",
+        "answer": "Karl Marx",
+        "aliases": ["Karl Marx", "Marx", "Karl Marx and Friedrich Engels"]
+    },
+    {
+        "id": "tq100",
+        "question": "What is the capital of India?",
+        "answer": "New Delhi",
+        "aliases": ["New Delhi", "Delhi"]
+    }
+]

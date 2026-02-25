@@ -515,9 +515,8 @@ class RAGPipeline:
     def load_knowledge_base(self, articles_path: Optional[str] = None, chunk_size: int = 256):
         """Load and index the knowledge base (for BM25 at runtime)."""
         if articles_path is None:
-            # rag_service.py → services/ → app/ → backend/ → LlmForge/
-            project_root = Path(__file__).parent.parent.parent.parent
-            articles_path = str(project_root / "data" / "knowledge_base" / "articles.json")
+            from app.core.config import settings
+            articles_path = str(settings.data_dir / "knowledge_base" / "articles.json")
 
         with open(articles_path, "r", encoding="utf-8") as f:
             articles = json.load(f)

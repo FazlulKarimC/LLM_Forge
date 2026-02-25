@@ -123,8 +123,8 @@ class WikipediaSearchTool(Tool):
     
     def __init__(self, cache_dir: Optional[str] = None, max_sentences: int = 3):
         if cache_dir is None:
-            project_root = Path(__file__).parent.parent.parent
-            cache_dir = str(project_root / "data" / "cache" / "wiki")
+            from app.core.config import settings
+            cache_dir = str(settings.data_dir / "cache" / "wiki")
         self._cache_dir = Path(cache_dir)
         self._cache_dir.mkdir(parents=True, exist_ok=True)
         self._max_sentences = max_sentences

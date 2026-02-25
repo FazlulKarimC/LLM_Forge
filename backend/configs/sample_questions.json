@@ -1,0 +1,52 @@
+[
+    {
+        "id": "q1",
+        "question": "What is the capital of France?",
+        "answer": "Paris"
+    },
+    {
+        "id": "q2",
+        "question": "What is 25 + 17?",
+        "answer": "42"
+    },
+    {
+        "id": "q3",
+        "question": "Who wrote Romeo and Juliet?",
+        "answer": "William Shakespeare"
+    },
+    {
+        "id": "q4",
+        "question": "What is the largest planet in our solar system?",
+        "answer": "Jupiter"
+    },
+    {
+        "id": "q5",
+        "question": "What is the boiling point of water in Celsius?",
+        "answer": "100 degrees Celsius"
+    },
+    {
+        "id": "q6",
+        "question": "How many continents are there?",
+        "answer": "7"
+    },
+    {
+        "id": "q7",
+        "question": "What is the speed of light?",
+        "answer": "299,792,458 meters per second"
+    },
+    {
+        "id": "q8",
+        "question": "Who painted the Mona Lisa?",
+        "answer": "Leonardo da Vinci"
+    },
+    {
+        "id": "q9",
+        "question": "What is the chemical symbol for gold?",
+        "answer": "Au"
+    },
+    {
+        "id": "q10",
+        "question": "What year did World War II end?",
+        "answer": "1945"
+    }
+]

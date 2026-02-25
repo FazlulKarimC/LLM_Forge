@@ -50,7 +50,7 @@ class TestExperimentCoreEndpoints:
         """
         # POST an incomplete payload to trigger 422
         bad_payload = {"name": "Test Env"}
-        response = client.post(f"{settings.API_V1_PREFIX}/experiments/", json=bad_payload)
+        response = client.post(f"{settings.API_V1_PREFIX}/experiments", json=bad_payload)
         
         assert response.status_code == 422
         assert "X-Request-ID" in response.headers

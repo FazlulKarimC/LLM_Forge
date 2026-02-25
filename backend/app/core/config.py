@@ -17,7 +17,13 @@ TODO (Iteration 2): Add config for model loading preferences
 TODO (Iteration 3): Add feature flags system
 """
 
+from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Resolve the backend root (backend/) once at import time.
+# In Docker (WORKDIR /app) this is /app; locally it's the backend/ folder.
+_BACKEND_ROOT = Path(__file__).resolve().parents[2]
 
 
 class Settings(BaseSettings):
@@ -47,7 +53,16 @@ class Settings(BaseSettings):
         """Return CORS_ORIGINS as a Python list (split on commas, trailing slashes stripped)."""
         return [o.strip().rstrip("/") for o in self.CORS_ORIGINS.split(",") if o.strip()]
 
-    
+    @property
+    def data_dir(self) -> Path:
+        """Absolute path to the data/ directory (datasets, knowledge_base, cache)."""
+        return _BACKEND_ROOT / "data"
+
+    @property
+    def configs_dir(self) -> Path:
+        """Absolute path to the configs/ directory (CoT examples, sample questions)."""
+        return _BACKEND_ROOT / "configs"
+
     # ----- Database (NeonDB) -----
     DATABASE_URL: str = ""  # Required: postgresql://...
     

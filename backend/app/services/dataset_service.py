@@ -92,10 +92,15 @@ class DatasetService:
     - Agent: react_bench
     """
     
-    # Base paths
-    _PROJECT_ROOT = Path(__file__).parent.parent.parent.parent  # LlmForge/
-    _DATASETS_DIR = _PROJECT_ROOT / "data" / "datasets"
-    _CONFIGS_DIR = _PROJECT_ROOT / "configs"
+    @classmethod
+    def _datasets_dir(cls) -> Path:
+        from app.core.config import settings
+        return settings.data_dir / "datasets"
+
+    @classmethod
+    def _configs_dir(cls) -> Path:
+        from app.core.config import settings
+        return settings.configs_dir
     
     @classmethod
     def load(
@@ -143,11 +148,11 @@ class DatasetService:
     def _load_from_registry(cls, dataset_name: str) -> List[DatasetExample]:
         """Load a dataset from the registry by name."""
         registry_entry = DATASET_REGISTRY[dataset_name]
-        path = cls._DATASETS_DIR / registry_entry["file"]
+        path = cls._datasets_dir() / registry_entry["file"]
         
         if not path.exists():
             raise FileNotFoundError(
-                f"Dataset '{dataset_name}' not found at {path}. "
+                f"Dataset '{dataset_name}' not found. "
                 f"Expected file: {registry_entry['file']}"
             )
         
@@ -156,7 +161,7 @@ class DatasetService:
     @classmethod
     def _load_auto_discover(cls, dataset_name: str) -> List[DatasetExample]:
         """Auto-discover dataset by scanning data/datasets/{name}/ directory."""
-        dataset_dir = cls._DATASETS_DIR / dataset_name
+        dataset_dir = cls._datasets_dir() / dataset_name
         
         if dataset_dir.is_dir():
             # Find the first JSON file in the directory
@@ -189,11 +194,11 @@ class DatasetService:
     @classmethod
     def _load_sample_questions(cls) -> List[DatasetExample]:
         """Load built-in sample questions (Phase 2 fallback)."""
-        path = cls._CONFIGS_DIR / "sample_questions.json"
+        path = cls._configs_dir() / "sample_questions.json"
         
         if not path.exists():
             raise FileNotFoundError(
-                f"Sample questions not found at {path}. "
+                "Sample questions not found. "
                 "Please ensure configs/sample_questions.json exists."
             )
         
@@ -223,7 +228,7 @@ class DatasetService:
         
         # Check all registered datasets
         for name, meta in DATASET_REGISTRY.items():
-            path = cls._DATASETS_DIR / meta["file"]
+            path = cls._datasets_dir() / meta["file"]
             if path.exists():
                 with open(path, "r", encoding="utf-8") as f:
                     data = json.load(f)
@@ -237,7 +242,7 @@ class DatasetService:
                 })
         
         # Check sample questions
-        sample_path = cls._CONFIGS_DIR / "sample_questions.json"
+        sample_path = cls._configs_dir() / "sample_questions.json"
         if sample_path.exists():
             with open(sample_path, "r", encoding="utf-8") as f:
                 sample_data = json.load(f)

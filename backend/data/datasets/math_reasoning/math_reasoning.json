@@ -1,0 +1,386 @@
+[
+    {
+        "id": "mr001",
+        "question": "A train travels 240 km in 3 hours. What is its average speed in km/h?",
+        "answer": "80",
+        "aliases": [
+            "80",
+            "80 km/h"
+        ]
+    },
+    {
+        "id": "mr002",
+        "question": "If a rectangular garden is 12 meters long and 8 meters wide, what is its area in square meters?",
+        "answer": "96",
+        "aliases": [
+            "96",
+            "96 square meters",
+            "96 m²"
+        ]
+    },
+    {
+        "id": "mr003",
+        "question": "A store sells apples for $2.50 each. If you buy 7 apples, how much do you pay?",
+        "answer": "$17.50",
+        "aliases": [
+            "$17.50",
+            "17.50",
+            "17.5"
+        ]
+    },
+    {
+        "id": "mr004",
+        "question": "A car uses 8 liters of fuel per 100 km. How many liters are needed for a 350 km trip?",
+        "answer": "28",
+        "aliases": [
+            "28",
+            "28 liters"
+        ]
+    },
+    {
+        "id": "mr005",
+        "question": "If 3 workers can paint a house in 12 days, how many days would it take 4 workers to paint the same house?",
+        "answer": "9",
+        "aliases": [
+            "9",
+            "9 days"
+        ]
+    },
+    {
+        "id": "mr006",
+        "question": "A circle has a radius of 7 cm. What is its area? (Use π ≈ 3.14)",
+        "answer": "153.86",
+        "aliases": [
+            "153.86",
+            "153.86 cm²",
+            "approximately 154"
+        ]
+    },
+    {
+        "id": "mr007",
+        "question": "Sarah has 156 books. She donates 1/4 of them and then buys 23 more. How many books does she have now?",
+        "answer": "140",
+        "aliases": [
+            "140",
+            "140 books"
+        ]
+    },
+    {
+        "id": "mr008",
+        "question": "A shirt originally costs $80. It is on sale for 25% off. What is the sale price?",
+        "answer": "$60",
+        "aliases": [
+            "$60",
+            "60",
+            "60 dollars"
+        ]
+    },
+    {
+        "id": "mr009",
+        "question": "The sum of three consecutive integers is 72. What is the largest of the three?",
+        "answer": "25",
+        "aliases": [
+            "25"
+        ]
+    },
+    {
+        "id": "mr010",
+        "question": "A water tank can hold 500 liters. If it fills at a rate of 12.5 liters per minute, how many minutes does it take to fill completely?",
+        "answer": "40",
+        "aliases": [
+            "40",
+            "40 minutes"
+        ]
+    },
+    {
+        "id": "mr011",
+        "question": "A baker makes 144 cookies and packs them in boxes of 12. He sells each box for $8. What is the total revenue?",
+        "answer": "$96",
+        "aliases": [
+            "$96",
+            "96",
+            "96 dollars"
+        ]
+    },
+    {
+        "id": "mr012",
+        "question": "A student scored 85, 92, 78, and 95 on four tests. What is their average score?",
+        "answer": "87.5",
+        "aliases": [
+            "87.5"
+        ]
+    },
+    {
+        "id": "mr013",
+        "question": "A rope is 15.6 meters long. It is cut into pieces each 1.2 meters long. How many pieces are there?",
+        "answer": "13",
+        "aliases": [
+            "13",
+            "13 pieces"
+        ]
+    },
+    {
+        "id": "mr014",
+        "question": "If the population of a town doubles every 10 years, and it currently has 5,000 people, what will the population be in 30 years?",
+        "answer": "40,000",
+        "aliases": [
+            "40,000",
+            "40000"
+        ]
+    },
+    {
+        "id": "mr015",
+        "question": "A car traveling at 60 km/h takes 4 hours for a journey. How long would the same journey take at 80 km/h?",
+        "answer": "3 hours",
+        "aliases": [
+            "3 hours",
+            "3",
+            "3h"
+        ]
+    },
+    {
+        "id": "mr016",
+        "question": "A rectangular swimming pool is 25 meters long, 10 meters wide, and 2 meters deep. What is its volume in cubic meters?",
+        "answer": "500",
+        "aliases": [
+            "500",
+            "500 cubic meters",
+            "500 m³"
+        ]
+    },
+    {
+        "id": "mr017",
+        "question": "John earns $15 per hour. He works 8 hours a day, 5 days a week. What is his weekly income?",
+        "answer": "$600",
+        "aliases": [
+            "$600",
+            "600",
+            "600 dollars"
+        ]
+    },
+    {
+        "id": "mr018",
+        "question": "A triangle has a base of 14 cm and a height of 9 cm. What is its area?",
+        "answer": "63",
+        "aliases": [
+            "63",
+            "63 cm²",
+            "63 square centimeters"
+        ]
+    },
+    {
+        "id": "mr019",
+        "question": "If you invest $1,000 at 5% simple interest per year, how much interest do you earn in 3 years?",
+        "answer": "$150",
+        "aliases": [
+            "$150",
+            "150",
+            "150 dollars"
+        ]
+    },
+    {
+        "id": "mr020",
+        "question": "A recipe calls for 2.5 cups of flour for 4 servings. How many cups are needed for 10 servings?",
+        "answer": "6.25",
+        "aliases": [
+            "6.25",
+            "6.25 cups"
+        ]
+    },
+    {
+        "id": "mr021",
+        "question": "The ratio of boys to girls in a class is 3:5. If there are 40 students total, how many boys are there?",
+        "answer": "15",
+        "aliases": [
+            "15",
+            "15 boys"
+        ]
+    },
+    {
+        "id": "mr022",
+        "question": "A cylindrical water bottle has a radius of 3 cm and height of 20 cm. What is its volume? (Use π ≈ 3.14)",
+        "answer": "565.2",
+        "aliases": [
+            "565.2",
+            "565.2 cm³",
+            "approximately 565"
+        ]
+    },
+    {
+        "id": "mr023",
+        "question": "A marathon is 42.195 km. If a runner completes it in 3 hours, what is their average speed in km/h?",
+        "answer": "14.065",
+        "aliases": [
+            "14.065",
+            "approximately 14.07",
+            "about 14.1"
+        ]
+    },
+    {
+        "id": "mr024",
+        "question": "A library has 3,250 books. 18% of them are fiction. How many fiction books are there?",
+        "answer": "585",
+        "aliases": [
+            "585",
+            "585 books"
+        ]
+    },
+    {
+        "id": "mr025",
+        "question": "Two trains leave the same station in opposite directions. One travels at 70 km/h and the other at 90 km/h. After 2 hours, how far apart are they?",
+        "answer": "320 km",
+        "aliases": [
+            "320 km",
+            "320",
+            "320 kilometers"
+        ]
+    },
+    {
+        "id": "mr026",
+        "question": "A cube has edges of length 5 cm. What is its surface area?",
+        "answer": "150",
+        "aliases": [
+            "150",
+            "150 cm²"
+        ]
+    },
+    {
+        "id": "mr027",
+        "question": "If 1 US dollar equals 83 Indian rupees, how many rupees is $250?",
+        "answer": "20,750",
+        "aliases": [
+            "20,750",
+            "20750"
+        ]
+    },
+    {
+        "id": "mr028",
+        "question": "A factory produces 480 units in an 8-hour shift. What is the production rate per minute?",
+        "answer": "1",
+        "aliases": [
+            "1",
+            "1 unit per minute"
+        ]
+    },
+    {
+        "id": "mr029",
+        "question": "The temperature was -8°C in the morning and rose by 15°C by afternoon. What was the afternoon temperature?",
+        "answer": "7°C",
+        "aliases": [
+            "7°C",
+            "7",
+            "7 degrees Celsius"
+        ]
+    },
+    {
+        "id": "mr030",
+        "question": "A pizza is cut into 8 equal slices. If 3 people each eat 2 slices, what fraction of the pizza remains?",
+        "answer": "1/4",
+        "aliases": [
+            "1/4",
+            "0.25",
+            "one quarter",
+            "25%"
+        ]
+    },
+    {
+        "id": "mr031",
+        "question": "A parking lot charges $3 for the first hour and $1.50 for each additional hour. How much does it cost to park for 5 hours?",
+        "answer": "$9",
+        "aliases": [
+            "$9",
+            "9",
+            "9 dollars"
+        ]
+    },
+    {
+        "id": "mr032",
+        "question": "If a ladder of 13 meters reaches a window 12 meters high, how far is the base of the ladder from the wall?",
+        "answer": "5 meters",
+        "aliases": [
+            "5 meters",
+            "5",
+            "5m"
+        ]
+    },
+    {
+        "id": "mr033",
+        "question": "A bag contains 4 red, 6 blue, and 5 green marbles. What is the probability of drawing a blue marble?",
+        "answer": "6/15 or 2/5",
+        "aliases": [
+            "2/5",
+            "0.4",
+            "40%",
+            "6/15"
+        ]
+    },
+    {
+        "id": "mr034",
+        "question": "A clock loses 3 minutes every hour. After 8 hours, how many minutes has it lost?",
+        "answer": "24",
+        "aliases": [
+            "24",
+            "24 minutes"
+        ]
+    },
+    {
+        "id": "mr035",
+        "question": "A farmer has 120 meters of fencing. He wants to enclose a square field. What is the maximum area he can enclose?",
+        "answer": "900",
+        "aliases": [
+            "900",
+            "900 m²",
+            "900 square meters"
+        ]
+    },
+    {
+        "id": "mr036",
+        "question": "Three friends split a bill of $87.60 equally. How much does each person pay?",
+        "answer": "$29.20",
+        "aliases": [
+            "$29.20",
+            "29.20",
+            "29.2"
+        ]
+    },
+    {
+        "id": "mr037",
+        "question": "A car deprecates by 15% each year. If it was bought for $20,000, what is it worth after 1 year?",
+        "answer": "$17,000",
+        "aliases": [
+            "$17,000",
+            "17000",
+            "17,000"
+        ]
+    },
+    {
+        "id": "mr038",
+        "question": "How many seconds are there in 2 hours and 15 minutes?",
+        "answer": "8100",
+        "aliases": [
+            "8100",
+            "8,100",
+            "8100 seconds"
+        ]
+    },
+    {
+        "id": "mr039",
+        "question": "A boat travels upstream at 10 km/h and downstream at 14 km/h. What is the speed of the current?",
+        "answer": "2 km/h",
+        "aliases": [
+            "2 km/h",
+            "2",
+            "2 kilometers per hour"
+        ]
+    },
+    {
+        "id": "mr040",
+        "question": "If a square has a diagonal of 10 cm, what is the length of each side? (Round to 2 decimal places)",
+        "answer": "7.07",
+        "aliases": [
+            "7.07",
+            "7.07 cm",
+            "approximately 7.07"
+        ]
+    }
+]

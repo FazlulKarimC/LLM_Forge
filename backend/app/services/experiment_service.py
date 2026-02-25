@@ -9,6 +9,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import time as _time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -31,10 +32,38 @@ from app.schemas.experiment import (
 
 logger = logging.getLogger(__name__)
 
-# Resolve project root once at import time so path lookups are stable
-# regardless of the working directory.
-_PROJECT_ROOT = Path(__file__).resolve().parents[3]
-_COT_EXAMPLES_PATH = _PROJECT_ROOT / "configs" / "cot_examples.json"
+def _cot_examples_path() -> Path:
+    """Resolve CoT examples path via settings (lazy, avoids circular import at module level)."""
+    return settings.configs_dir / "cot_examples.json"
+
+
+# ── Error sanitization ──────────────────────────────────────────────────────
+_PATH_PATTERN = re.compile(r"(?:/[\w.\-]+){2,}")  # Unix absolute paths
+_WIN_PATH_PATTERN = re.compile(r"[A-Za-z]:\\(?:[\w.\- ]+\\)*[\w.\- ]+")  # Windows paths
+_TOKEN_PATTERN = re.compile(
+    r"(?:hf_[A-Za-z0-9]{20,}"      # Hugging Face tokens
+    r"|sk-[A-Za-z0-9]{20,}"         # OpenAI-style keys
+    r"|[A-Fa-f0-9]{32,})",          # Long hex strings (generic secrets)
+)
+_MAX_ERROR_LENGTH = 500
+
+
+def _sanitize_error_message(exc: Exception) -> str:
+    """
+    Build a safe error string from an exception.
+
+    Strips:
+    - Unix / Windows absolute file paths
+    - Anything that looks like an API key or token
+    Truncates to _MAX_ERROR_LENGTH characters.
+    """
+    raw = f"{type(exc).__name__}: {exc}"
+    sanitized = _PATH_PATTERN.sub("<path>", raw)
+    sanitized = _WIN_PATH_PATTERN.sub("<path>", sanitized)
+    sanitized = _TOKEN_PATTERN.sub("<redacted>", sanitized)
+    if len(sanitized) > _MAX_ERROR_LENGTH:
+        sanitized = sanitized[:_MAX_ERROR_LENGTH] + "…"
+    return f"Execution failed: {sanitized}"
 
 
 class ExperimentService:
@@ -420,12 +449,13 @@ class ExperimentService:
             # Step 5: Prepare prompt template based on reasoning method
             cot_examples = None
             if reasoning_method == "cot":
-                if _COT_EXAMPLES_PATH.exists():
-                    with _COT_EXAMPLES_PATH.open("r", encoding="utf-8") as f:
+                cot_path = _cot_examples_path()
+                if cot_path.exists():
+                    with cot_path.open("r", encoding="utf-8") as f:
                         cot_examples = json.load(f)
                     logger.info("[EXECUTE] ✓ Loaded %s CoT few-shot examples", len(cot_examples))
                 else:
-                    logger.warning("[EXECUTE] ⚠ CoT examples file not found (%s), using zero-shot CoT", _COT_EXAMPLES_PATH)
+                    logger.warning("[EXECUTE] ⚠ CoT examples file not found (%s), using zero-shot CoT", cot_path)
             
             # Step 6: Prepare generation config
             max_tokens = experiment_response.config.hyperparameters.max_tokens
@@ -778,7 +808,7 @@ class ExperimentService:
         except Exception as e:
             logger.exception("[EXECUTE] ❌ EXECUTION FAILED: %s: %s", type(e).__name__, e)
             
-            error_message = f"Execution failed: {type(e).__name__}: {str(e)}"
+            error_message = _sanitize_error_message(e)
             await self.update_status(
                 experiment_id,
                 ExperimentStatus.FAILED,

@@ -1,0 +1,42 @@
+# Naive vs Chain-of-Thought Comparison
+#
+# This experiment compares naive prompting with Chain-of-Thought
+# reasoning on the TriviaQA dataset.
+#
+# Hypothesis: CoT will improve accuracy on factoid questions
+# by encouraging step-by-step reasoning.
+
+experiment:
+  name: naive_vs_cot_trivia_qa
+  description: "Compare Naive and CoT prompting on TriviaQA"
+  
+  # Model configuration
+  model:
+    name: microsoft/phi-2
+    quantization: null  # Use fp16 for GTX 1650
+  
+  # Reasoning configuration
+  reasoning:
+    method: naive  # Change to 'cot' for comparison run
+    # CoT-specific settings (ignored for naive)
+    cot_prompt: "Let's think step by step."
+  
+  # Dataset configuration
+  dataset:
+    name: trivia_qa
+    split: validation
+    num_samples: 100
+    seed: 42  # For reproducibility
+  
+  # Hyperparameters
+  hyperparameters:
+    temperature: 0.7
+    max_tokens: 256
+    top_p: 0.9
+  
+  # Evaluation settings
+  evaluation:
+    metrics:
+      - exact_match
+      - substring_match
+      - f1_score
