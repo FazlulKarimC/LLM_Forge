@@ -49,8 +49,11 @@ htmlcov/
 # Python Virtual Environment
 venv/
 .venv/
+**/venv/
+**/.venv/
 
 # Misc
 *.bak
 PHASES.md
+DEPLOYMENT_AUDIT_REPORT.md
 

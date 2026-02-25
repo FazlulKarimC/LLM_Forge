@@ -1,0 +1,34 @@
+name: Sync to Hugging Face Hub
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'backend/**'
+      - 'Dockerfile'
+      - '.github/workflows/hf-sync.yml'
+
+jobs:
+  sync-to-hub:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          lfs: true
+
+      - name: Push to Hub
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          # 1. Configure Git
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+          
+          # 2. Add HF remote (Using the standard HF space URL format)
+          git remote add hf https://huggingface.co/spaces/faz-ai/llm-forge
+          
+          # 3. Authenticate with the token and push
+          # We force push to ensure the Space directly mirrors the Github repo
+          git push -f https://faz-ai:$HF_TOKEN@huggingface.co/spaces/faz-ai/llm-forge main:main
