@@ -54,6 +54,5 @@ venv/
 
 # Misc
 *.bak
-PHASES.md
-DEPLOYMENT_AUDIT_REPORT.md
+*.db
 

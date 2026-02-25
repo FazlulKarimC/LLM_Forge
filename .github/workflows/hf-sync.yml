@@ -13,22 +13,67 @@ jobs:
   sync-to-hub:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout full repo
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          lfs: true
 
-      - name: Push to Hub
+      - name: Stage backend for HF Spaces
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
-          # 1. Configure Git
+          # -------------------------------------------------------
+          # We push ONLY the backend/ directory contents to HF Spaces.
+          # HF Spaces expects Dockerfile at the root, not inside a
+          # backend/ subdirectory, so we build a clean staging area.
+          # -------------------------------------------------------
+
+          # 1. Configure git identity
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git config --global user.name "github-actions[bot]"
-          
-          # 2. Add HF remote (Using the standard HF space URL format)
-          git remote add hf https://huggingface.co/spaces/faz-ai/llm-forge
-          
-          # 3. Authenticate with the token and push
-          # We force push to ensure the Space directly mirrors the Github repo
+
+          # 2. Create a fresh staging directory outside the repo
+          mkdir -p /tmp/hf-staging
+
+          # 3. Copy backend contents (everything inside backend/) to staging root
+          cp -r backend/. /tmp/hf-staging/
+
+          # 4. Copy the flat Dockerfile built for HF into staging root
+          #    backend/Dockerfile.hf uses "COPY . ." style paths (no backend/ prefix)
+          cp backend/Dockerfile.hf /tmp/hf-staging/Dockerfile
+
+          # 5. Create the required HF Spaces README with YAML front-matter
+          cat > /tmp/hf-staging/README.md << 'EOF'
+          ---
+          title: LlmForge Backend
+          emoji: 🔬
+          colorFrom: indigo
+          colorTo: purple
+          sdk: docker
+          app_port: 7860
+          pinned: false
+          ---
+          # LlmForge Backend API
+
+          FastAPI backend for the [LlmForge](https://github.com/FazlulKarimC/LLM_Forge) LLM experimentation platform.
+
+          Built with FastAPI + SQLAlchemy + Alembic. Connects to a remote NeonDB PostgreSQL instance and uses the Hugging Face Inference API for model calls.
+          EOF
+
+          # 6. Remove any local dev artifacts that should not go to HF
+          rm -rf /tmp/hf-staging/venv
+          rm -rf /tmp/hf-staging/.venv
+          rm -rf /tmp/hf-staging/__pycache__
+          rm -rf /tmp/hf-staging/.pytest_cache
+          rm -f  /tmp/hf-staging/.env
+          rm -f  /tmp/hf-staging/Dockerfile.hf
+
+          # 7. Initialize a git repo in the staging dir and push to HF Spaces
+          cd /tmp/hf-staging
+          git init
+          git checkout -b main
+          git add .
+          git commit -m "chore: sync from GitHub Actions ($(date -u '+%Y-%m-%dT%H:%M:%SZ'))"
+
+          # Force push the staging branch to HF Spaces main
           git push -f https://faz-ai:$HF_TOKEN@huggingface.co/spaces/faz-ai/llm-forge main:main

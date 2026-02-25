@@ -1,0 +1,29 @@
+# Dockerfile for Hugging Face Spaces Deployment
+#
+# NOTE: This file is used by the GitHub Actions CI pipeline.
+# It is written from the perspective that it lives at the ROOT of
+# what is pushed to HF Spaces (alongside app/, alembic/, requirements.txt etc.)
+# so all COPY paths are flat — no "backend/" prefix.
+
+FROM python:3.10-slim
+
+# Set working directory inside the container
+WORKDIR /app
+
+# Install system build tools
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies first (layer-cached unless requirements change)
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy the rest of the backend source code
+COPY . .
+
+# HF Spaces default port
+EXPOSE 7860
+
+# Start the FastAPI app with Uvicorn
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "7860"]
