@@ -20,6 +20,16 @@ from app.core.database import get_db
 router = APIRouter()
 
 
+@router.get("/")
+async def root():
+    """
+    Root endpoint — satisfies the Hugging Face Spaces health probe.
+    HF Spaces sends GET / to check if the container is alive; without
+    this route it gets a 404 and marks the Space as unhealthy.
+    """
+    return {"status": "healthy", "service": "llmforge-backend"}
+
+
 @router.get("/health")
 async def health_check():
     """

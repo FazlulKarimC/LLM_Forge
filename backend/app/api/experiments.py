@@ -91,7 +91,7 @@ def _enqueue_or_fallback(
         raise HTTPException(status_code=503, detail="Task queue unavailable")
 
 
-@router.post("/", response_model=ExperimentResponse, status_code=201)
+@router.post("", response_model=ExperimentResponse, status_code=201)
 async def create_experiment(
     experiment: ExperimentCreate,
     db: AsyncSession = Depends(get_db),
@@ -101,7 +101,7 @@ async def create_experiment(
     return await service.create(experiment)
 
 
-@router.get("/", response_model=ExperimentListResponse)
+@router.get("", response_model=ExperimentListResponse)
 async def list_experiments(
     status: Optional[ExperimentStatus] = None,
     method: Optional[str] = None,

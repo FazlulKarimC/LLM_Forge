@@ -38,13 +38,15 @@ class Settings(BaseSettings):
     DEBUG: bool = False # Default to False for production readiness
     
     # ----- CORS -----
-    # Comma-separated string of allowed origins, parsed into a list
-    CORS_ORIGINS: str = "http://localhost:3000,http://127.0.0.1:3000"
+    # Comma-separated string of allowed origins, parsed into a list.
+    # Trailing slashes are stripped automatically (browsers send Origin without them).
+    CORS_ORIGINS: str = "http://localhost:3000,http://127.0.0.1:3000,https://llmforge.vercel.app"
 
     @property
     def cors_origins_list(self) -> list[str]:
-        """Return CORS_ORIGINS as a Python list (split on commas)."""
-        return [o.strip() for o in self.CORS_ORIGINS.split(",") if o.strip()]
+        """Return CORS_ORIGINS as a Python list (split on commas, trailing slashes stripped)."""
+        return [o.strip().rstrip("/") for o in self.CORS_ORIGINS.split(",") if o.strip()]
+
     
     # ----- Database (NeonDB) -----
     DATABASE_URL: str = ""  # Required: postgresql://...

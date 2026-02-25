@@ -112,10 +112,11 @@ export default function DashboardPage() {
               <strong>Error:</strong> {error instanceof Error ? error.message : 'Failed to load'}
             </p>
             <p className="text-sm text-red-600 mt-1">
-              Make sure the backend is running at http://localhost:8000
+              Backend URL: <code className="font-mono bg-red-100 px-1 rounded">{process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1 (fallback — NEXT_PUBLIC_API_URL not set)'}</code>
             </p>
           </div>
         )}
+
 
         {/* Stats Grid */}
         <motion.div

@@ -85,6 +85,7 @@ def create_application() -> FastAPI:
         version=settings.VERSION,
         description="LLM Research Engineering Platform",
         openapi_url=f"{settings.API_V1_PREFIX}/openapi.json",
+        redirect_slashes=False,
         lifespan=lifespan,
     )
     
