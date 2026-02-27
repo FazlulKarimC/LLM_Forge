@@ -23,7 +23,9 @@ from app.core.exception_handlers import (
     app_exception_handler,
     validation_exception_handler,
     global_exception_handler,
+    http_exception_handler,
 )
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 # ── Logging setup ──────────────────────────────────────────────────────────
 # Configure logging early so all modules (including uvicorn workers in
@@ -57,6 +59,15 @@ async def lifespan(app: FastAPI):
     """
     # Startup
     logger.info(f"Starting {settings.PROJECT_NAME} v{settings.VERSION} (env={settings.ENVIRONMENT})")
+    logger.info(f"Inference engine: {settings.INFERENCE_ENGINE}")
+    logger.info(f"Data directory: {settings.data_dir}")
+
+    # Preflight checks
+    if settings.ENVIRONMENT != "development":
+        if not settings.DATABASE_URL:
+            logger.error("DATABASE_URL is not set — database operations will fail")
+        if not settings.REDIS_URL:
+            logger.warning("REDIS_URL is not set — experiments will use inline execution")
 
     # Warn if HF_TOKEN is missing when HF API inference is expected
     if settings.INFERENCE_ENGINE == "hf_api" and not settings.HF_TOKEN:
@@ -66,6 +77,36 @@ async def lifespan(app: FastAPI):
         )
 
     logger.info(f"CORS allowed origins: {settings.cors_origins_list}")
+
+    # ── Startup recovery: reset stuck experiments ──
+    # If the server was killed (e.g. HF Spaces sleep/restart) while experiments
+    # were running, they stay stuck in QUEUED/RUNNING forever. Reset them to FAILED.
+    try:
+        from app.core.database import async_session_maker
+        from sqlalchemy import update, or_
+        from app.models.experiment import Experiment
+        from app.schemas.experiment import ExperimentStatus
+
+        async with async_session_maker() as session:
+            result = await session.execute(
+                update(Experiment)
+                .where(
+                    Experiment.deleted_at.is_(None),
+                    or_(
+                        Experiment.status == ExperimentStatus.QUEUED,
+                        Experiment.status == ExperimentStatus.RUNNING
+                    )
+                )
+                .values(
+                    status=ExperimentStatus.FAILED,
+                    error_message="Interrupted by server restart"
+                )
+            )
+            await session.commit()
+            if result.rowcount > 0:
+                logger.warning("Reset %d stuck experiments to FAILED on startup", result.rowcount)
+    except Exception as e:
+        logger.error("Failed to reset stuck experiments on startup: %s", e)
 
     yield
 
@@ -105,6 +146,7 @@ def create_application() -> FastAPI:
     # Register global exception handlers
     app.add_exception_handler(AppException, app_exception_handler)
     app.add_exception_handler(RequestValidationError, validation_exception_handler)
+    app.add_exception_handler(StarletteHTTPException, http_exception_handler)
     app.add_exception_handler(Exception, global_exception_handler)
     
     # Register routers

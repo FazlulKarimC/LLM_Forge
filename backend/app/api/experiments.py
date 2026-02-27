@@ -13,7 +13,7 @@ import logging
 from typing import List, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -41,15 +41,19 @@ async def _execute_inline(
     Used as fallback when Redis/RQ is unavailable.
     """
     from app.core.database import async_session_maker
+    from app.core.rate_limit import decrement_active_runs
     
-    logger.info(f"[INLINE] Running experiment {experiment_id} inline (no Redis)")
-    async with async_session_maker() as session:
-        svc = ExperimentService(session)
-        await svc.execute(
-            experiment_id, 
-            custom_base_url=custom_base_url, 
-            custom_api_key=custom_api_key
-        )
+    try:
+        logger.info(f"[INLINE] Running experiment {experiment_id} inline (no Redis)")
+        async with async_session_maker() as session:
+            svc = ExperimentService(session)
+            await svc.execute(
+                experiment_id, 
+                custom_base_url=custom_base_url, 
+                custom_api_key=custom_api_key
+            )
+    finally:
+        decrement_active_runs()
 
 
 def _enqueue_or_fallback(
@@ -86,17 +90,28 @@ def _enqueue_or_fallback(
         )
         return "rq"
     except Exception as e:
-        logger.warning(f"Redis enqueue failed ({e})")
-        from fastapi import HTTPException
-        raise HTTPException(status_code=503, detail="Task queue unavailable")
+        logger.warning(f"Redis enqueue failed ({e}), falling back to inline execution")
+        background_tasks.add_task(_execute_inline, experiment_id, custom_base_url, custom_api_key)
+        return "inline_fallback"
+
+
+@router.get("/stats")
+async def get_experiment_stats(db: AsyncSession = Depends(get_db)):
+    """Get aggregated experiment counts by status."""
+    service = ExperimentService(db)
+    return await service.get_stats()
 
 
 @router.post("", response_model=ExperimentResponse, status_code=201)
 async def create_experiment(
     experiment: ExperimentCreate,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new experiment from configuration."""
+    from app.core.rate_limit import check_create_rate_limit
+    await check_create_rate_limit(request)
+    
     service = ExperimentService(db)
     return await service.create(experiment)
 
@@ -175,6 +190,7 @@ from fastapi import Header
 @router.post("/{experiment_id}/run", response_model=ExperimentResponse)
 async def run_experiment(
     experiment_id: UUID,
+    request: Request,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     x_custom_llm_base: Optional[str] = Header(None, alias="X-Custom-LLM-Base"),
@@ -194,20 +210,41 @@ async def run_experiment(
     
     if experiment.status in [ExperimentStatus.QUEUED, ExperimentStatus.RUNNING]:
         raise ValidationException(message="Experiment already queued or running")
+    
+    # Rate limit check
+    from app.core.rate_limit import check_run_rate_limit
+    await check_run_rate_limit(request)
         
     from app.core.config import settings
-    if x_custom_llm_base and settings.ENVIRONMENT != "development":
-        raise ValidationException(message="Custom LLM execution is only allowed in development mode")
+    if x_custom_llm_base:
+        # Validate URL scheme to prevent SSRF (file://, ftp://, etc.)
+        from urllib.parse import urlparse
+        parsed = urlparse(x_custom_llm_base)
+        if parsed.scheme not in ("http", "https"):
+            raise ValidationException(message="Custom LLM base URL must use http:// or https://")
+        if not parsed.hostname:
+            raise ValidationException(message="Custom LLM base URL must include a valid hostname")
+        if settings.ENVIRONMENT != "development":
+            raise ValidationException(message="Custom LLM execution is only allowed in development mode")
     
     await service.update_status(experiment_id, ExperimentStatus.QUEUED)
     await db.commit()
     
-    _enqueue_or_fallback(
-        background_tasks, 
-        experiment_id, 
-        custom_base_url=x_custom_llm_base, 
-        custom_api_key=x_custom_llm_key
-    )
+    try:
+        _enqueue_or_fallback(
+            background_tasks, 
+            experiment_id, 
+            custom_base_url=x_custom_llm_base, 
+            custom_api_key=x_custom_llm_key
+        )
+    except Exception as e:
+        logger.error("Enqueue failed, rolling back to FAILED: %s", e)
+        await service.update_status(
+            experiment_id, ExperimentStatus.FAILED,
+            error_message="Failed to start execution: task queue unavailable"
+        )
+        await db.commit()
+        raise
     
     return await service.get(experiment_id)
 

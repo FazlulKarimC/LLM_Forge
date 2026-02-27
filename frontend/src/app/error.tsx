@@ -9,7 +9,7 @@ export default function GlobalError({
     error,
     reset,
 }: {
-    error: Error & { digest?: string; statusCode?: number; requestId?: string; details?: any };
+    error: Error & { digest?: string; statusCode?: number; requestId?: string; details?: { field: string; issue: string }[] };
     reset: () => void;
 }) {
     useEffect(() => {
@@ -64,7 +64,7 @@ export default function GlobalError({
                 {error.details && Array.isArray(error.details) && (
                     <div className="mt-4 text-left bg-red-50 p-4 rounded-md border border-red-100">
                         <ul className="list-disc list-inside text-sm text-red-700 space-y-1">
-                            {error.details.map((detail: any, idx: number) => (
+                            {error.details.map((detail: { field: string; issue: string }, idx: number) => (
                                 <li key={idx}>
                                     <span className="font-semibold">{detail.field}:</span> {detail.issue}
                                 </li>

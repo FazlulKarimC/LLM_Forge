@@ -8,7 +8,7 @@
  * Styled with DESIGN_SYSTEM.md.
  */
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
@@ -68,7 +68,7 @@ export default function NewExperimentPage() {
         seed: "",
     });
 
-    const [runAfterCreate, setRunAfterCreate] = useState(false);
+    const runAfterCreateRef = useRef(false);
     const [validationError, setValidationError] = useState<string | null>(null);
     const [runError, setRunError] = useState<string | null>(null);
 
@@ -92,7 +92,7 @@ export default function NewExperimentPage() {
             queryClient.invalidateQueries({ queryKey: ["experiments"] });
             queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
 
-            if (runAfterCreate) {
+            if (runAfterCreateRef.current) {
                 try {
                     await runExperiment(
                         experiment.id,
@@ -133,7 +133,7 @@ export default function NewExperimentPage() {
             return;
         }
         setValidationError(null);
-        setRunAfterCreate(shouldRun);
+        runAfterCreateRef.current = shouldRun;
         if (formData.model_name === "custom_hosted") {
             if (!customBaseUrl.trim() || !customModelId.trim()) {
                 setValidationError("Base URL and Model ID are required for custom hosted models.");
@@ -629,7 +629,7 @@ export default function NewExperimentPage() {
                             disabled={createMutation.isPending}
                             className="px-6 py-2 rounded-full border border-border text-(--text-body) hover:bg-(--bg-page) transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                         >
-                            {createMutation.isPending && !runAfterCreate ? "Creating..." : "Create Experiment"}
+                            {createMutation.isPending && !runAfterCreateRef.current ? "Creating..." : "Create Experiment"}
                         </button>
                         <button
                             type="button"
@@ -637,7 +637,7 @@ export default function NewExperimentPage() {
                             onClick={(e) => handleSubmit(e, true)}
                             className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer inline-flex items-center gap-2"
                         >
-                            {createMutation.isPending && runAfterCreate ? (
+                            {createMutation.isPending && runAfterCreateRef.current ? (
                                 <>
                                     <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
                                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />

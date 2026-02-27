@@ -13,7 +13,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { getDashboardStats, listExperiments, deleteExperiment, runExperiment, Experiment } from "@/lib/api";
+import { getDashboardStats, listExperiments, deleteExperiment, runExperiment, getReadinessStatus, Experiment } from "@/lib/api";
 import { Play, Trash2, Eye, Loader2, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 
@@ -34,6 +34,13 @@ export default function DashboardPage() {
   const experimentsQuery = useQuery({
     queryKey: ["experiments", "recent"],
     queryFn: () => listExperiments({ limit: 5 }),
+  });
+
+  const readinessQuery = useQuery({
+    queryKey: ["readiness"],
+    queryFn: getReadinessStatus,
+    refetchInterval: 30000, // Refresh every 30s
+    retry: 1,
   });
 
   const deleteMutation = useMutation({
@@ -147,6 +154,64 @@ export default function DashboardPage() {
           />
         </motion.div>
 
+        {/* System Status */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.05 }}
+          className="card p-6 mb-8"
+        >
+          <h2 className="text-xl font-serif text-(--text-heading) mb-4">System Status</h2>
+          {readinessQuery.isLoading ? (
+            <div className="animate-pulse h-8 bg-(--bg-page) rounded w-48" />
+          ) : readinessQuery.error ? (
+            <div className="flex items-center gap-2 text-red-600 text-sm">
+              <span className="inline-block w-2.5 h-2.5 rounded-full bg-red-500" />
+              Backend unreachable
+            </div>
+          ) : (
+            <div className="flex flex-wrap gap-6">
+              {Object.entries(readinessQuery.data?.checks ?? {}).map(([key, value]) => {
+                const status = String(value);
+                const isHealthy = status === "healthy";
+                const isNotConfigured = status === "not_configured";
+                const isArchived = status.startsWith("archived");
+                const isAmber = isArchived;
+                const isGray = isNotConfigured;
+                const isRed = !isHealthy && !isGray && !isAmber;
+
+                let label = "Unhealthy";
+                let dotColor = "bg-red-500";
+                let textColor = "text-red-600";
+
+                if (isHealthy) {
+                  label = "Healthy";
+                  dotColor = "bg-green-500";
+                  textColor = "text-green-600";
+                } else if (isNotConfigured) {
+                  label = "Not Configured";
+                  dotColor = "bg-gray-300";
+                  textColor = "text-gray-400";
+                } else if (isArchived) {
+                  label = "Archived";
+                  dotColor = "bg-amber-400";
+                  textColor = "text-amber-600";
+                }
+
+                return (
+                  <div key={key} className="flex items-center gap-2 text-sm">
+                    <span className={`inline-block w-2.5 h-2.5 rounded-full ${dotColor}`} />
+                    <span className="capitalize text-(--text-body)">{key.replace(/_/g, " ")}</span>
+                    <span className={`text-xs ${textColor}`}>
+                      {label}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </motion.div>
+
         {/* Quick Actions */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -205,6 +270,14 @@ export default function DashboardPage() {
                   key={exp.id}
                   className="block border border-border rounded-lg p-4 hover:bg-(--bg-page) transition-colors cursor-pointer shadow-xs"
                   onClick={() => router.push(`/experiments/${exp.id}`)}
+                  tabIndex={0}
+                  role="button"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      router.push(`/experiments/${exp.id}`);
+                    }
+                  }}
                 >
                   <div className="flex justify-between items-center">
                     <div>

@@ -205,10 +205,10 @@ function CorrectnessGrid({ runs }: { runs: RunSummary[] }) {
                             <div className="pt-2 border-t border-border mt-2">
                                 <dt className="text-(--text-muted) text-xs mb-1">Retrieved Context ({selectedRun.retrieved_chunks.chunks.length} chunks)</dt>
                                 <dd className="bg-(--bg-card) p-3 rounded text-xs font-mono text-(--text-body) max-h-40 overflow-y-auto whitespace-pre-wrap">
-                                    {selectedRun.retrieved_chunks.chunks.map((c: any, i: number) => (
+                                    {selectedRun.retrieved_chunks.chunks.map((c: { text?: string; page_content?: string; score?: number }, i: number) => (
                                         <div key={i} className="mb-2 pb-2 border-b border-border/50 last:border-0 last:mb-0 last:pb-0">
                                             <span className="text-primary/80 font-bold">[{i + 1}]</span> {c.text || c.page_content || JSON.stringify(c)}
-                                            {c.score && <span className="ml-2 text-(--text-muted)">(score: {c.score.toFixed(3)})</span>}
+                                            {c.score != null && <span className="ml-2 text-(--text-muted)">(score: {c.score.toFixed(3)})</span>}
                                         </div>
                                     ))}
                                 </dd>

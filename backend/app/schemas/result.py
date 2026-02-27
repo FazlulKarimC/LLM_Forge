@@ -12,7 +12,7 @@ from datetime import datetime
 from typing import Optional, List, Dict, Any
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 
 class QualityMetrics(BaseModel):
@@ -55,8 +55,7 @@ class RunSummary(BaseModel):
     output_text: Optional[str] = None
     expected_output: Optional[str] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class MetricsResponse(BaseModel):
@@ -74,8 +73,7 @@ class ResultResponse(BaseModel):
     metrics: MetricsResponse
     runs: Optional[List["RunResponse"]] = None  # Forward ref
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ExperimentComparison(BaseModel):

@@ -98,6 +98,26 @@ class RunService:
         
         return run
 
+    async def create_runs_batch(
+        self,
+        experiment_id: UUID,
+        runs_data: list[dict],
+    ) -> list[Run]:
+        """
+        Create multiple run log entries efficiently.
+        
+        Args:
+            experiment_id: Parent experiment UUID
+            runs_data: List of dictionaries containing run metadata
+            
+        Returns:
+            List of created Run instances
+        """
+        runs = [Run(experiment_id=experiment_id, **data) for data in runs_data]
+        self.db.add_all(runs)
+        await self.db.flush()
+        return runs
+
     async def clear_runs(self, experiment_id: UUID) -> None:
         """
         Delete all run logs for a given experiment.

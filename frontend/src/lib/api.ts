@@ -8,14 +8,16 @@
 export class ApiError extends Error {
     public statusCode: number;
     public requestId?: string;
-    public details?: any;
+    public details?: Record<string, unknown>[];
+    public retryAfter?: number;
 
-    constructor(message: string, statusCode: number, requestId?: string, details?: any) {
+    constructor(message: string, statusCode: number, requestId?: string, details?: Record<string, unknown>[], retryAfter?: number) {
         super(message);
         this.name = 'ApiError';
         this.statusCode = statusCode;
         this.requestId = requestId;
         this.details = details;
+        this.retryAfter = retryAfter;
     }
 }
 
@@ -32,46 +34,92 @@ if (process.env.NODE_ENV === 'production' && !process.env.NEXT_PUBLIC_API_URL) {
 }
 
 /**
- * Base fetch wrapper with error handling.
+ * Base fetch wrapper with error handling, timeout, and retry.
  */
 async function fetchAPI<T>(
     endpoint: string,
     options: RequestInit = {}
 ): Promise<T> {
     const url = `${API_BASE_URL}${endpoint}`;
+    const TIMEOUT_MS = 15000;
+    const MAX_RETRIES = 1; // Single retry for 5xx/network errors
 
-    const response = await fetch(url, {
-        ...options,
-        headers: {
-            'Content-Type': 'application/json',
-            ...options.headers,
-        },
-    });
-
-    if (!response.ok) {
-        let errorMessage = `API Error: ${response.status}`;
-        let requestId: string | undefined;
-        let details: any;
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
         try {
-            const errorData = await response.json();
-            errorMessage = errorData.message || errorData.detail || errorMessage;
-            requestId = errorData.request_id || response.headers.get('X-Request-ID');
-            details = errorData.details;
-        } catch (e) {
-            // Non-JSON response (e.g., 502 Bad Gateway from a proxy)
-            requestId = response.headers.get('X-Request-ID') || undefined;
+            const response = await fetch(url, {
+                ...options,
+                signal: controller.signal,
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...options.headers,
+                },
+            });
+
+            clearTimeout(timeout);
+
+            if (!response.ok) {
+                let errorMessage = `API Error: ${response.status}`;
+                let requestId: string | undefined;
+                let details: Record<string, unknown>[] | undefined;
+                let retryAfter: number | undefined;
+
+                try {
+                    const errorData = await response.json();
+                    errorMessage = errorData.message || errorData.detail || errorMessage;
+                    requestId = errorData.request_id || response.headers.get('X-Request-ID') || undefined;
+                    details = errorData.details;
+                    if (response.status === 429 && errorData.retry_after) {
+                        retryAfter = errorData.retry_after;
+                    }
+                } catch {
+                    requestId = response.headers.get('X-Request-ID') || undefined;
+                }
+
+                // Retry on 5xx (but not 429 or 4xx)
+                if (response.status >= 500 && attempt < MAX_RETRIES) {
+                    await new Promise(r => setTimeout(r, 2000)); // Wait 2s before retry
+                    continue;
+                }
+
+                throw new ApiError(errorMessage, response.status, requestId, details, retryAfter);
+            }
+
+            // Handle 204 No Content
+            if (response.status === 204) {
+                return undefined as unknown as T;
+            }
+
+            return response.json();
+        } catch (err) {
+            clearTimeout(timeout);
+
+            // If it's already an ApiError, rethrow
+            if (err instanceof ApiError) throw err;
+
+            // Retry on network/timeout errors
+            if (attempt < MAX_RETRIES) {
+                await new Promise(r => setTimeout(r, 2000));
+                continue;
+            }
+
+            // AbortController timeout
+            if (err instanceof DOMException && err.name === 'AbortError') {
+                throw new ApiError('Request timed out. The server may be starting up — please try again.', 408);
+            }
+
+            // Network error
+            throw new ApiError(
+                err instanceof Error ? err.message : 'Network error',
+                0
+            );
         }
-
-        throw new ApiError(errorMessage, response.status, requestId, details);
     }
 
-    // Handle 204 No Content
-    if (response.status === 204) {
-        return undefined as T;
-    }
-
-    return response.json();
+    // Should never reach here, but TypeScript needs it
+    throw new ApiError('Unexpected retry exhaustion', 500);
 }
 
 // =============================================================================
@@ -183,7 +231,7 @@ export interface RunSummary {
     output_text?: string;
     expected_output?: string;
     faithfulness_score?: number;
-    retrieved_chunks?: any;
+    retrieved_chunks?: { chunks: { text?: string; page_content?: string; score?: number }[] };
 }
 
 export interface ModelOption {
@@ -285,7 +333,7 @@ export async function runExperiment(
  * Delete an experiment (soft delete).
  */
 export async function deleteExperiment(id: string): Promise<void> {
-    return fetchAPI<void>(`/experiments/${id}`, { method: 'DELETE' });
+    await fetchAPI<undefined>(`/experiments/${id}`, { method: 'DELETE' });
 }
 
 /**
@@ -335,24 +383,21 @@ export async function exportResults(experimentId: string, experimentName?: strin
  * Get dashboard statistics.
  */
 export async function getDashboardStats(): Promise<DashboardStats> {
-    // Fetch all experiments and compute stats client-side
-    // TODO: Add dedicated backend endpoint for efficiency
-    const result = await listExperiments({ limit: 100 });
+    const stats = await fetchAPI<{
+        total: number;
+        completed: number;
+        running: number;
+        pending: number;
+        queued: number;
+        failed: number;
+    }>('/experiments/stats');
 
-    const stats: DashboardStats = {
-        totalExperiments: result.total,
-        completedExperiments: 0,
-        runningExperiments: 0,
-        pendingExperiments: 0,
+    return {
+        totalExperiments: stats.total,
+        completedExperiments: stats.completed,
+        runningExperiments: stats.running + stats.queued,
+        pendingExperiments: stats.pending,
     };
-
-    for (const exp of result.experiments) {
-        if (exp.status === 'completed') stats.completedExperiments++;
-        else if (exp.status === 'running') stats.runningExperiments++;
-        else if (exp.status === 'pending') stats.pendingExperiments++;
-    }
-
-    return stats;
 }
 
 /**
@@ -374,6 +419,33 @@ export async function healthCheck(): Promise<{ status: string }> {
         API_BASE_URL.replace(/\/api\/v1\/?$/, '') ||
         'http://localhost:8000';
     const response = await fetch(`${baseUrl}/health`);
+    return response.json();
+}
+
+export interface ReadinessStatus {
+    status: string;
+    checks: {
+        database: string;
+        vector_db: string;
+        models: string;
+    };
+}
+
+/**
+ * Get system readiness status.
+ */
+export async function getReadinessStatus(): Promise<ReadinessStatus> {
+    const baseUrl =
+        process.env.NEXT_PUBLIC_API_BASE_URL ||
+        API_BASE_URL.replace(/\/api\/v1\/?$/, '') ||
+        'http://localhost:8000';
+    const response = await fetch(`${baseUrl}/ready`);
+    if (!response.ok) {
+        const errorText = await response.text().catch(() => 'Unknown error');
+        throw new Error(
+            `Readiness check failed (${response.status}): ${errorText}`
+        );
+    }
     return response.json();
 }
 

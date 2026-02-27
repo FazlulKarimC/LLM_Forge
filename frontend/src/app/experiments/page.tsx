@@ -196,6 +196,14 @@ export default function ExperimentsPage() {
                                         key={exp.id}
                                         className="hover:bg-(--bg-page) cursor-pointer"
                                         onClick={() => router.push(`/experiments/${exp.id}`)}
+                                        tabIndex={0}
+                                        role="button"
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter' || e.key === ' ') {
+                                                e.preventDefault();
+                                                router.push(`/experiments/${exp.id}`);
+                                            }
+                                        }}
                                     >
                                         <td className="px-6 py-4">
                                             <span className="text-primary font-medium">

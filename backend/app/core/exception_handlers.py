@@ -98,3 +98,20 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
             "request_id": request_id,
         },
     )
+
+async def http_exception_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:
+    """
+    Handles FastAPI/Starlette HTTPExceptions (e.g., 404, 405, 422).
+    Ensures they return our standardized JSON error format.
+    """
+    request_id = getattr(request.state, "request_id", None)
+
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "error": True,
+            "message": exc.detail or f"HTTP {exc.status_code}",
+            "status_code": exc.status_code,
+            "request_id": request_id,
+        },
+    )

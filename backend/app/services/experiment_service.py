@@ -203,6 +203,34 @@ class ExperimentService:
             limit=limit,
         )
     
+    async def get_stats(self) -> dict:
+        """
+        Get aggregated experiment counts by status.
+        
+        Uses a single GROUP BY query instead of fetching all rows.
+        Returns dict with total, completed, running, pending, queued, failed counts.
+        """
+        query = (
+            select(Experiment.status, func.count(Experiment.id))
+            .where(Experiment.deleted_at.is_(None))
+            .group_by(Experiment.status)
+        )
+        result = await self.db.execute(query)
+        rows = result.all()
+        
+        # Build counts dict
+        counts = {status.value: count for status, count in rows}
+        total = sum(counts.values())
+        
+        return {
+            "total": total,
+            "completed": counts.get("completed", 0),
+            "running": counts.get("running", 0),
+            "pending": counts.get("pending", 0),
+            "queued": counts.get("queued", 0),
+            "failed": counts.get("failed", 0),
+        }
+    
     async def update_status(
         self,
         experiment_id: UUID,
@@ -576,6 +604,7 @@ class ExperimentService:
                             all_results.append(next(gen_results_iterator))
                     
                     # Process results
+                    runs_batch_data = []
                     for local_idx, (item, result) in enumerate(zip(batch_items, all_results)):
                         global_idx = batch_start + local_idx
                         
@@ -591,19 +620,21 @@ class ExperimentService:
                                 parsed_answer, aliases
                             )
                         
-                        await run_service.create_run(
-                            experiment_id=experiment_id,
-                            example_id=item["id"],
-                            input_text=prompts[local_idx],
-                            output_text=result.text,
-                            expected_output=item["answer"],
-                            is_correct=is_exact or is_substring,
-                            score=f1_score,
-                            tokens_input=result.tokens_input,
-                            tokens_output=result.tokens_output,
-                            latency_ms=result.latency_ms,
-                            gpu_memory_mb=result.gpu_memory_mb,
-                        )
+                        runs_batch_data.append({
+                            "example_id": item["id"],
+                            "input_text": prompts[local_idx],
+                            "output_text": result.text,
+                            "expected_output": item["answer"],
+                            "is_correct": is_exact or is_substring,
+                            "score": f1_score,
+                            "tokens_input": result.tokens_input,
+                            "tokens_output": result.tokens_output,
+                            "latency_ms": result.latency_ms,
+                            "gpu_memory_mb": result.gpu_memory_mb,
+                        })
+                    
+                    if runs_batch_data:
+                        await run_service.create_runs_batch(experiment_id, runs_batch_data)
                     
                     batch_stats["batches_processed"] += 1
                     batch_stats["total_prompts_batched"] += len(batch_items)
@@ -614,6 +645,8 @@ class ExperimentService:
                 if use_batching:
                     logger.info("[EXECUTE] Batching disabled for RAG/Agent (requires sequential processing)")
                 
+                runs_batch_data = []
+
                 for i, item in enumerate(examples):
                     logger.info("[EXECUTE] Processing %s/%s: %s", i+1, len(examples), item['id'])
                     
@@ -643,21 +676,25 @@ class ExperimentService:
                                 parsed_answer, aliases
                             )
                         
-                        await run_service.create_run(
-                            experiment_id=experiment_id,
-                            example_id=item["id"],
-                            input_text=prompt,
-                            output_text=raw_output,
-                            expected_output=item["answer"],
-                            is_correct=is_exact or is_substring,
-                            score=f1_score,
-                            tokens_input=agent_result.total_tokens_input,
-                            tokens_output=agent_result.total_tokens_output,
-                            latency_ms=agent_result.total_latency_ms,
-                            gpu_memory_mb=None,
-                            agent_trace=agent_result.trace_as_dict(),
-                            tool_calls=agent_result.tool_calls,
-                        )
+                        runs_batch_data.append({
+                            "example_id": item["id"],
+                            "input_text": prompt,
+                            "output_text": raw_output,
+                            "expected_output": item["answer"],
+                            "is_correct": is_exact or is_substring,
+                            "score": f1_score,
+                            "tokens_input": agent_result.total_tokens_input,
+                            "tokens_output": agent_result.total_tokens_output,
+                            "latency_ms": agent_result.total_latency_ms,
+                            "gpu_memory_mb": None,
+                            "agent_trace": agent_result.trace_as_dict(),
+                            "tool_calls": agent_result.tool_calls,
+                        })
+
+                        if len(runs_batch_data) >= 50:
+                            await run_service.create_runs_batch(experiment_id, runs_batch_data)
+                            runs_batch_data = []
+
                         continue
                     
                     # RAG retrieval (if enabled)
@@ -743,22 +780,27 @@ class ExperimentService:
                             parsed_answer, aliases
                         )
                     
-                    # Log run to database
-                    await run_service.create_run(
-                        experiment_id=experiment_id,
-                        example_id=item["id"],
-                        input_text=prompt,
-                        output_text=result.text,
-                        expected_output=item["answer"],
-                        is_correct=is_exact or is_substring,
-                        score=f1_score,
-                        tokens_input=result.tokens_input,
-                        tokens_output=result.tokens_output,
-                        latency_ms=result.latency_ms,
-                        gpu_memory_mb=result.gpu_memory_mb,
-                        faithfulness_score=faithfulness,
-                        retrieved_chunks={"chunks": context_chunks} if use_rag else None,
-                    )
+                    runs_batch_data.append({
+                        "example_id": item["id"],
+                        "input_text": prompt,
+                        "output_text": result.text,
+                        "expected_output": item["answer"],
+                        "is_correct": is_exact or is_substring,
+                        "score": f1_score,
+                        "tokens_input": result.tokens_input,
+                        "tokens_output": result.tokens_output,
+                        "latency_ms": result.latency_ms,
+                        "gpu_memory_mb": result.gpu_memory_mb,
+                        "faithfulness_score": faithfulness,
+                        "retrieved_chunks": {"chunks": context_chunks} if use_rag else None,
+                    })
+
+                    if len(runs_batch_data) >= 50:
+                        await run_service.create_runs_batch(experiment_id, runs_batch_data)
+                        runs_batch_data = []
+            
+            if not use_batching and runs_batch_data:
+                await run_service.create_runs_batch(experiment_id, runs_batch_data)
             
             # Step 8: Commit all runs
             logger.info("[EXECUTE] Committing %s runs to database...", len(examples))
