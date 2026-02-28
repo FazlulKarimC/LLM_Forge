@@ -1,0 +1,1346 @@
+﻿diff --git a/backend/app/api/results.py b/backend/app/api/results.py
+index 7e9b407..8dce8a7 100644
+--- a/backend/app/api/results.py
++++ b/backend/app/api/results.py
+@@ -47,6 +47,7 @@ def _result_to_metrics_response(result: Result) -> MetricsResponse:
+             accuracy_exact=result.accuracy_exact,
+             accuracy_f1=result.accuracy_f1,
+             accuracy_substring=result.accuracy_substring,
++            semantic_similarity=result.semantic_similarity,
+             faithfulness=result.faithfulness,
+             hallucination_rate=result.hallucination_rate,
+         ),
+@@ -404,6 +405,9 @@ async def export_results(
+             "accuracy_exact": db_result.accuracy_exact,
+             "accuracy_f1": db_result.accuracy_f1,
+             "accuracy_substring": db_result.accuracy_substring,
++            "semantic_similarity": db_result.semantic_similarity,
++            "faithfulness": db_result.faithfulness,
++            "hallucination_rate": db_result.hallucination_rate,
+             "latency_p50": db_result.latency_p50,
+             "latency_p95": db_result.latency_p95,
+             "latency_p99": db_result.latency_p99,
+@@ -422,3 +426,77 @@ async def export_results(
+         },
+     )
+ 
++
++@router.post("/{experiment_id}/judge")
++async def run_llm_judge(
++    experiment_id: UUID,
++    sample_size: int = Query(20, ge=1, le=50, description="Number of runs to sample"),
++    db: AsyncSession = Depends(get_db),
++):
++    """
++    Run LLM-as-judge evaluation on a sampled subset of runs (P2 #13).
++    
++    Evaluates coherence, helpfulness, and factuality using a free HF model.
++    Budget-capped to prevent runaway costs.
++    """
++    from app.services.llm_judge_service import LLMJudgeService
++    
++    judge = LLMJudgeService(db, sample_size=sample_size)
++    
++    try:
++        result = await judge.evaluate_experiment(experiment_id)
++    except Exception as e:
++        raise HTTPException(status_code=500, detail=f"Judge evaluation failed: {str(e)[:200]}")
++    
++    # Save judge results to Result.raw_metrics
++    res_query = select(Result).where(Result.experiment_id == experiment_id)
++    res_result = await db.execute(res_query)
++    result_obj = res_result.scalar_one_or_none()
++    if result_obj:
++        raw = result_obj.raw_metrics or {}
++        raw["llm_judge"] = result
++        result_obj.raw_metrics = raw
++        await db.flush()
++        await db.commit()
++    
++    return JSONResponse(content=result)
++
++
++@router.post("/synthetic/generate")
++async def generate_synthetic_dataset(
++    pairs_per_chunk: int = Query(3, ge=1, le=5, description="QA pairs per chunk"),
++    max_chunks: int = Query(10, ge=1, le=20, description="Max chunks to process"),
++    seed: Optional[int] = Query(None, description="Random seed for reproducibility"),
++):
++    """
++    Generate synthetic QA pairs from knowledge base chunks (P2 #14).
++    
++    Uses a free HF instruct model to create evaluation datasets.
++    """
++    from app.services.synthetic_data_service import SyntheticDatasetService
++    from app.services.rag_service import RAGPipeline
++    
++    # Load knowledge base chunks
++    try:
++        rag = RAGPipeline()
++        rag.load_knowledge_base()
++        chunks = [chunk.text for chunk in rag.chunks[:max_chunks * 2]]  # Load extra for selection
++    except Exception as e:
++        raise HTTPException(
++            status_code=500,
++            detail=f"Failed to load knowledge base: {str(e)[:200]}"
++        )
++    
++    if not chunks:
++        raise HTTPException(status_code=404, detail="No knowledge base chunks found")
++    
++    synth = SyntheticDatasetService()
++    result = await synth.generate_from_chunks(
++        chunks=chunks,
++        pairs_per_chunk=pairs_per_chunk,
++        max_chunks=max_chunks,
++        seed=seed,
++    )
++    
++    return JSONResponse(content=result)
++
+diff --git a/backend/app/models/experiment.py b/backend/app/models/experiment.py
+index 5554f05..9ce408b 100644
+--- a/backend/app/models/experiment.py
++++ b/backend/app/models/experiment.py
+@@ -9,7 +9,7 @@ import uuid
+ from datetime import datetime, timezone
+ from typing import Optional
+ 
+-from sqlalchemy import Column, String, DateTime, JSON, Enum, Text
++from sqlalchemy import Column, String, DateTime, JSON, Enum, Text, Integer
+ from sqlalchemy.dialects.postgresql import UUID
+ from sqlalchemy.orm import relationship
+ 
+@@ -64,6 +64,11 @@ class Experiment(Base):
+     started_at = Column(DateTime(timezone=True), nullable=True)
+     completed_at = Column(DateTime(timezone=True), nullable=True)
+     
++    # Reproducibility metadata (P1 #11)
++    dataset_hash = Column(String(64), nullable=True)  # SHA256 of dataset content
++    sample_ids = Column(JSON, nullable=True)           # List of sampled example IDs
++    current_attempt = Column(Integer, default=1, server_default="1", nullable=False)
++    
+     # Soft delete
+     deleted_at = Column(DateTime(timezone=True), nullable=True, index=True)
+     
+diff --git a/backend/app/models/result.py b/backend/app/models/result.py
+index 0be4262..4ae7b62 100644
+--- a/backend/app/models/result.py
++++ b/backend/app/models/result.py
+@@ -67,6 +67,7 @@ class Result(Base):
+     accuracy_exact: Mapped[float] = mapped_column(Float, nullable=True)
+     accuracy_f1: Mapped[float] = mapped_column(Float, nullable=True)
+     accuracy_substring: Mapped[float] = mapped_column(Float, nullable=True)
++    semantic_similarity: Mapped[float] = mapped_column(Float, nullable=True)
+     faithfulness: Mapped[float] = mapped_column(Float, nullable=True)
+     hallucination_rate: Mapped[float] = mapped_column(Float, nullable=True)
+     
+diff --git a/backend/app/models/run.py b/backend/app/models/run.py
+index 6648a93..ee6e12a 100644
+--- a/backend/app/models/run.py
++++ b/backend/app/models/run.py
+@@ -87,6 +87,11 @@ class Run(Base):
+     # ----- Evaluation -----
+     is_correct: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+     score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
++    is_exact_match: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
++    is_substring_match: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
++    parsed_answer: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
++    match_alias: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
++    semantic_similarity: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+     
+     # ----- Performance -----
+     tokens_input: Mapped[int] = mapped_column(Integer, nullable=True)
+@@ -101,6 +106,10 @@ class Run(Base):
+     # ----- RAG-specific -----
+     retrieved_chunks: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+     faithfulness_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
++    context_relevance_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
++    
++    # ----- Attempt tracking (non-destructive re-runs) -----
++    attempt: Mapped[int] = mapped_column(Integer, default=1, server_default="1", nullable=False)
+     
+     # ----- Timestamps -----
+     created_at: Mapped[datetime] = mapped_column(
+diff --git a/backend/app/schemas/result.py b/backend/app/schemas/result.py
+index f1f22a3..e1abc9e 100644
+--- a/backend/app/schemas/result.py
++++ b/backend/app/schemas/result.py
+@@ -20,6 +20,7 @@ class QualityMetrics(BaseModel):
+     accuracy_exact: Optional[float] = Field(None, ge=0, le=1)
+     accuracy_f1: Optional[float] = Field(None, ge=0, le=1)
+     accuracy_substring: Optional[float] = Field(None, ge=0, le=1)
++    semantic_similarity: Optional[float] = Field(None, ge=0, le=1)
+     faithfulness: Optional[float] = Field(None, ge=0, le=1)
+     hallucination_rate: Optional[float] = Field(None, ge=0, le=1)
+ 
+@@ -50,10 +51,17 @@ class RunSummary(BaseModel):
+     example_id: Optional[str] = None
+     is_correct: Optional[bool] = None
+     score: Optional[float] = None
++    is_exact_match: Optional[bool] = None
++    is_substring_match: Optional[bool] = None
++    parsed_answer: Optional[str] = None
++    semantic_similarity: Optional[float] = None
+     latency_ms: Optional[float] = None
+     input_text: str = ""
+     output_text: Optional[str] = None
+     expected_output: Optional[str] = None
++    faithfulness_score: Optional[float] = None
++    context_relevance_score: Optional[float] = None
++    attempt: Optional[int] = None
+ 
+     model_config = ConfigDict(from_attributes=True)
+ 
+diff --git a/backend/app/schemas/run.py b/backend/app/schemas/run.py
+index 47928a7..d9bf1e0 100644
+--- a/backend/app/schemas/run.py
++++ b/backend/app/schemas/run.py
+@@ -48,6 +48,11 @@ class RunResponse(BaseModel):
+     # Evaluation
+     is_correct: Optional[bool]
+     score: Optional[float] = Field(None, ge=0, le=1)
++    is_exact_match: Optional[bool] = None
++    is_substring_match: Optional[bool] = None
++    parsed_answer: Optional[str] = None
++    match_alias: Optional[str] = None
++    semantic_similarity: Optional[float] = Field(None, ge=0, le=1)
+     
+     # Performance
+     tokens_input: Optional[int]
+@@ -60,6 +65,10 @@ class RunResponse(BaseModel):
+     # RAG-specific
+     retrieval_info: Optional[RetrievalInfo] = None
+     faithfulness_score: Optional[float] = Field(None, ge=0, le=1)
++    context_relevance_score: Optional[float] = Field(None, ge=0, le=1)
++    
++    # Attempt tracking
++    attempt: Optional[int] = None
+     
+     created_at: datetime
+     
+diff --git a/backend/app/services/experiment_service.py b/backend/app/services/experiment_service.py
+index 1c2fa32..922535a 100644
+--- a/backend/app/services/experiment_service.py
++++ b/backend/app/services/experiment_service.py
+@@ -11,6 +11,8 @@ import logging
+ import os
+ import re
+ import time as _time
++
++import numpy as np
+ from datetime import datetime, timezone
+ from pathlib import Path
+ from typing import Optional
+@@ -350,17 +352,36 @@ class ExperimentService:
+             from app.services.metrics_service import MetricsService
+             from app.services.optimization import PromptCache, ProfilerContext, OptimizationReport
+ 
+-            # Step 2: Initialize services and clear old data for re-runs
++            # Step 2: Initialize services ΓÇö non-destructive re-runs (P1 #8)
+             run_service = RunService(self.db)
+             metrics_svc = MetricsService(self.db)
+             
+-            await run_service.clear_runs(experiment_id)
++            # Instead of deleting old runs, increment attempt counter
++            from sqlalchemy import select as _sel, func as _fn
++            from app.models.run import Run as _Run
++            max_attempt_q = await self.db.execute(
++                _sel(_fn.coalesce(_fn.max(_Run.attempt), 0)).where(
++                    _Run.experiment_id == experiment_id
++                )
++            )
++            current_attempt = (max_attempt_q.scalar() or 0) + 1
++            
++            # Update experiment's current_attempt
++            from app.models.experiment import Experiment as _Exp
++            exp_row = await self.db.execute(
++                _sel(_Exp).where(_Exp.id == experiment_id)
++            )
++            exp_obj = exp_row.scalar_one_or_none()
++            if exp_obj:
++                exp_obj.current_attempt = current_attempt
++            
++            # Clear old results (will be recomputed from latest attempt)
+             await metrics_svc.clear_results(experiment_id)
+             
+             # Step 2b: Update status to RUNNING
+             await self.update_status(experiment_id, ExperimentStatus.RUNNING, error_message="")
+             await self.db.commit()
+-            logger.info("[EXECUTE] Γ£ô Status: RUNNING (and old data cleared)")
++            logger.info("[EXECUTE] Γ£ô Status: RUNNING (attempt %s)", current_attempt)
+             
+             # ΓöÇΓöÇΓöÇ Optimization setup (Phase 8) ΓöÇΓöÇΓöÇ
+             wall_start = _time.perf_counter()
+@@ -474,6 +495,17 @@ class ExperimentService:
+             )
+             logger.info("[EXECUTE] Γ£ô Loaded %s examples", len(examples))
+             
++            # P1 #11: Store dataset hash and sample IDs for reproducibility
++            import hashlib
++            dataset_content = json.dumps(examples, sort_keys=True)
++            dataset_hash = hashlib.sha256(dataset_content.encode()).hexdigest()
++            sample_ids_list = [e.get("id", str(i)) for i, e in enumerate(examples)]
++            
++            if exp_obj:
++                exp_obj.dataset_hash = dataset_hash
++                exp_obj.sample_ids = sample_ids_list
++                await self.db.flush()
++            
+             # Step 5: Prepare prompt template based on reasoning method
+             cot_examples = None
+             if reasoning_method == "cot":
+@@ -616,21 +648,26 @@ class ExperimentService:
+                         
+                         with profiler.section("metrics"):
+                             aliases = item.get("aliases", [item["answer"]])
+-                            is_exact, is_substring, f1_score = metrics_svc.check_any_alias_match(
++                            is_exact, is_substring, f1_score, matched_alias = metrics_svc.check_any_alias_match(
+                                 parsed_answer, aliases
+                             )
+                         
+-                        runs_batch_data.append({
++                    runs_batch_data.append({
+                             "example_id": item["id"],
+                             "input_text": prompts[local_idx],
+                             "output_text": result.text,
+                             "expected_output": item["answer"],
+                             "is_correct": is_exact or is_substring,
+                             "score": f1_score,
++                            "is_exact_match": is_exact,
++                            "is_substring_match": is_substring,
++                            "parsed_answer": parsed_answer,
++                            "match_alias": matched_alias,
+                             "tokens_input": result.tokens_input,
+                             "tokens_output": result.tokens_output,
+                             "latency_ms": result.latency_ms,
+                             "gpu_memory_mb": result.gpu_memory_mb,
++                            "attempt": current_attempt,
+                         })
+                     
+                     if runs_batch_data:
+@@ -672,7 +709,7 @@ class ExperimentService:
+                         
+                         with profiler.section("metrics"):
+                             aliases = item.get("aliases", [item["answer"]])
+-                            is_exact, is_substring, f1_score = metrics_svc.check_any_alias_match(
++                            is_exact, is_substring, f1_score, matched_alias = metrics_svc.check_any_alias_match(
+                                 parsed_answer, aliases
+                             )
+                         
+@@ -683,12 +720,17 @@ class ExperimentService:
+                             "expected_output": item["answer"],
+                             "is_correct": is_exact or is_substring,
+                             "score": f1_score,
++                            "is_exact_match": is_exact,
++                            "is_substring_match": is_substring,
++                            "parsed_answer": parsed_answer,
++                            "match_alias": matched_alias,
+                             "tokens_input": agent_result.total_tokens_input,
+                             "tokens_output": agent_result.total_tokens_output,
+                             "latency_ms": agent_result.total_latency_ms,
+                             "gpu_memory_mb": None,
+                             "agent_trace": agent_result.trace_as_dict(),
+                             "tool_calls": agent_result.tool_calls,
++                            "attempt": current_attempt,
+                         })
+ 
+                         if len(runs_batch_data) >= 50:
+@@ -773,13 +815,46 @@ class ExperimentService:
+                         except Exception as e:
+                             logger.warning(f"[EXECUTE]   Faithfulness scoring failed: {e}")
+                     
+-                    # Evaluate against aliases
+                     with profiler.section("metrics"):
+                         aliases = item.get("aliases", [item["answer"]])
+-                        is_exact, is_substring, f1_score = metrics_svc.check_any_alias_match(
++                        is_exact, is_substring, f1_score, matched_alias = metrics_svc.check_any_alias_match(
+                             parsed_answer, aliases
+                         )
+                     
++                    # P2 #12: Context relevance via CrossEncoder (RAG only)
++                    ctx_relevance = None
++                    if use_rag and context_chunks:
++                        try:
++                            with profiler.section("context_relevance"):
++                                # Average reranker score across retrieved chunks
++                                from app.services.rag_service import CrossEncoderReranker as _CER
++                                _reranker_for_eval = _CER()
++                                scored = _reranker_for_eval.rerank(
++                                    item["question"],
++                                    [type('C', (), {'id': f'c{ci}', 'text': ct, 'title': '', 'index': ci})() for ci, ct in enumerate(context_chunks)],
++                                    top_k=len(context_chunks),
++                                )
++                                if scored:
++                                    ctx_relevance = float(np.mean([s for _, s in scored]))
++                        except Exception as e:
++                            logger.warning(f"[EXECUTE]   Context relevance scoring failed: {e}")
++                    
++                    # P1 #9: Semantic similarity via embeddings
++                    sem_sim = None
++                    try:
++                        if parsed_answer and item.get("answer"):
++                            with profiler.section("semantic_similarity"):
++                                from app.services.rag_service import EmbeddingService as _ES
++                                _emb_svc = _ES()
++                                embs = _emb_svc.embed([parsed_answer, item["answer"]])
++                                if len(embs) == 2:
++                                    cos_sim = float(np.dot(embs[0], embs[1]) / (
++                                        np.linalg.norm(embs[0]) * np.linalg.norm(embs[1]) + 1e-9
++                                    ))
++                                    sem_sim = max(0.0, min(1.0, cos_sim))
++                    except Exception as e:
++                        logger.warning(f"[EXECUTE]   Semantic similarity failed: {e}")
++                    
+                     runs_batch_data.append({
+                         "example_id": item["id"],
+                         "input_text": prompt,
+@@ -787,12 +862,19 @@ class ExperimentService:
+                         "expected_output": item["answer"],
+                         "is_correct": is_exact or is_substring,
+                         "score": f1_score,
++                        "is_exact_match": is_exact,
++                        "is_substring_match": is_substring,
++                        "parsed_answer": parsed_answer,
++                        "match_alias": matched_alias,
++                        "semantic_similarity": sem_sim,
+                         "tokens_input": result.tokens_input,
+                         "tokens_output": result.tokens_output,
+                         "latency_ms": result.latency_ms,
+                         "gpu_memory_mb": result.gpu_memory_mb,
+                         "faithfulness_score": faithfulness,
+                         "retrieved_chunks": {"chunks": context_chunks} if use_rag else None,
++                        "context_relevance_score": ctx_relevance,
++                        "attempt": current_attempt,
+                     })
+ 
+                     if len(runs_batch_data) >= 50:
+@@ -808,7 +890,9 @@ class ExperimentService:
+             
+             # Step 9: Compute aggregate metrics and save Result
+             logger.info("[EXECUTE] Computing aggregate metrics...")
+-            await metrics_svc.compute_and_save(experiment_id)
++            wall_end_for_metrics = _time.perf_counter()
++            wall_ms = (wall_end_for_metrics - wall_start) * 1000
++            await metrics_svc.compute_and_save(experiment_id, wall_clock_ms=wall_ms)
+             await self.db.commit()
+             logger.info("[EXECUTE] Γ£ô Metrics computed and saved")
+             
+diff --git a/backend/app/services/metrics_service.py b/backend/app/services/metrics_service.py
+index 630a571..c92783d 100644
+--- a/backend/app/services/metrics_service.py
++++ b/backend/app/services/metrics_service.py
+@@ -3,11 +3,15 @@ Metrics Service
+ 
+ Computes evaluation metrics from experiment runs:
+ - Accuracy: exact match, substring containment, F1 token overlap
+-- Latency: p50, p95, p99 percentiles, throughput
++- Semantic: embedding cosine similarity (P1 #9)
++- Latency: p50, p95, p99 percentiles, throughput (wall-clock based)
+ - Cost: total tokens, estimated GPU time
++- Faithfulness: aggregated from per-run NLI scores (P0 #4)
+ """
+ 
++import collections
+ import logging
++import re
+ from datetime import datetime, timezone
+ from typing import List, Optional, Tuple
+ from uuid import UUID
+@@ -22,54 +26,93 @@ from app.models.run import Run
+ logger = logging.getLogger(__name__)
+ 
+ 
++# =============================================================================
++# Shared normalization (P0 #2) ΓÇö consistent preprocessing across all metrics
++# =============================================================================
++
++def _normalize(text: str) -> str:
++    """
++    Normalize text for consistent evaluation.
++
++    Applied identically across exact match, substring, and F1 computations.
++    """
++    # Lowercase
++    s = text.lower()
++    # Strip leading/trailing whitespace
++    s = s.strip()
++    # Remove trailing punctuation (., ,, !, ?, ;, :)
++    s = re.sub(r'[.,!?;:]+$', '', s)
++    # Collapse internal whitespace
++    s = re.sub(r'\s+', ' ', s)
++    return s.strip()
++
++
+ class MetricsService:
+     """
+     Service for computing and storing experiment metrics.
+-    
++
+     Computes metrics from individual Run rows and saves
+     aggregated results to the Result table.
+     """
+-    
++
+     def __init__(self, db: AsyncSession):
+         self.db = db
+-    
+-    async def compute_and_save(self, experiment_id: UUID) -> Result:
++
++    async def compute_and_save(
++        self,
++        experiment_id: UUID,
++        wall_clock_ms: Optional[float] = None,
++    ) -> Result:
+         """
+         Compute all metrics for an experiment and save to Result table.
+-        
++
+         Args:
+             experiment_id: UUID of the completed experiment
+-            
++            wall_clock_ms: Total wall-clock execution time in ms (for accurate throughput)
++
+         Returns:
+             Created or updated Result instance
+         """
+         logger.info(f"Computing metrics for experiment {experiment_id}")
+-        
+-        # Fetch all runs
++
++        # Fetch all runs (latest attempt only)
+         query = select(Run).where(Run.experiment_id == experiment_id)
+         result = await self.db.execute(query)
+-        runs = result.scalars().all()
+-        
+-        if not runs:
++        all_runs = result.scalars().all()
++
++        if not all_runs:
+             raise ValueError(f"No runs found for experiment {experiment_id}")
+-        
+-        logger.info(f"Found {len(runs)} runs, computing metrics...")
+-        
++
++        # Use only the latest attempt
++        max_attempt = max(r.attempt for r in all_runs)
++        runs = [r for r in all_runs if r.attempt == max_attempt]
++
++        logger.info(f"Found {len(runs)} runs (attempt {max_attempt}), computing metrics...")
++
+         # Compute metrics
+         accuracy = self._compute_accuracy(runs)
+-        latency = self._compute_latency(runs)
++        latency = self._compute_latency(runs, wall_clock_ms)
+         cost = self._compute_cost(runs)
+-        
++        faithfulness_metrics = self._compute_faithfulness(runs)
++        similarity_metrics = self._compute_semantic_similarity(runs)
++
+         # Build raw metrics dict
+         raw_metrics = {
+             "accuracy": accuracy,
+             "latency": latency,
+             "cost": cost,
++            "faithfulness": faithfulness_metrics,
++            "semantic_similarity": similarity_metrics,
++            "attempt": max_attempt,
+             "per_run": [
+                 {
+                     "example_id": run.example_id,
+                     "is_correct": run.is_correct,
++                    "is_exact_match": run.is_exact_match,
++                    "is_substring_match": run.is_substring_match,
+                     "score": run.score,
++                    "semantic_similarity": run.semantic_similarity,
++                    "faithfulness_score": run.faithfulness_score,
+                     "latency_ms": run.latency_ms,
+                     "tokens_input": run.tokens_input,
+                     "tokens_output": run.tokens_output,
+@@ -77,63 +120,55 @@ class MetricsService:
+                 for run in runs
+             ],
+         }
+-        
++
+         # Check if result already exists (upsert)
+         existing_query = select(Result).where(Result.experiment_id == experiment_id)
+         existing_result = await self.db.execute(existing_query)
+         db_result = existing_result.scalar_one_or_none()
+-        
++
++        # Common field values
++        fields = dict(
++            accuracy_exact=accuracy["exact_match"],
++            accuracy_f1=accuracy["f1_mean"],
++            accuracy_substring=accuracy["substring"],
++            semantic_similarity=similarity_metrics.get("mean"),
++            faithfulness=faithfulness_metrics.get("mean"),
++            hallucination_rate=faithfulness_metrics.get("hallucination_rate"),
++            latency_p50=latency["p50"],
++            latency_p95=latency["p95"],
++            latency_p99=latency["p99"],
++            throughput=latency["throughput"],
++            total_tokens_input=cost["total_tokens_input"],
++            total_tokens_output=cost["total_tokens_output"],
++            total_runs=cost["total_runs"],
++            gpu_time_seconds=cost["gpu_time_seconds"],
++            raw_metrics=raw_metrics,
++            computed_at=datetime.now(timezone.utc),
++        )
++
+         if db_result:
+-            # Update existing
+-            db_result.accuracy_exact = accuracy["exact_match"]
+-            db_result.accuracy_f1 = accuracy["f1_mean"]
+-            db_result.accuracy_substring = accuracy["substring"]
+-            db_result.latency_p50 = latency["p50"]
+-            db_result.latency_p95 = latency["p95"]
+-            db_result.latency_p99 = latency["p99"]
+-            db_result.throughput = latency["throughput"]
+-            db_result.total_tokens_input = cost["total_tokens_input"]
+-            db_result.total_tokens_output = cost["total_tokens_output"]
+-            db_result.total_runs = cost["total_runs"]
+-            db_result.gpu_time_seconds = cost["gpu_time_seconds"]
+-            db_result.raw_metrics = raw_metrics
+-            db_result.computed_at = datetime.now(timezone.utc)
++            for k, v in fields.items():
++                setattr(db_result, k, v)
+         else:
+-            # Create new
+-            db_result = Result(
+-                experiment_id=experiment_id,
+-                accuracy_exact=accuracy["exact_match"],
+-                accuracy_f1=accuracy["f1_mean"],
+-                accuracy_substring=accuracy["substring"],
+-                latency_p50=latency["p50"],
+-                latency_p95=latency["p95"],
+-                latency_p99=latency["p99"],
+-                throughput=latency["throughput"],
+-                total_tokens_input=cost["total_tokens_input"],
+-                total_tokens_output=cost["total_tokens_output"],
+-                total_runs=cost["total_runs"],
+-                gpu_time_seconds=cost["gpu_time_seconds"],
+-                raw_metrics=raw_metrics,
+-                computed_at=datetime.now(timezone.utc),
+-            )
++            db_result = Result(experiment_id=experiment_id, **fields)
+             self.db.add(db_result)
+-        
++
+         await self.db.flush()
+         await self.db.refresh(db_result)
+-        
++
+         logger.info(
+             f"Metrics saved: accuracy_exact={accuracy['exact_match']:.3f}, "
+             f"f1={accuracy['f1_mean']:.3f}, p50={latency['p50']:.1f}ms"
+         )
+-        
++
+         return db_result
+-    
++
+     async def clear_results(self, experiment_id: UUID) -> None:
+         """
+         Delete aggregated results for an experiment.
+-        
++
+         Useful when re-running an experiment to clear old data.
+-        
++
+         Args:
+             experiment_id: UUID of the experiment
+         """
+@@ -141,67 +176,82 @@ class MetricsService:
+             delete(Result).where(Result.experiment_id == experiment_id)
+         )
+         await self.db.flush()
+-    
++
++    # =========================================================================
++    # P0 #1: Accuracy from stored booleans (not reconstructed from score)
++    # =========================================================================
++
+     def _compute_accuracy(self, runs: List[Run]) -> dict:
+         """
+-        Compute accuracy metrics directly from the pre-computed run judgments.
+-        
+-        Returns dict with:
+-        - exact_match: fraction of exact matches
+-        - substring: fraction of substring containment
+-        - f1_mean: mean F1 token overlap score
++        Compute accuracy metrics directly from the stored boolean flags.
++
++        Uses is_exact_match / is_substring_match when available (new runs),
++        falls back to is_correct / score heuristic for legacy runs.
+         """
+         exact_matches = 0
+         substring_matches = 0
+         f1_scores = []
+-        
++
+         for run in runs:
+             if run.score is not None:
+                 f1_scores.append(run.score)
+-            if run.is_correct:
+-                # Approximate the breakdown of exact vs substring by doing a fast check here,
+-                # or just attributing both to 'exact' if run.is_correct is true, 
+-                # but to be accurate we can re-check the type if needed.
+-                # Since the review noted to not re-judge raw text for the final outcome,
+-                # we count ΓÇÿis_correctΓÇÖ towards exact_matches by default if F1 is 1.0, 
+-                # or we can just run the fast strict checks.
+-                # A better way is using the true alias_aware outcome.
++
++            # Prefer stored boolean flags (P0 fix)
++            if run.is_exact_match is not None:
++                if run.is_exact_match:
++                    exact_matches += 1
++                elif run.is_substring_match:
++                    substring_matches += 1
++            elif run.is_correct:
++                # Legacy fallback: approximate from score
+                 if run.score == 1.0:
+                     exact_matches += 1
+                 else:
+                     substring_matches += 1
+-        
++
+         total = len(runs)
+-        total_correct = sum(1 for run in runs if run.is_correct)
+-        
+-        # We assign all correct answers to exact_match if score is 1.0, else substring.
+-        # This keeps the aggregation from contradicting the run-level judgments.
++
+         return {
+             "exact_match": exact_matches / total if total > 0 else 0.0,
+             "substring": substring_matches / total if total > 0 else 0.0,
++            "accuracy_any": (exact_matches + substring_matches) / total if total > 0 else 0.0,
+             "f1_mean": float(np.mean(f1_scores)) if f1_scores else 0.0,
+             "f1_median": float(np.median(f1_scores)) if f1_scores else 0.0,
+             "total_evaluated": total,
+         }
+-    
+-    def _compute_latency(self, runs: List[Run]) -> dict:
++
++    # =========================================================================
++    # P0 #3: Throughput from wall-clock time (not sum of per-run latency)
++    # =========================================================================
++
++    def _compute_latency(self, runs: List[Run], wall_clock_ms: Optional[float] = None) -> dict:
+         """
+         Compute latency metrics from runs.
+-        
+-        Returns dict with p50, p95, p99, mean, min, max, throughput.
++
++        Throughput uses wall-clock experiment duration when available,
++        falling back to sum-of-latencies for legacy data.
+         """
+         latencies = [run.latency_ms for run in runs if run.latency_ms is not None]
+-        
++
+         if not latencies:
+             return {
+                 "p50": 0.0, "p95": 0.0, "p99": 0.0,
+                 "mean": 0.0, "min": 0.0, "max": 0.0,
+                 "throughput": 0.0,
++                "throughput_source": "none",
+             }
+-        
++
+         arr = np.array(latencies)
+-        total_time_seconds = float(np.sum(arr)) / 1000.0
+-        
++
++        # P0 #3: Prefer wall-clock time for throughput
++        if wall_clock_ms and wall_clock_ms > 0:
++            throughput = len(latencies) / (wall_clock_ms / 1000.0)
++            throughput_source = "wall_clock"
++        else:
++            total_time_seconds = float(np.sum(arr)) / 1000.0
++            throughput = len(latencies) / total_time_seconds if total_time_seconds > 0 else 0.0
++            throughput_source = "sum_latency_fallback"
++
+         return {
+             "p50": float(np.percentile(arr, 50)),
+             "p95": float(np.percentile(arr, 95)),
+@@ -209,19 +259,20 @@ class MetricsService:
+             "mean": float(np.mean(arr)),
+             "min": float(np.min(arr)),
+             "max": float(np.max(arr)),
+-            "throughput": len(latencies) / total_time_seconds if total_time_seconds > 0 else 0.0,
++            "throughput": throughput,
++            "throughput_source": throughput_source,
+         }
+-    
++
+     def _compute_cost(self, runs: List[Run]) -> dict:
+         """
+         Compute cost proxy metrics from runs.
+-        
++
+         Returns total tokens, runs count, estimated GPU time.
+         """
+         total_input = sum(run.tokens_input or 0 for run in runs)
+         total_output = sum(run.tokens_output or 0 for run in runs)
+         total_latency_ms = sum(run.latency_ms or 0 for run in runs)
+-        
++
+         return {
+             "total_tokens_input": total_input,
+             "total_tokens_output": total_output,
+@@ -229,78 +280,136 @@ class MetricsService:
+             "total_runs": len(runs),
+             "gpu_time_seconds": total_latency_ms / 1000.0,
+         }
+-    
++
++    # =========================================================================
++    # P0 #4: Aggregate faithfulness from per-run scores
++    # =========================================================================
++
++    def _compute_faithfulness(self, runs: List[Run]) -> dict:
++        """
++        Aggregate faithfulness scores from per-run NLI evaluations.
++
++        Returns mean faithfulness and hallucination rate (fraction < 0.5).
++        """
++        scores = [
++            run.faithfulness_score
++            for run in runs
++            if run.faithfulness_score is not None
++        ]
++
++        if not scores:
++            return {"mean": None, "hallucination_rate": None, "count": 0}
++
++        arr = np.array(scores)
++        return {
++            "mean": float(np.mean(arr)),
++            "hallucination_rate": float(np.mean(arr < 0.5)),
++            "count": len(scores),
++            "min": float(np.min(arr)),
++            "max": float(np.max(arr)),
++        }
++
++    # =========================================================================
++    # P1 #9: Aggregate semantic similarity
++    # =========================================================================
++
++    def _compute_semantic_similarity(self, runs: List[Run]) -> dict:
++        """
++        Aggregate semantic similarity scores from per-run embeddings.
++        """
++        scores = [
++            run.semantic_similarity
++            for run in runs
++            if run.semantic_similarity is not None
++        ]
++
++        if not scores:
++            return {"mean": None, "count": 0}
++
++        arr = np.array(scores)
++        return {
++            "mean": float(np.mean(arr)),
++            "median": float(np.median(arr)),
++            "min": float(np.min(arr)),
++            "max": float(np.max(arr)),
++            "count": len(scores),
++        }
++
++    # =========================================================================
++    # Text comparison methods (P0 #2: all use shared _normalize)
++    # =========================================================================
++
+     @staticmethod
+     def compute_f1(prediction: str, ground_truth: str) -> float:
+         """
+         Compute token-level F1 score between prediction and ground truth.
+-        Uses Counter to handle repeating tokens correctly.
++
++        Uses shared normalization for consistency with exact match.
+         """
+-        import collections
+-        
+-        pred_tokens = prediction.lower().split()
+-        truth_tokens = ground_truth.lower().split()
+-        
++        pred_tokens = _normalize(prediction).split()
++        truth_tokens = _normalize(ground_truth).split()
++
+         if not pred_tokens or not truth_tokens:
+             return 0.0
+-        
++
+         common = collections.Counter(pred_tokens) & collections.Counter(truth_tokens)
+         num_same = sum(common.values())
+-        
++
+         if num_same == 0:
+             return 0.0
+-        
++
+         precision = num_same / len(pred_tokens)
+         recall = num_same / len(truth_tokens)
+-        
++
+         return 2 * precision * recall / (precision + recall)
+-    
++
+     @staticmethod
+     def check_exact_match(prediction: str, ground_truth: str) -> bool:
+         """
+-        Case-insensitive exact string match.
+-        
+-        Also strips whitespace and common punctuation.
++        Case-insensitive exact string match with shared normalization.
+         """
+-        def normalize(s: str) -> str:
+-            return s.lower().strip().rstrip(".").rstrip(",").strip()
+-        
+-        return normalize(prediction) == normalize(ground_truth)
+-    
++        return _normalize(prediction) == _normalize(ground_truth)
++
+     @staticmethod
+     def check_substring(prediction: str, ground_truth: str) -> bool:
+         """
+         Check if ground truth is contained in prediction (case-insensitive).
++
+         Uses word boundaries to prevent 'paris' from matching 'comparison'.
+         """
+-        import re
+-        pred = prediction.lower()
+-        truth = ground_truth.lower().strip()
+-        # Word boundaries require the substring to be an isolated word/phrase
++        pred = _normalize(prediction)
++        truth = _normalize(ground_truth)
+         pattern = r'\b' + re.escape(truth) + r'\b'
+         return bool(re.search(pattern, pred))
+-    
++
+     @staticmethod
+     def check_any_alias_match(
+         prediction: str,
+         aliases: List[str],
+-    ) -> Tuple[bool, bool, float]:
++    ) -> Tuple[bool, bool, float, str]:
+         """
+         Check prediction against multiple answer aliases.
+-        
++
+         Returns:
+-            (exact_match, substring_match, max_f1_score)
++            (exact_match, substring_match, max_f1_score, matched_alias)
+         """
+         exact = False
+         substring = False
+         max_f1 = 0.0
+-        
++        matched_alias = ""
++
+         for alias in aliases:
+             if MetricsService.check_exact_match(prediction, alias):
+                 exact = True
++                matched_alias = alias
+             if MetricsService.check_substring(prediction, alias):
+                 substring = True
++                if not matched_alias:
++                    matched_alias = alias
+             f1 = MetricsService.compute_f1(prediction, alias)
+-            max_f1 = max(max_f1, f1)
+-        
+-        return exact, substring, max_f1
++            if f1 > max_f1:
++                max_f1 = f1
++                if not matched_alias:
++                    matched_alias = alias
++
++        return exact, substring, max_f1, matched_alias
+diff --git a/backend/app/services/run_service.py b/backend/app/services/run_service.py
+index 9bfc302..2dc2bb6 100644
+--- a/backend/app/services/run_service.py
++++ b/backend/app/services/run_service.py
+@@ -46,11 +46,18 @@ class RunService:
+         expected_output: Optional[str] = None,
+         is_correct: Optional[bool] = None,
+         score: Optional[float] = None,
++        is_exact_match: Optional[bool] = None,
++        is_substring_match: Optional[bool] = None,
++        parsed_answer: Optional[str] = None,
++        match_alias: Optional[str] = None,
++        semantic_similarity: Optional[float] = None,
+         gpu_memory_mb: Optional[float] = None,
+         agent_trace: Optional[dict] = None,
+         tool_calls: Optional[int] = None,
+         faithfulness_score: Optional[float] = None,
+         retrieved_chunks: Optional[dict] = None,
++        context_relevance_score: Optional[float] = None,
++        attempt: int = 1,
+     ) -> Run:
+         """
+         Create a new run log entry.
+@@ -66,11 +73,18 @@ class RunService:
+             expected_output: Ground truth answer (optional)
+             is_correct: Whether answer was correct (optional)
+             score: Soft score 0-1 (optional)
++            is_exact_match: Whether prediction exactly matches ground truth (optional)
++            is_substring_match: Whether ground truth is substring of prediction (optional)
++            parsed_answer: Extracted answer from model output (optional)
++            match_alias: Which alias was matched (optional)
++            semantic_similarity: Embedding cosine similarity (optional)
+             gpu_memory_mb: GPU memory usage (optional)
+             agent_trace: Full agent Thought/Action/Observation trace (optional)
+             tool_calls: Number of tool invocations (optional)
+             faithfulness_score: RAG faithfulness evaluation (optional)
+             retrieved_chunks: RAG retrieved documents (optional)
++            context_relevance_score: CrossEncoder context relevance (optional)
++            attempt: Attempt number for non-destructive re-runs
+         
+         Returns:
+             Created Run instance
+@@ -83,6 +97,11 @@ class RunService:
+             expected_output=expected_output,
+             is_correct=is_correct,
+             score=score,
++            is_exact_match=is_exact_match,
++            is_substring_match=is_substring_match,
++            parsed_answer=parsed_answer,
++            match_alias=match_alias,
++            semantic_similarity=semantic_similarity,
+             tokens_input=tokens_input,
+             tokens_output=tokens_output,
+             latency_ms=latency_ms,
+@@ -91,6 +110,8 @@ class RunService:
+             tool_calls=tool_calls,
+             faithfulness_score=faithfulness_score,
+             retrieved_chunks=retrieved_chunks,
++            context_relevance_score=context_relevance_score,
++            attempt=attempt,
+         )
+         
+         self.db.add(run)
+diff --git a/backend/app/services/statistical_service.py b/backend/app/services/statistical_service.py
+index f8d45eb..ec385fa 100644
+--- a/backend/app/services/statistical_service.py
++++ b/backend/app/services/statistical_service.py
+@@ -247,9 +247,14 @@ class StatisticalService:
+         # Compute McNemar's test
+         mcnemar_result = self.mcnemar_test(correct_a, correct_b)
+         
+-        # Compute bootstrap CIs
+-        ci_a = self.bootstrap_confidence_interval(scores_a)
+-        ci_b = self.bootstrap_confidence_interval(scores_b)
++        # P0 #5: Compute SEPARATE CIs for accuracy (booleans) and F1 (scores)
++        accuracy_values_a = [1.0 if c else 0.0 for c in correct_a]
++        accuracy_values_b = [1.0 if c else 0.0 for c in correct_b]
++        
++        accuracy_ci_a = self.bootstrap_confidence_interval(accuracy_values_a)
++        accuracy_ci_b = self.bootstrap_confidence_interval(accuracy_values_b)
++        f1_ci_a = self.bootstrap_confidence_interval(scores_a)
++        f1_ci_b = self.bootstrap_confidence_interval(scores_b)
+         
+         # Accuracy summary
+         acc_a = sum(correct_a) / len(correct_a) if correct_a else 0.0
+@@ -263,8 +268,14 @@ class StatisticalService:
+             "accuracy_b": acc_b,
+             "accuracy_diff": acc_b - acc_a,
+             "mcnemar": mcnemar_result,
+-            "bootstrap_ci_a": ci_a,
+-            "bootstrap_ci_b": ci_b,
++            # P0 #5: Clearly labeled CIs
++            "accuracy_ci_a": accuracy_ci_a,
++            "accuracy_ci_b": accuracy_ci_b,
++            "f1_ci_a": f1_ci_a,
++            "f1_ci_b": f1_ci_b,
++            # Keep backward-compatible keys (mapped to accuracy CIs)
++            "bootstrap_ci_a": accuracy_ci_a,
++            "bootstrap_ci_b": accuracy_ci_b,
+             "per_example_differences": per_example[:50],  # Limit to 50
+             "summary": {
+                 "both_correct": sum(1 for a, b in zip(correct_a, correct_b) if a and b),
+diff --git a/backend/tests/test_metrics.py b/backend/tests/test_metrics.py
+index 817269c..abd12e5 100644
+--- a/backend/tests/test_metrics.py
++++ b/backend/tests/test_metrics.py
+@@ -1,10 +1,34 @@
+ """
+ Metrics Service Unit Tests
+ 
+-Tests for accuracy, latency, and cost metric computations.
++Tests for accuracy, latency, cost, faithfulness,
++and semantic similarity metric computations.
++Updated for P0/P1/P2 evaluation improvements.
+ """
+ 
+-from app.services.metrics_service import MetricsService
++from unittest.mock import MagicMock
++from app.services.metrics_service import MetricsService, _normalize
++
++
++class TestNormalize:
++    """Tests for shared normalization function (P0 #2)."""
++
++    def test_lowercase(self):
++        assert _normalize("PARIS") == "paris"
++
++    def test_strip_whitespace(self):
++        assert _normalize("  Paris  ") == "paris"
++
++    def test_strip_trailing_punctuation(self):
++        assert _normalize("Paris.") == "paris"
++        assert _normalize("Paris!") == "paris"
++        assert _normalize("Paris,") == "paris"
++
++    def test_collapse_internal_whitespace(self):
++        assert _normalize("New   York  City") == "new york city"
++
++    def test_empty_string(self):
++        assert _normalize("") == ""
+ 
+ 
+ class TestF1Score:
+@@ -21,7 +45,7 @@ class TestF1Score:
+         f1 = MetricsService.compute_f1("capital city Paris", "Paris France")
+         assert 0.0 < f1 < 1.0
+         # pred_tokens = ['capital', 'city', 'paris'], truth_tokens = ['paris', 'france']
+-        # common = {'paris'}, precision = 1/3, recall = 1/2, f1 = 2*(1/3)*(1/2) / (1/3 + 1/2)
++        # common = {'paris'}, precision = 1/3, recall = 1/2
+         expected = 2 * (1 / 3) * (1 / 2) / (1 / 3 + 1 / 2)
+         assert abs(f1 - expected) < 0.001
+ 
+@@ -34,6 +58,15 @@ class TestF1Score:
+     def test_empty_ground_truth(self):
+         assert MetricsService.compute_f1("Paris", "") == 0.0
+ 
++    def test_punctuation_consistency_with_exact(self):
++        """P0 #2: F1 should normalize same as exact match."""
++        # 'Paris.' should normalize to 'paris' for both methods
++        f1 = MetricsService.compute_f1("Paris.", "Paris")
++        assert f1 == 1.0, "F1 should be 1.0 after punctuation normalization"
++
++        exact = MetricsService.check_exact_match("Paris.", "Paris")
++        assert exact is True, "Exact match should also be True"
++
+ 
+ class TestExactMatch:
+     """Tests for case-insensitive exact match."""
+@@ -69,25 +102,32 @@ class TestSubstring:
+     def test_not_contained(self):
+         assert MetricsService.check_substring("London", "Paris") is False
+ 
++    def test_word_boundary(self):
++        """P0 #2: Should not match 'paris' inside 'comparison'."""
++        # This tests the word-boundary improvement
++        assert MetricsService.check_substring("comparison", "paris") is False
++
+ 
+ class TestAliasMatch:
+-    """Tests for multi-alias matching."""
++    """Tests for multi-alias matching (now returns matched_alias)."""
+ 
+     def test_exact_alias_match(self):
+-        exact, sub, f1 = MetricsService.check_any_alias_match(
++        exact, sub, f1, alias = MetricsService.check_any_alias_match(
+             "Da Vinci", ["Leonardo da Vinci", "Da Vinci", "Leonardo"]
+         )
+         assert exact is True
++        assert alias == "Da Vinci"
+ 
+     def test_substring_alias_match(self):
+-        exact, sub, f1 = MetricsService.check_any_alias_match(
++        exact, sub, f1, alias = MetricsService.check_any_alias_match(
+             "I think it was painted by Leonardo da Vinci",
+             ["Leonardo da Vinci", "Da Vinci"],
+         )
+         assert sub is True
++        assert alias != ""
+ 
+     def test_best_f1_selected(self):
+-        _, _, f1 = MetricsService.check_any_alias_match(
++        _, _, f1, alias = MetricsService.check_any_alias_match(
+             "Leonardo",
+             ["Leonardo da Vinci", "Leonardo"],
+         )
+@@ -95,9 +135,119 @@ class TestAliasMatch:
+         assert f1 == 1.0
+ 
+     def test_no_match(self):
+-        exact, sub, f1 = MetricsService.check_any_alias_match(
++        exact, sub, f1, alias = MetricsService.check_any_alias_match(
+             "Raphael", ["Leonardo da Vinci", "Leonardo"]
+         )
+         assert exact is False
+         assert sub is False
+         assert f1 < 1.0
++
++
++class TestAccuracyFromBooleans:
++    """P0 #1: Tests that accuracy uses stored booleans, not score heuristic."""
++
++    def _make_mock_run(self, is_exact=None, is_substring=None, is_correct=None, score=None):
++        run = MagicMock()
++        run.is_exact_match = is_exact
++        run.is_substring_match = is_substring
++        run.is_correct = is_correct
++        run.score = score
++        run.attempt = 1
++        return run
++
++    def test_exact_match_from_boolean(self):
++        """P0 #1: Exact match should come from is_exact_match, not score."""
++        runs = [
++            self._make_mock_run(is_exact=True, is_substring=False, score=1.0),
++            self._make_mock_run(is_exact=False, is_substring=True, score=0.5),
++            self._make_mock_run(is_exact=False, is_substring=False, score=0.0),
++        ]
++        svc = MetricsService.__new__(MetricsService)
++        acc = svc._compute_accuracy(runs)
++        assert acc["exact_match"] == 1 / 3
++        assert acc["substring"] == 1 / 3
++
++    def test_legacy_fallback(self):
++        """Legacy runs without is_exact_match should fall back to score heuristic."""
++        runs = [
++            self._make_mock_run(is_exact=None, is_substring=None, is_correct=True, score=1.0),
++            self._make_mock_run(is_exact=None, is_substring=None, is_correct=True, score=0.7),
++        ]
++        svc = MetricsService.__new__(MetricsService)
++        acc = svc._compute_accuracy(runs)
++        # score=1.0 -> exact, score=0.7 -> substring (legacy fallback)
++        assert acc["exact_match"] == 0.5
++        assert acc["substring"] == 0.5
++
++    def test_f1_bug_case(self):
++        """
++        P0 #1 bug case: substring match yields F1=1.0 for single-word answer.
++        Old code would count this as exact match because score==1.0.
++        New code uses is_exact_match boolean.
++        """
++        run = self._make_mock_run(is_exact=False, is_substring=True, score=1.0)
++        svc = MetricsService.__new__(MetricsService)
++        acc = svc._compute_accuracy([run])
++        # Despite score=1.0, this should NOT count as exact match
++        assert acc["exact_match"] == 0.0
++        assert acc["substring"] == 1.0
++
++
++class TestThroughput:
++    """P0 #3: Tests that throughput uses wall-clock time."""
++
++    def _make_mock_run(self, latency_ms):
++        run = MagicMock()
++        run.latency_ms = latency_ms
++        return run
++
++    def test_wall_clock_throughput(self):
++        """P0 #3: Throughput from wall-clock, not sum of latencies."""
++        runs = [self._make_mock_run(100), self._make_mock_run(100)]
++        svc = MetricsService.__new__(MetricsService)
++
++        # 2 runs in 150ms wall-clock = 2/0.15 = ~13.33 req/s
++        latency = svc._compute_latency(runs, wall_clock_ms=150)
++        assert abs(latency["throughput"] - (2 / 0.15)) < 0.1
++        assert latency["throughput_source"] == "wall_clock"
++
++    def test_fallback_throughput(self):
++        """Without wall-clock, falls back to sum of latencies."""
++        runs = [self._make_mock_run(100), self._make_mock_run(100)]
++        svc = MetricsService.__new__(MetricsService)
++
++        latency = svc._compute_latency(runs, wall_clock_ms=None)
++        assert latency["throughput_source"] == "sum_latency_fallback"
++
++
++class TestFaithfulnessAggregation:
++    """P0 #4: Tests faithfulness aggregation from run-level scores."""
++
++    def _make_mock_run(self, faithfulness=None):
++        run = MagicMock()
++        run.faithfulness_score = faithfulness
++        return run
++
++    def test_mean_faithfulness(self):
++        runs = [self._make_mock_run(0.8), self._make_mock_run(0.6)]
++        svc = MetricsService.__new__(MetricsService)
++        f = svc._compute_faithfulness(runs)
++        assert abs(f["mean"] - 0.7) < 0.001
++
++    def test_hallucination_rate(self):
++        # 2 below 0.5, 1 above -> hallucination_rate = 2/3
++        runs = [
++            self._make_mock_run(0.3),
++            self._make_mock_run(0.4),
++            self._make_mock_run(0.8),
++        ]
++        svc = MetricsService.__new__(MetricsService)
++        f = svc._compute_faithfulness(runs)
++        assert abs(f["hallucination_rate"] - 2 / 3) < 0.001
++
++    def test_no_faithfulness_scores(self):
++        runs = [self._make_mock_run(None)]
++        svc = MetricsService.__new__(MetricsService)
++        f = svc._compute_faithfulness(runs)
++        assert f["mean"] is None
++        assert f["count"] == 0
+diff --git a/frontend/src/app/experiments/[id]/page.tsx b/frontend/src/app/experiments/[id]/page.tsx
+index 0cf0f9e..f39900c 100644
+--- a/frontend/src/app/experiments/[id]/page.tsx
++++ b/frontend/src/app/experiments/[id]/page.tsx
+@@ -196,7 +196,7 @@ function CorrectnessGrid({ runs }: { runs: RunSummary[] }) {
+                             </div>
+                             {selectedRun.faithfulness_score !== undefined && selectedRun.faithfulness_score !== null && (
+                                 <div>
+-                                    <dt className="text-(--text-muted) text-xs">Faithfulness</dt>
++                                    <dt className="text-(--text-muted) text-xs">Faithfulness (heuristic)</dt>
+                                     <dd className="font-mono">{selectedRun.faithfulness_score.toFixed(3)}</dd>
+                                 </div>
+                             )}
+diff --git a/frontend/src/app/experiments/compare/page.tsx b/frontend/src/app/experiments/compare/page.tsx
+index ecc51a7..0b89c7e 100644
+--- a/frontend/src/app/experiments/compare/page.tsx
++++ b/frontend/src/app/experiments/compare/page.tsx
+@@ -175,7 +175,7 @@ function SignificanceCard({ stats }: { stats: StatisticalComparison }) {
+                     <p className="font-mono text-(--text-heading)">
+                         {(stats.accuracy_a * 100).toFixed(1)}%
+                         <span className="text-(--text-muted) text-xs ml-1">
+-                            [{(stats.bootstrap_ci_a.lower * 100).toFixed(1)}, {(stats.bootstrap_ci_a.upper * 100).toFixed(1)}]
++                            [{((stats.accuracy_ci_a ?? stats.bootstrap_ci_a).lower * 100).toFixed(1)}, {((stats.accuracy_ci_a ?? stats.bootstrap_ci_a).upper * 100).toFixed(1)}]
+                         </span>
+                     </p>
+                 </div>
+@@ -184,10 +184,32 @@ function SignificanceCard({ stats }: { stats: StatisticalComparison }) {
+                     <p className="font-mono text-(--text-heading)">
+                         {(stats.accuracy_b * 100).toFixed(1)}%
+                         <span className="text-(--text-muted) text-xs ml-1">
+-                            [{(stats.bootstrap_ci_b.lower * 100).toFixed(1)}, {(stats.bootstrap_ci_b.upper * 100).toFixed(1)}]
++                            [{((stats.accuracy_ci_b ?? stats.bootstrap_ci_b).lower * 100).toFixed(1)}, {((stats.accuracy_ci_b ?? stats.bootstrap_ci_b).upper * 100).toFixed(1)}]
+                         </span>
+                     </p>
+                 </div>
++                {stats.f1_ci_a && stats.f1_ci_b && (
++                    <>
++                        <div>
++                            <p className="text-(--text-muted) text-xs mb-0.5">F1 Score A (95% CI)</p>
++                            <p className="font-mono text-(--text-heading)">
++                                {(stats.f1_ci_a.mean * 100).toFixed(1)}%
++                                <span className="text-(--text-muted) text-xs ml-1">
++                                    [{(stats.f1_ci_a.lower * 100).toFixed(1)}, {(stats.f1_ci_a.upper * 100).toFixed(1)}]
++                                </span>
++                            </p>
++                        </div>
++                        <div>
++                            <p className="text-(--text-muted) text-xs mb-0.5">F1 Score B (95% CI)</p>
++                            <p className="font-mono text-(--text-heading)">
++                                {(stats.f1_ci_b.mean * 100).toFixed(1)}%
++                                <span className="text-(--text-muted) text-xs ml-1">
++                                    [{(stats.f1_ci_b.lower * 100).toFixed(1)}, {(stats.f1_ci_b.upper * 100).toFixed(1)}]
++                                </span>
++                            </p>
++                        </div>
++                    </>
++                )}
+             </div>
+         </div>
+     );

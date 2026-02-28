@@ -20,6 +20,7 @@ class QualityMetrics(BaseModel):
     accuracy_exact: Optional[float] = Field(None, ge=0, le=1)
     accuracy_f1: Optional[float] = Field(None, ge=0, le=1)
     accuracy_substring: Optional[float] = Field(None, ge=0, le=1)
+    semantic_similarity: Optional[float] = Field(None, ge=0, le=1)
     faithfulness: Optional[float] = Field(None, ge=0, le=1)
     hallucination_rate: Optional[float] = Field(None, ge=0, le=1)
 
@@ -50,10 +51,17 @@ class RunSummary(BaseModel):
     example_id: Optional[str] = None
     is_correct: Optional[bool] = None
     score: Optional[float] = None
+    is_exact_match: Optional[bool] = None
+    is_substring_match: Optional[bool] = None
+    parsed_answer: Optional[str] = None
+    semantic_similarity: Optional[float] = None
     latency_ms: Optional[float] = None
     input_text: str = ""
     output_text: Optional[str] = None
     expected_output: Optional[str] = None
+    faithfulness_score: Optional[float] = None
+    context_relevance_score: Optional[float] = None
+    attempt: Optional[int] = None
 
     model_config = ConfigDict(from_attributes=True)
 

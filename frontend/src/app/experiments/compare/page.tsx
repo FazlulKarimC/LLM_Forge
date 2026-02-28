@@ -175,7 +175,7 @@ function SignificanceCard({ stats }: { stats: StatisticalComparison }) {
                     <p className="font-mono text-(--text-heading)">
                         {(stats.accuracy_a * 100).toFixed(1)}%
                         <span className="text-(--text-muted) text-xs ml-1">
-                            [{(stats.bootstrap_ci_a.lower * 100).toFixed(1)}, {(stats.bootstrap_ci_a.upper * 100).toFixed(1)}]
+                            [{((stats.accuracy_ci_a ?? stats.bootstrap_ci_a).lower * 100).toFixed(1)}, {((stats.accuracy_ci_a ?? stats.bootstrap_ci_a).upper * 100).toFixed(1)}]
                         </span>
                     </p>
                 </div>
@@ -184,10 +184,32 @@ function SignificanceCard({ stats }: { stats: StatisticalComparison }) {
                     <p className="font-mono text-(--text-heading)">
                         {(stats.accuracy_b * 100).toFixed(1)}%
                         <span className="text-(--text-muted) text-xs ml-1">
-                            [{(stats.bootstrap_ci_b.lower * 100).toFixed(1)}, {(stats.bootstrap_ci_b.upper * 100).toFixed(1)}]
+                            [{((stats.accuracy_ci_b ?? stats.bootstrap_ci_b).lower * 100).toFixed(1)}, {((stats.accuracy_ci_b ?? stats.bootstrap_ci_b).upper * 100).toFixed(1)}]
                         </span>
                     </p>
                 </div>
+                {stats.f1_ci_a && stats.f1_ci_b && (
+                    <>
+                        <div>
+                            <p className="text-(--text-muted) text-xs mb-0.5">F1 Score A (95% CI)</p>
+                            <p className="font-mono text-(--text-heading)">
+                                {(stats.f1_ci_a.mean * 100).toFixed(1)}%
+                                <span className="text-(--text-muted) text-xs ml-1">
+                                    [{(stats.f1_ci_a.lower * 100).toFixed(1)}, {(stats.f1_ci_a.upper * 100).toFixed(1)}]
+                                </span>
+                            </p>
+                        </div>
+                        <div>
+                            <p className="text-(--text-muted) text-xs mb-0.5">F1 Score B (95% CI)</p>
+                            <p className="font-mono text-(--text-heading)">
+                                {(stats.f1_ci_b.mean * 100).toFixed(1)}%
+                                <span className="text-(--text-muted) text-xs ml-1">
+                                    [{(stats.f1_ci_b.lower * 100).toFixed(1)}, {(stats.f1_ci_b.upper * 100).toFixed(1)}]
+                                </span>
+                            </p>
+                        </div>
+                    </>
+                )}
             </div>
         </div>
     );

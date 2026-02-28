@@ -203,6 +203,7 @@ export interface Metrics {
         accuracy_exact?: number;
         accuracy_f1?: number;
         accuracy_substring?: number;
+        semantic_similarity?: number;
         faithfulness?: number;
         hallucination_rate?: number;
     };
@@ -226,11 +227,17 @@ export interface RunSummary {
     example_id?: string;
     is_correct?: boolean;
     score?: number;
+    is_exact_match?: boolean;
+    is_substring_match?: boolean;
+    parsed_answer?: string;
+    semantic_similarity?: number;
     latency_ms?: number;
     input_text: string;
     output_text?: string;
     expected_output?: string;
     faithfulness_score?: number;
+    context_relevance_score?: number;
+    attempt?: number;
     retrieved_chunks?: { chunks: { text?: string; page_content?: string; score?: number }[] };
 }
 
@@ -507,6 +514,10 @@ export interface StatisticalComparison {
     mcnemar: McNemarResult;
     bootstrap_ci_a: BootstrapCI;
     bootstrap_ci_b: BootstrapCI;
+    accuracy_ci_a?: BootstrapCI;
+    accuracy_ci_b?: BootstrapCI;
+    f1_ci_a?: BootstrapCI;
+    f1_ci_b?: BootstrapCI;
     per_example_differences: PerExampleDiff[];
     summary: {
         both_correct: number;
@@ -538,5 +549,117 @@ export async function getStatisticalComparison(
     return fetchAPI<StatisticalComparison>(
         `/results/compare/statistical?experiment_a=${experimentA}&experiment_b=${experimentB}`
     );
+}
+
+// =============================================================================
+// LLM JUDGE & SYNTHETIC DATA (P2)
+// =============================================================================
+
+export interface LLMJudgeResult {
+    model_judge: string;
+    sample_size: number;
+    evaluated: number;
+    attempt: number;
+    scores: Record<string, {
+        mean: number;
+        median: number;
+        min: number;
+        max: number;
+        std: number;
+        count: number;
+    }>;
+    method: string;
+    budget_cap: number;
+    error?: string;
+}
+
+export interface SyntheticDataResult {
+    pairs: Array<{
+        id: string;
+        question: string;
+        answer: string;
+        source_chunk_index: number;
+        source_text: string;
+    }>;
+    total_generated: number;
+    chunks_processed: number;
+    errors: number;
+    model: string;
+    method: string;
+}
+
+/**
+ * Run LLM-as-judge evaluation on sampled runs (P2 #13).
+ * Uses extended timeout since this calls external LLM APIs.
+ */
+export async function runLLMJudge(
+    experimentId: string,
+    sampleSize: number = 20,
+): Promise<LLMJudgeResult> {
+    const url = `${API_BASE_URL}/results/${experimentId}/judge?sample_size=${sampleSize}`;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 120_000); // 2 min timeout
+
+    try {
+        const response = await fetch(url, {
+            method: 'POST',
+            signal: controller.signal,
+            headers: { 'Content-Type': 'application/json' },
+        });
+        clearTimeout(timeout);
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            throw new ApiError(err.detail || 'Judge evaluation failed', response.status);
+        }
+        return response.json();
+    } catch (err) {
+        clearTimeout(timeout);
+        if (err instanceof ApiError) throw err;
+        if (err instanceof DOMException && err.name === 'AbortError') {
+            throw new ApiError('LLM Judge evaluation timed out (2 min limit)', 408);
+        }
+        throw new ApiError(err instanceof Error ? err.message : 'Network error', 0);
+    }
+}
+
+/**
+ * Generate synthetic QA pairs from knowledge base (P2 #14).
+ * Uses extended timeout since this calls external LLM APIs.
+ */
+export async function generateSyntheticData(
+    pairsPerChunk: number = 3,
+    maxChunks: number = 10,
+    seed?: number,
+): Promise<SyntheticDataResult> {
+    const params = new URLSearchParams({
+        pairs_per_chunk: String(pairsPerChunk),
+        max_chunks: String(maxChunks),
+    });
+    if (seed !== undefined) params.set('seed', String(seed));
+
+    const url = `${API_BASE_URL}/results/synthetic/generate?${params}`;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 120_000); // 2 min timeout
+
+    try {
+        const response = await fetch(url, {
+            method: 'POST',
+            signal: controller.signal,
+            headers: { 'Content-Type': 'application/json' },
+        });
+        clearTimeout(timeout);
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            throw new ApiError(err.detail || 'Synthetic data generation failed', response.status);
+        }
+        return response.json();
+    } catch (err) {
+        clearTimeout(timeout);
+        if (err instanceof ApiError) throw err;
+        if (err instanceof DOMException && err.name === 'AbortError') {
+            throw new ApiError('Synthetic data generation timed out (2 min limit)', 408);
+        }
+        throw new ApiError(err instanceof Error ? err.message : 'Network error', 0);
+    }
 }
 

@@ -11,6 +11,8 @@ import logging
 import os
 import re
 import time as _time
+
+import numpy as np
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -350,17 +352,36 @@ class ExperimentService:
             from app.services.metrics_service import MetricsService
             from app.services.optimization import PromptCache, ProfilerContext, OptimizationReport
 
-            # Step 2: Initialize services and clear old data for re-runs
+            # Step 2: Initialize services — non-destructive re-runs (P1 #8)
             run_service = RunService(self.db)
             metrics_svc = MetricsService(self.db)
             
-            await run_service.clear_runs(experiment_id)
+            # Instead of deleting old runs, increment attempt counter
+            from sqlalchemy import select as _sel, func as _fn
+            from app.models.run import Run as _Run
+            max_attempt_q = await self.db.execute(
+                _sel(_fn.coalesce(_fn.max(_Run.attempt), 0)).where(
+                    _Run.experiment_id == experiment_id
+                )
+            )
+            current_attempt = (max_attempt_q.scalar() or 0) + 1
+            
+            # Update experiment's current_attempt
+            from app.models.experiment import Experiment as _Exp
+            exp_row = await self.db.execute(
+                _sel(_Exp).where(_Exp.id == experiment_id)
+            )
+            exp_obj = exp_row.scalar_one_or_none()
+            if exp_obj:
+                exp_obj.current_attempt = current_attempt
+            
+            # Clear old results (will be recomputed from latest attempt)
             await metrics_svc.clear_results(experiment_id)
             
             # Step 2b: Update status to RUNNING
             await self.update_status(experiment_id, ExperimentStatus.RUNNING, error_message="")
             await self.db.commit()
-            logger.info("[EXECUTE] ✓ Status: RUNNING (and old data cleared)")
+            logger.info("[EXECUTE] ✓ Status: RUNNING (attempt %s)", current_attempt)
             
             # ─── Optimization setup (Phase 8) ───
             wall_start = _time.perf_counter()
@@ -473,6 +494,17 @@ class ExperimentService:
                 seed=seed,
             )
             logger.info("[EXECUTE] ✓ Loaded %s examples", len(examples))
+            
+            # P1 #11: Store dataset hash and sample IDs for reproducibility
+            import hashlib
+            dataset_content = json.dumps(examples, sort_keys=True)
+            dataset_hash = hashlib.sha256(dataset_content.encode()).hexdigest()
+            sample_ids_list = [e.get("id", str(i)) for i, e in enumerate(examples)]
+            
+            if exp_obj:
+                exp_obj.dataset_hash = dataset_hash
+                exp_obj.sample_ids = sample_ids_list
+                await self.db.flush()
             
             # Step 5: Prepare prompt template based on reasoning method
             cot_examples = None
@@ -616,21 +648,26 @@ class ExperimentService:
                         
                         with profiler.section("metrics"):
                             aliases = item.get("aliases", [item["answer"]])
-                            is_exact, is_substring, f1_score = metrics_svc.check_any_alias_match(
+                            is_exact, is_substring, f1_score, matched_alias = metrics_svc.check_any_alias_match(
                                 parsed_answer, aliases
                             )
                         
-                        runs_batch_data.append({
+                    runs_batch_data.append({
                             "example_id": item["id"],
                             "input_text": prompts[local_idx],
                             "output_text": result.text,
                             "expected_output": item["answer"],
                             "is_correct": is_exact or is_substring,
                             "score": f1_score,
+                            "is_exact_match": is_exact,
+                            "is_substring_match": is_substring,
+                            "parsed_answer": parsed_answer,
+                            "match_alias": matched_alias,
                             "tokens_input": result.tokens_input,
                             "tokens_output": result.tokens_output,
                             "latency_ms": result.latency_ms,
                             "gpu_memory_mb": result.gpu_memory_mb,
+                            "attempt": current_attempt,
                         })
                     
                     if runs_batch_data:
@@ -672,7 +709,7 @@ class ExperimentService:
                         
                         with profiler.section("metrics"):
                             aliases = item.get("aliases", [item["answer"]])
-                            is_exact, is_substring, f1_score = metrics_svc.check_any_alias_match(
+                            is_exact, is_substring, f1_score, matched_alias = metrics_svc.check_any_alias_match(
                                 parsed_answer, aliases
                             )
                         
@@ -683,12 +720,17 @@ class ExperimentService:
                             "expected_output": item["answer"],
                             "is_correct": is_exact or is_substring,
                             "score": f1_score,
+                            "is_exact_match": is_exact,
+                            "is_substring_match": is_substring,
+                            "parsed_answer": parsed_answer,
+                            "match_alias": matched_alias,
                             "tokens_input": agent_result.total_tokens_input,
                             "tokens_output": agent_result.total_tokens_output,
                             "latency_ms": agent_result.total_latency_ms,
                             "gpu_memory_mb": None,
                             "agent_trace": agent_result.trace_as_dict(),
                             "tool_calls": agent_result.tool_calls,
+                            "attempt": current_attempt,
                         })
 
                         if len(runs_batch_data) >= 50:
@@ -773,12 +815,48 @@ class ExperimentService:
                         except Exception as e:
                             logger.warning(f"[EXECUTE]   Faithfulness scoring failed: {e}")
                     
-                    # Evaluate against aliases
                     with profiler.section("metrics"):
                         aliases = item.get("aliases", [item["answer"]])
-                        is_exact, is_substring, f1_score = metrics_svc.check_any_alias_match(
+                        is_exact, is_substring, f1_score, matched_alias = metrics_svc.check_any_alias_match(
                             parsed_answer, aliases
                         )
+                    
+                    # P2 #12: Context relevance via CrossEncoder (RAG only)
+                    ctx_relevance = None
+                    if use_rag and context_chunks:
+                        try:
+                            with profiler.section("context_relevance"):
+                                # Average reranker score across retrieved chunks
+                                from app.services.rag_service import CrossEncoderReranker as _CER
+                                _reranker_for_eval = _CER()
+                                scored = _reranker_for_eval.rerank(
+                                    item["question"],
+                                    [type('C', (), {'id': f'c{ci}', 'text': ct, 'title': '', 'index': ci})() for ci, ct in enumerate(context_chunks)],
+                                    top_k=len(context_chunks),
+                                )
+                                if scored:
+                                    ctx_relevance = float(np.mean([s for _, s in scored]))
+                        except Exception as e:
+                            logger.warning(f"[EXECUTE]   Context relevance scoring failed: {e}")
+                    
+                    # P1 #9: Semantic similarity via embeddings
+                    sem_sim = None
+                    try:
+                        if parsed_answer and item.get("answer"):
+                            with profiler.section("semantic_similarity"):
+                                from app.services.rag_service import EmbeddingService as _ES
+                                _emb_svc = _ES()
+                                embs = _emb_svc.embed([parsed_answer, item["answer"]])
+                                if len(embs) == 2:
+                                    norm_a = np.linalg.norm(embs[0])
+                                    norm_b = np.linalg.norm(embs[1])
+                                    if norm_a > 0 and norm_b > 0:
+                                        cos_sim = float(np.dot(embs[0], embs[1]) / (norm_a * norm_b))
+                                        sem_sim = max(0.0, min(1.0, cos_sim))
+                                    else:
+                                        sem_sim = 0.0
+                    except Exception as e:
+                        logger.warning(f"[EXECUTE]   Semantic similarity failed: {e}")
                     
                     runs_batch_data.append({
                         "example_id": item["id"],
@@ -787,12 +865,19 @@ class ExperimentService:
                         "expected_output": item["answer"],
                         "is_correct": is_exact or is_substring,
                         "score": f1_score,
+                        "is_exact_match": is_exact,
+                        "is_substring_match": is_substring,
+                        "parsed_answer": parsed_answer,
+                        "match_alias": matched_alias,
+                        "semantic_similarity": sem_sim,
                         "tokens_input": result.tokens_input,
                         "tokens_output": result.tokens_output,
                         "latency_ms": result.latency_ms,
                         "gpu_memory_mb": result.gpu_memory_mb,
                         "faithfulness_score": faithfulness,
                         "retrieved_chunks": {"chunks": context_chunks} if use_rag else None,
+                        "context_relevance_score": ctx_relevance,
+                        "attempt": current_attempt,
                     })
 
                     if len(runs_batch_data) >= 50:
@@ -808,7 +893,9 @@ class ExperimentService:
             
             # Step 9: Compute aggregate metrics and save Result
             logger.info("[EXECUTE] Computing aggregate metrics...")
-            await metrics_svc.compute_and_save(experiment_id)
+            wall_end_for_metrics = _time.perf_counter()
+            wall_ms = (wall_end_for_metrics - wall_start) * 1000
+            await metrics_svc.compute_and_save(experiment_id, wall_clock_ms=wall_ms)
             await self.db.commit()
             logger.info("[EXECUTE] ✓ Metrics computed and saved")
             
@@ -828,9 +915,11 @@ class ExperimentService:
             )
             result_obj = result_row.scalar_one_or_none()
             if result_obj:
-                existing_raw = result_obj.raw_metrics or {}
+                from sqlalchemy.orm.attributes import flag_modified
+                existing_raw = dict(result_obj.raw_metrics or {})
                 existing_raw["optimization"] = opt_report.to_dict()
                 result_obj.raw_metrics = existing_raw
+                flag_modified(result_obj, "raw_metrics")
                 await self.db.flush()
                 await self.db.commit()
                 logger.info("[EXECUTE] ✓ Optimization report saved to raw_metrics")

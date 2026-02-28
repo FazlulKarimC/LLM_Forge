@@ -247,9 +247,14 @@ class StatisticalService:
         # Compute McNemar's test
         mcnemar_result = self.mcnemar_test(correct_a, correct_b)
         
-        # Compute bootstrap CIs
-        ci_a = self.bootstrap_confidence_interval(scores_a)
-        ci_b = self.bootstrap_confidence_interval(scores_b)
+        # P0 #5: Compute SEPARATE CIs for accuracy (booleans) and F1 (scores)
+        accuracy_values_a = [1.0 if c else 0.0 for c in correct_a]
+        accuracy_values_b = [1.0 if c else 0.0 for c in correct_b]
+        
+        accuracy_ci_a = self.bootstrap_confidence_interval(accuracy_values_a)
+        accuracy_ci_b = self.bootstrap_confidence_interval(accuracy_values_b)
+        f1_ci_a = self.bootstrap_confidence_interval(scores_a)
+        f1_ci_b = self.bootstrap_confidence_interval(scores_b)
         
         # Accuracy summary
         acc_a = sum(correct_a) / len(correct_a) if correct_a else 0.0
@@ -263,8 +268,14 @@ class StatisticalService:
             "accuracy_b": acc_b,
             "accuracy_diff": acc_b - acc_a,
             "mcnemar": mcnemar_result,
-            "bootstrap_ci_a": ci_a,
-            "bootstrap_ci_b": ci_b,
+            # P0 #5: Clearly labeled CIs
+            "accuracy_ci_a": accuracy_ci_a,
+            "accuracy_ci_b": accuracy_ci_b,
+            "f1_ci_a": f1_ci_a,
+            "f1_ci_b": f1_ci_b,
+            # Keep backward-compatible keys (mapped to accuracy CIs)
+            "bootstrap_ci_a": accuracy_ci_a,
+            "bootstrap_ci_b": accuracy_ci_b,
             "per_example_differences": per_example[:50],  # Limit to 50
             "summary": {
                 "both_correct": sum(1 for a, b in zip(correct_a, correct_b) if a and b),

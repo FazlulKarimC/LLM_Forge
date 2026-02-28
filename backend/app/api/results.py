@@ -47,6 +47,7 @@ def _result_to_metrics_response(result: Result) -> MetricsResponse:
             accuracy_exact=result.accuracy_exact,
             accuracy_f1=result.accuracy_f1,
             accuracy_substring=result.accuracy_substring,
+            semantic_similarity=result.semantic_similarity,
             faithfulness=result.faithfulness,
             hallucination_rate=result.hallucination_rate,
         ),
@@ -404,6 +405,9 @@ async def export_results(
             "accuracy_exact": db_result.accuracy_exact,
             "accuracy_f1": db_result.accuracy_f1,
             "accuracy_substring": db_result.accuracy_substring,
+            "semantic_similarity": db_result.semantic_similarity,
+            "faithfulness": db_result.faithfulness,
+            "hallucination_rate": db_result.hallucination_rate,
             "latency_p50": db_result.latency_p50,
             "latency_p95": db_result.latency_p95,
             "latency_p99": db_result.latency_p99,
@@ -421,4 +425,80 @@ async def export_results(
             "Content-Disposition": f'attachment; filename="{experiment.name}_results.json"'
         },
     )
+
+
+@router.post("/{experiment_id}/judge")
+async def run_llm_judge(
+    experiment_id: UUID,
+    sample_size: int = Query(20, ge=1, le=50, description="Number of runs to sample"),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Run LLM-as-judge evaluation on a sampled subset of runs (P2 #13).
+    
+    Evaluates coherence, helpfulness, and factuality using a free HF model.
+    Budget-capped to prevent runaway costs.
+    """
+    from app.services.llm_judge_service import LLMJudgeService
+    
+    judge = LLMJudgeService(db, sample_size=sample_size)
+    
+    try:
+        result = await judge.evaluate_experiment(experiment_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Judge evaluation failed: {str(e)[:200]}")
+    
+    # Save judge results to Result.raw_metrics
+    res_query = select(Result).where(Result.experiment_id == experiment_id)
+    res_result = await db.execute(res_query)
+    result_obj = res_result.scalar_one_or_none()
+    if result_obj:
+        from sqlalchemy.orm.attributes import flag_modified
+        raw = dict(result_obj.raw_metrics or {})
+        raw["llm_judge"] = result
+        result_obj.raw_metrics = raw
+        flag_modified(result_obj, "raw_metrics")
+        await db.flush()
+        await db.commit()
+    
+    return JSONResponse(content=result)
+
+
+@router.post("/synthetic/generate")
+async def generate_synthetic_dataset(
+    pairs_per_chunk: int = Query(3, ge=1, le=5, description="QA pairs per chunk"),
+    max_chunks: int = Query(10, ge=1, le=20, description="Max chunks to process"),
+    seed: Optional[int] = Query(None, description="Random seed for reproducibility"),
+):
+    """
+    Generate synthetic QA pairs from knowledge base chunks (P2 #14).
+    
+    Uses a free HF instruct model to create evaluation datasets.
+    """
+    from app.services.synthetic_data_service import SyntheticDatasetService
+    from app.services.rag_service import RAGPipeline
+    
+    # Load knowledge base chunks
+    try:
+        rag = RAGPipeline()
+        rag.load_knowledge_base()
+        chunks = [chunk.text for chunk in rag.chunks[:max_chunks * 2]]  # Load extra for selection
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to load knowledge base: {str(e)[:200]}"
+        )
+    
+    if not chunks:
+        raise HTTPException(status_code=404, detail="No knowledge base chunks found")
+    
+    synth = SyntheticDatasetService()
+    result = await synth.generate_from_chunks(
+        chunks=chunks,
+        pairs_per_chunk=pairs_per_chunk,
+        max_chunks=max_chunks,
+        seed=seed,
+    )
+    
+    return JSONResponse(content=result)
 

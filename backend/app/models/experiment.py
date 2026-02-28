@@ -9,7 +9,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import Column, String, DateTime, JSON, Enum, Text
+from sqlalchemy import Column, String, DateTime, JSON, Enum, Text, Integer
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
@@ -63,6 +63,11 @@ class Experiment(Base):
     )
     started_at = Column(DateTime(timezone=True), nullable=True)
     completed_at = Column(DateTime(timezone=True), nullable=True)
+    
+    # Reproducibility metadata (P1 #11)
+    dataset_hash = Column(String(64), nullable=True)  # SHA256 of dataset content
+    sample_ids = Column(JSON, nullable=True)           # List of sampled example IDs
+    current_attempt = Column(Integer, default=1, server_default="1", nullable=False)
     
     # Soft delete
     deleted_at = Column(DateTime(timezone=True), nullable=True, index=True)

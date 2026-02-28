@@ -48,6 +48,11 @@ class RunResponse(BaseModel):
     # Evaluation
     is_correct: Optional[bool]
     score: Optional[float] = Field(None, ge=0, le=1)
+    is_exact_match: Optional[bool] = None
+    is_substring_match: Optional[bool] = None
+    parsed_answer: Optional[str] = None
+    match_alias: Optional[str] = None
+    semantic_similarity: Optional[float] = Field(None, ge=0, le=1)
     
     # Performance
     tokens_input: Optional[int]
@@ -60,6 +65,10 @@ class RunResponse(BaseModel):
     # RAG-specific
     retrieval_info: Optional[RetrievalInfo] = None
     faithfulness_score: Optional[float] = Field(None, ge=0, le=1)
+    context_relevance_score: Optional[float] = Field(None, ge=0, le=1)
+    
+    # Attempt tracking
+    attempt: Optional[int] = None
     
     created_at: datetime
     

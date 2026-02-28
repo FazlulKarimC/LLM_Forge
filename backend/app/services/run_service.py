@@ -46,11 +46,18 @@ class RunService:
         expected_output: Optional[str] = None,
         is_correct: Optional[bool] = None,
         score: Optional[float] = None,
+        is_exact_match: Optional[bool] = None,
+        is_substring_match: Optional[bool] = None,
+        parsed_answer: Optional[str] = None,
+        match_alias: Optional[str] = None,
+        semantic_similarity: Optional[float] = None,
         gpu_memory_mb: Optional[float] = None,
         agent_trace: Optional[dict] = None,
         tool_calls: Optional[int] = None,
         faithfulness_score: Optional[float] = None,
         retrieved_chunks: Optional[dict] = None,
+        context_relevance_score: Optional[float] = None,
+        attempt: int = 1,
     ) -> Run:
         """
         Create a new run log entry.
@@ -66,11 +73,18 @@ class RunService:
             expected_output: Ground truth answer (optional)
             is_correct: Whether answer was correct (optional)
             score: Soft score 0-1 (optional)
+            is_exact_match: Whether prediction exactly matches ground truth (optional)
+            is_substring_match: Whether ground truth is substring of prediction (optional)
+            parsed_answer: Extracted answer from model output (optional)
+            match_alias: Which alias was matched (optional)
+            semantic_similarity: Embedding cosine similarity (optional)
             gpu_memory_mb: GPU memory usage (optional)
             agent_trace: Full agent Thought/Action/Observation trace (optional)
             tool_calls: Number of tool invocations (optional)
             faithfulness_score: RAG faithfulness evaluation (optional)
             retrieved_chunks: RAG retrieved documents (optional)
+            context_relevance_score: CrossEncoder context relevance (optional)
+            attempt: Attempt number for non-destructive re-runs
         
         Returns:
             Created Run instance
@@ -83,6 +97,11 @@ class RunService:
             expected_output=expected_output,
             is_correct=is_correct,
             score=score,
+            is_exact_match=is_exact_match,
+            is_substring_match=is_substring_match,
+            parsed_answer=parsed_answer,
+            match_alias=match_alias,
+            semantic_similarity=semantic_similarity,
             tokens_input=tokens_input,
             tokens_output=tokens_output,
             latency_ms=latency_ms,
@@ -91,6 +110,8 @@ class RunService:
             tool_calls=tool_calls,
             faithfulness_score=faithfulness_score,
             retrieved_chunks=retrieved_chunks,
+            context_relevance_score=context_relevance_score,
+            attempt=attempt,
         )
         
         self.db.add(run)

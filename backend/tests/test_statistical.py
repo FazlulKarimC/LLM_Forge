@@ -99,3 +99,44 @@ class TestMcNemarTest:
         assert result["b"] == 1
         assert result["c"] == 1
         assert result["n"] == 4
+
+
+class TestBootstrapCIForAccuracy:
+    """P0 #5: Bootstrap CI computed from binary accuracy values."""
+
+    def test_accuracy_ci_range(self):
+        """CI from binary values should be in [0, 1]."""
+        values = [1.0, 1.0, 0.0, 1.0, 0.0, 1.0, 1.0, 1.0, 0.0, 1.0]
+        result = StatisticalService.bootstrap_confidence_interval(values, seed=42)
+        assert 0.0 <= result["lower"] <= result["mean"] <= result["upper"] <= 1.0
+
+    def test_accuracy_ci_perfect_score(self):
+        """All correct → mean=1.0, CI=[1.0, 1.0]."""
+        values = [1.0] * 20
+        result = StatisticalService.bootstrap_confidence_interval(values)
+        assert result["mean"] == 1.0
+        assert result["lower"] == 1.0
+        assert result["upper"] == 1.0
+
+    def test_accuracy_ci_zero_score(self):
+        """All wrong → mean=0.0, CI=[0.0, 0.0]."""
+        values = [0.0] * 20
+        result = StatisticalService.bootstrap_confidence_interval(values)
+        assert result["mean"] == 0.0
+        assert result["lower"] == 0.0
+        assert result["upper"] == 0.0
+
+    def test_accuracy_ci_different_from_f1_ci(self):
+        """
+        P0 #5: Binary accuracy values produce different CI than continuous F1 scores.
+        This is the core bug: the old code computed CI from F1 scores but labeled it 'Accuracy CI'.
+        """
+        accuracy_values = [1.0, 1.0, 0.0, 1.0, 0.0]  # Binary
+        f1_values = [1.0, 0.8, 0.3, 0.9, 0.2]          # Continuous
+
+        acc_ci = StatisticalService.bootstrap_confidence_interval(accuracy_values, seed=42)
+        f1_ci = StatisticalService.bootstrap_confidence_interval(f1_values, seed=42)
+
+        # They should have different CIs (this was the P0 #5 bug)
+        assert acc_ci["mean"] != f1_ci["mean"] or acc_ci["std"] != f1_ci["std"]
+

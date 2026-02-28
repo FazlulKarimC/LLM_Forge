@@ -87,6 +87,11 @@ class Run(Base):
     # ----- Evaluation -----
     is_correct: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
     score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    is_exact_match: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    is_substring_match: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    parsed_answer: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    match_alias: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    semantic_similarity: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     
     # ----- Performance -----
     tokens_input: Mapped[int] = mapped_column(Integer, nullable=True)
@@ -101,6 +106,10 @@ class Run(Base):
     # ----- RAG-specific -----
     retrieved_chunks: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
     faithfulness_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    context_relevance_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    
+    # ----- Attempt tracking (non-destructive re-runs) -----
+    attempt: Mapped[int] = mapped_column(Integer, default=1, server_default="1", nullable=False)
     
     # ----- Timestamps -----
     created_at: Mapped[datetime] = mapped_column(

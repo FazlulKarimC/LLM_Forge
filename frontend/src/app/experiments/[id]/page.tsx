@@ -196,7 +196,7 @@ function CorrectnessGrid({ runs }: { runs: RunSummary[] }) {
                             </div>
                             {selectedRun.faithfulness_score !== undefined && selectedRun.faithfulness_score !== null && (
                                 <div>
-                                    <dt className="text-(--text-muted) text-xs">Faithfulness</dt>
+                                    <dt className="text-(--text-muted) text-xs">Faithfulness (heuristic)</dt>
                                     <dd className="font-mono">{selectedRun.faithfulness_score.toFixed(3)}</dd>
                                 </div>
                             )}
