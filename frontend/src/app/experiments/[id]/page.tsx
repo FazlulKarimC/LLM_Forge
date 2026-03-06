@@ -18,6 +18,7 @@ import {
     getRunSummaries,
     getProfile,
     exportResults,
+    exportMarkdownReport,
     runExperiment,
     Metrics,
     RunSummary,
@@ -148,10 +149,10 @@ function CorrectnessGrid({ runs }: { runs: RunSummary[] }) {
                             ? "bg-green-100 border-green-400 hover:bg-green-200"
                             : "bg-red-100 border-red-300 hover:bg-red-200"
                             } ${selectedRun?.id === run.id ? "ring-2 ring-[#37322F] ring-offset-1 scale-110" : ""}`}
-                        title={`${run.example_id}: ${run.is_correct ? "✓" : "✗"} (F1: ${(run.score ?? 0).toFixed(2)})`}
+                        title={`${run.example_id}: ${run.failure_mode ? "⚠️" : run.is_correct ? "✓" : "✗"} (F1: ${(run.score ?? 0).toFixed(2)})`}
                     >
                         <span className="text-[10px] font-mono">
-                            {run.is_correct ? "✓" : "✗"}
+                            {run.failure_mode ? "⚠️" : run.is_correct ? "✓" : "✗"}
                         </span>
                     </button>
                 ))}
@@ -164,22 +165,30 @@ function CorrectnessGrid({ runs }: { runs: RunSummary[] }) {
                             {selectedRun.example_id}
                         </span>
                         <span
-                            className={`text-xs px-2 py-0.5 rounded-full ${selectedRun.is_correct
-                                ? "bg-green-100 text-green-700"
-                                : "bg-red-100 text-red-700"
+                            className={`text-xs px-2 py-0.5 rounded-full ${selectedRun.failure_mode
+                                ? "bg-red-100 text-red-700"
+                                : selectedRun.is_correct
+                                    ? "bg-green-100 text-green-700"
+                                    : "bg-red-100 text-red-700"
                                 }`}
                         >
-                            {selectedRun.is_correct ? "Correct" : "Incorrect"}
+                            {selectedRun.failure_mode ? `Failed: ${selectedRun.failure_mode}` : selectedRun.is_correct ? "Correct" : "Incorrect"}
                         </span>
                     </div>
                     <dl className="space-y-2 text-sm">
                         <div>
                             <dt className="text-(--text-muted) text-xs">Question</dt>
-                            <dd className="text-(--text-body)">{selectedRun.input_text?.split("Question:").pop()?.split("Answer:")[0]?.trim() || selectedRun.input_text || "N/A"}</dd>
+                            <dd className="text-(--text-body)">{selectedRun.prompt?.split("Question:").pop()?.split("Answer:")[0]?.trim() || selectedRun.prompt || "N/A"}</dd>
                         </div>
+                        {selectedRun.failure_mode && selectedRun.error_message && (
+                            <div className="bg-red-50 p-2 rounded border border-red-100 mt-2 mb-2">
+                                <dt className="text-red-700 text-xs font-semibold">Error Message</dt>
+                                <dd className="font-mono text-red-600 text-[10px] whitespace-pre-wrap">{selectedRun.error_message}</dd>
+                            </div>
+                        )}
                         <div>
                             <dt className="text-(--text-muted) text-xs">Model Output</dt>
-                            <dd className="font-mono text-(--text-body)">{selectedRun.output_text || "N/A"}</dd>
+                            <dd className="font-mono text-(--text-body)">{selectedRun.raw_output || "N/A"}</dd>
                         </div>
                         <div>
                             <dt className="text-(--text-muted) text-xs">Expected</dt>
@@ -211,6 +220,41 @@ function CorrectnessGrid({ runs }: { runs: RunSummary[] }) {
                                             {c.score != null && <span className="ml-2 text-(--text-muted)">(score: {c.score.toFixed(3)})</span>}
                                         </div>
                                     ))}
+                                </dd>
+                            </div>
+                        )}
+                        {selectedRun.agent_trace && (
+                            <div className="pt-2 border-t border-border mt-2">
+                                <dt className="text-(--text-muted) text-xs mb-1">Agent Trace ({selectedRun.agent_trace.total_tool_calls} tool calls)</dt>
+                                <dd className="bg-[--bg-card] p-3 rounded text-xs font-mono text-(--text-body) max-h-60 overflow-y-auto whitespace-pre-wrap">
+                                    <div className="mb-2 flex gap-4 text-[10px] text-[--text-muted]">
+                                        <span className="text-green-600">✓ {selectedRun.agent_trace.successful_tool_calls} success</span>
+                                        <span className={selectedRun.agent_trace.failed_tool_calls > 0 ? "text-red-500" : ""}>
+                                            ✗ {selectedRun.agent_trace.failed_tool_calls} failed
+                                        </span>
+                                    </div>
+                                    <div className="space-y-4">
+                                        {selectedRun.agent_trace.steps.map((step, i) => (
+                                            <div key={i} className="pl-2 border-l-2 border-[--border] space-y-1">
+                                                <div className="text-blue-600 dark:text-blue-400 font-semibold">[Thought]</div>
+                                                <div className="pl-2 pb-1">{step.thought}</div>
+
+                                                {step.action && (
+                                                    <>
+                                                        <div className="text-amber-600 dark:text-amber-500 font-semibold mt-2">[Action: {step.action}]</div>
+                                                        <div className="pl-2 text-[--text-muted]">{step.action_input}</div>
+                                                    </>
+                                                )}
+
+                                                {step.observation && (
+                                                    <>
+                                                        <div className="text-green-600 dark:text-green-500 font-semibold mt-2">[Observation]</div>
+                                                        <div className="pl-2 italic">{step.observation}</div>
+                                                    </>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
                                 </dd>
                             </div>
                         )}
@@ -361,8 +405,8 @@ function ResultsDashboard({ experimentId }: { experimentId: string }) {
 
     return (
         <div className="space-y-6">
-            {/* Export Button */}
-            <div className="flex justify-end">
+            {/* Export Buttons */}
+            <div className="flex justify-end gap-2">
                 <button
                     onClick={handleExport}
                     disabled={exporting}
@@ -387,7 +431,46 @@ function ResultsDashboard({ experimentId }: { experimentId: string }) {
                         </>
                     )}
                 </button>
+                <button
+                    onClick={async () => {
+                        setExporting(true);
+                        try {
+                            await exportMarkdownReport(experimentId, undefined, metrics ?? undefined, runs ?? undefined);
+                        } catch (e) {
+                            console.error("Markdown export failed:", e);
+                        } finally {
+                            setExporting(false);
+                        }
+                    }}
+                    disabled={exporting}
+                    className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium border border-[#37322F] text-[#37322F] rounded-full hover:bg-[#37322F]/5 transition-colors disabled:opacity-50 cursor-pointer"
+                >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                        <polyline points="14,2 14,8 20,8" />
+                    </svg>
+                    Export Report
+                </button>
             </div>
+
+            {/* AI Summary */}
+            {metrics.summary_text && (
+                <div className="card p-6 bg-blue-50/50 border-blue-100">
+                    <div className="flex items-start gap-3">
+                        <div className="mt-1">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-blue-500">
+                                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                            </svg>
+                        </div>
+                        <div>
+                            <h3 className="text-sm font-semibold text-blue-900 mb-1">Experiment Summary</h3>
+                            <p className="text-sm text-blue-800 leading-relaxed">
+                                {metrics.summary_text}
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Metrics Cards — Quality */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -428,11 +511,41 @@ function ResultsDashboard({ experimentId }: { experimentId: string }) {
                     subtitle="95th percentile"
                 />
                 <MetricCard
-                    title="Total Tokens"
-                    value={`${(metrics.cost.total_tokens_input + metrics.cost.total_tokens_output).toLocaleString()}`}
-                    subtitle={`${metrics.cost.total_runs} runs · ${(metrics.cost.gpu_time_seconds ?? 0).toFixed(1)}s GPU`}
+                    title="Cost Efficiency"
+                    value={
+                        metrics.cost.total_cost_usd != null && metrics.cost.total_cost_usd > 0
+                            ? `$${metrics.cost.total_cost_usd.toFixed(4)}`
+                            : "Free Tier"
+                    }
+                    subtitle={
+                        metrics.cost.cost_per_correct_answer != null && metrics.cost.cost_per_correct_answer > 0
+                            ? `$${metrics.cost.cost_per_correct_answer.toFixed(4)}/correct · ${(metrics.cost.total_tokens_input + metrics.cost.total_tokens_output).toLocaleString()} tokens`
+                            : `${(metrics.cost.total_tokens_input + metrics.cost.total_tokens_output).toLocaleString()} tokens · ${metrics.cost.total_runs} runs`
+                    }
                 />
             </div>
+
+            {/* Failure Modes Banner */}
+            {metrics.failure_modes && metrics.failure_modes.total_failures > 0 && (
+                <div className="card p-6 bg-red-50/50 border-red-100">
+                    <h3 className="text-sm font-semibold text-red-900 mb-3 flex items-center gap-2">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                            <line x1="12" y1="9" x2="12" y2="13"></line>
+                            <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                        </svg>
+                        Failure Analysis ({metrics.failure_modes.total_failures} Total)
+                    </h3>
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+                        {Object.entries(metrics.failure_modes.counts).map(([mode, count]) => (
+                            <div key={mode} className="bg-white p-3 rounded border border-red-100">
+                                <span className="text-2xl font-bold text-red-700 block">{count}</span>
+                                <span className="text-xs text-red-900 font-mono capitalize">{mode.replace(/_/g, " ")}</span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             {/* Latency Histogram */}
             {runs && <LatencyChart runs={runs} />}

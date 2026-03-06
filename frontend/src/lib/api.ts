@@ -199,6 +199,7 @@ export interface ListExperimentsParams {
 
 export interface Metrics {
     experiment_id: string;
+    summary_text?: string;
     quality: {
         accuracy_exact?: number;
         accuracy_f1?: number;
@@ -218,8 +219,30 @@ export interface Metrics {
         total_tokens_output: number;
         total_runs: number;
         gpu_time_seconds?: number;
+        total_cost_usd?: number;
+        cost_per_correct_answer?: number;
+        provider?: string;
+    };
+    failure_modes?: {
+        counts: Record<string, number>;
+        total_failures: number;
+        sample_errors: Array<{ mode: string; error: string; example_id: string }>;
     };
     computed_at: string;
+}
+
+export interface AgentStep {
+    thought: string;
+    action?: string;
+    action_input?: string;
+    observation?: string;
+}
+
+export interface AgentTrace {
+    steps: AgentStep[];
+    total_tool_calls: number;
+    successful_tool_calls: number;
+    failed_tool_calls: number;
 }
 
 export interface RunSummary {
@@ -232,13 +255,16 @@ export interface RunSummary {
     parsed_answer?: string;
     semantic_similarity?: number;
     latency_ms?: number;
-    input_text: string;
-    output_text?: string;
+    prompt: string;
+    raw_output?: string;
     expected_output?: string;
     faithfulness_score?: number;
     context_relevance_score?: number;
     attempt?: number;
     retrieved_chunks?: { chunks: { text?: string; page_content?: string; score?: number }[] };
+    failure_mode?: string;
+    error_message?: string;
+    agent_trace?: AgentTrace;
 }
 
 export interface ModelOption {
@@ -380,6 +406,73 @@ export async function exportResults(experimentId: string, experimentName?: strin
     // Use the experiment name in the filename if provided, fallback to ID
     const safeName = (experimentName || experimentId).replace(/[^a-z0-9_-]/gi, '_').toLowerCase();
     a.download = `experiment_${safeName}_results.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(downloadUrl);
+}
+
+/**
+ * Export experiment results as a formatted Markdown report.
+ */
+export async function exportMarkdownReport(
+    experimentId: string,
+    experimentName?: string,
+    metrics?: Metrics,
+    runs?: RunSummary[],
+): Promise<void> {
+    const url = `${API_BASE_URL}/results/${experimentId}/export`;
+    const response = await fetch(url);
+    if (!response.ok) throw new Error('Export failed');
+    const data = await response.json();
+
+    const name = experimentName || data.experiment?.name || experimentId;
+    const config = data.experiment?.config || {};
+
+    let md = `# Experiment Report: ${name}\n\n`;
+    md += `**Generated**: ${new Date().toISOString()}\n\n`;
+    md += `## Configuration\n\n`;
+    md += `| Parameter | Value |\n|---|---|\n`;
+    md += `| Model | ${config.model_name || 'N/A'} |\n`;
+    md += `| Reasoning | ${config.reasoning_method || 'N/A'} |\n`;
+    md += `| Dataset | ${config.dataset_name || 'N/A'} |\n`;
+    md += `| Samples | ${config.num_samples || 'N/A'} |\n`;
+    md += `| Temperature | ${config.hyperparameters?.temperature ?? 'N/A'} |\n`;
+    md += `| Max Tokens | ${config.hyperparameters?.max_tokens ?? 'N/A'} |\n\n`;
+
+    if (metrics) {
+        md += `## Results\n\n`;
+        if (metrics.summary_text) {
+            md += `> ${metrics.summary_text}\n\n`;
+        }
+        md += `| Metric | Value |\n|---|---|\n`;
+        md += `| Accuracy (Substring) | ${((metrics.quality.accuracy_substring ?? 0) * 100).toFixed(1)}% |\n`;
+        md += `| F1 Score (Mean) | ${((metrics.quality.accuracy_f1 ?? 0) * 100).toFixed(1)}% |\n`;
+        md += `| Latency p50 | ${(metrics.performance.latency_p50 ?? 0).toFixed(0)} ms |\n`;
+        md += `| Latency p95 | ${(metrics.performance.latency_p95 ?? 0).toFixed(0)} ms |\n`;
+        md += `| Throughput | ${(metrics.performance.throughput ?? 0).toFixed(1)} prompts/s |\n`;
+        if (metrics.cost.total_cost_usd != null) {
+            md += `| Total Cost | $${metrics.cost.total_cost_usd.toFixed(4)} |\n`;
+        }
+        md += `| Total Tokens | ${(metrics.cost.total_tokens_input + metrics.cost.total_tokens_output).toLocaleString()} |\n\n`;
+    }
+
+    if (runs && runs.length > 0) {
+        const correct = runs.filter(r => r.is_correct).length;
+        md += `## Per-Run Results (${correct}/${runs.length} correct)\n\n`;
+        md += `| # | Example ID | Correct | F1 | Latency |\n|---|---|---|---|---|\n`;
+        runs.slice(0, 50).forEach((r, i) => {
+            md += `| ${i + 1} | ${r.example_id} | ${r.is_correct ? '✓' : '✗'} | ${(r.score ?? 0).toFixed(3)} | ${(r.latency_ms ?? 0).toFixed(0)}ms |\n`;
+        });
+        if (runs.length > 50) md += `\n*...and ${runs.length - 50} more runs*\n`;
+    }
+
+    const blob = new Blob([md], { type: 'text/markdown' });
+    const downloadUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = downloadUrl;
+    const safeName = (experimentName || experimentId).replace(/[^a-z0-9_-]/gi, '_').toLowerCase();
+    a.download = `experiment_${safeName}_report.md`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);

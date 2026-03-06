@@ -69,6 +69,10 @@ class Experiment(Base):
     sample_ids = Column(JSON, nullable=True)           # List of sampled example IDs
     current_attempt = Column(Integer, default=1, server_default="1", nullable=False)
     
+    # Phase 2: Tags + Run Manifest
+    tags = Column(JSON, nullable=True, default=list)   # Free-form experiment tags
+    run_manifest = Column(JSON, nullable=True)         # Full reproducibility manifest
+    
     # Soft delete
     deleted_at = Column(DateTime(timezone=True), nullable=True, index=True)
     

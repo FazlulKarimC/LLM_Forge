@@ -14,6 +14,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Optional, List
 
+from app.models.run import FailureMode
+
 
 @dataclass
 class GenerationConfig:
@@ -43,6 +45,8 @@ class GenerationResult:
     latency_ms: float
     finish_reason: str  # "stop", "length", "error"
     gpu_memory_mb: Optional[float] = None
+    failure_mode: Optional[FailureMode] = None
+    error_message: Optional[str] = None
 
 
 class InferenceEngine(ABC):

@@ -10,6 +10,7 @@ from app.services.inference.base import (
     GenerationConfig,
     GenerationResult,
 )
+from app.models.run import FailureMode
 
 logger = logging.getLogger(__name__)
 
@@ -59,11 +60,6 @@ class OpenAIEngine(InferenceEngine):
         self._client = self._make_client()
         logger.info(f"OpenAIEngine: switched to model {model_name} (base_url={self._base_url})")
     
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10),
-        retry=retry_if_not_exception_type((ValueError, NotFoundError))  # Don't retry on validation errors or 404s
-    )
     def generate(
         self,
         prompt: str,
@@ -96,15 +92,20 @@ class OpenAIEngine(InferenceEngine):
             # OpenAI completion tokens usage
             tokens_input = response.usage.prompt_tokens if response.usage else len(prompt.split())
             tokens_output = response.usage.completion_tokens if response.usage else len(generated_text.split())
-            finish_reason = response.choices[0].finish_reason if response.choices else "stop"
+            finish_reason = str(response.choices[0].finish_reason if response.choices else "stop")
+            
+            failure_mode = None
+            if finish_reason == "length":
+                failure_mode = FailureMode.TRUNCATED
 
             return GenerationResult(
                 text=generated_text,
                 tokens_input=tokens_input,
                 tokens_output=tokens_output,
                 latency_ms=latency_ms,
-                finish_reason=str(finish_reason),
+                finish_reason=finish_reason,
                 gpu_memory_mb=None,
+                failure_mode=failure_mode,
             )
 
         except NotFoundError as e:
@@ -114,15 +115,50 @@ class OpenAIEngine(InferenceEngine):
         except RateLimitError as e:
             latency_ms = (time.perf_counter() - start_time) * 1000
             logger.error(f"Rate limit exceeded (url={self._base_url}, model={self._model_name}): {e}")
-            raise RuntimeError(f"Rate limit exceeded on custom endpoint: {str(e)}") from e
+            return GenerationResult(
+                text="",
+                tokens_input=len(prompt.split()),
+                tokens_output=0,
+                latency_ms=latency_ms,
+                finish_reason="error",
+                gpu_memory_mb=None,
+                failure_mode=FailureMode.API_ERROR,
+                error_message=f"Rate limit exceeded: {str(e)}",
+            )
         except (APIConnectionError, APIError) as e:
             latency_ms = (time.perf_counter() - start_time) * 1000
             logger.error(f"Custom OpenAI API Error (url={self._base_url}, model={self._model_name}): {e}")
-            raise RuntimeError(f"API Error from custom endpoint: {str(e)}") from e
+            return GenerationResult(
+                text="",
+                tokens_input=len(prompt.split()),
+                tokens_output=0,
+                latency_ms=latency_ms,
+                finish_reason="error",
+                gpu_memory_mb=None,
+                failure_mode=FailureMode.API_ERROR,
+                error_message=f"API Error from custom endpoint: {str(e)}",
+            )
         except Exception as e:
             latency_ms = (time.perf_counter() - start_time) * 1000
             logger.error(f"Unexpected custom API inference failure (url={self._base_url}, model={self._model_name}): {e}")
-            raise RuntimeError(f"Unexpected inference failure: {str(e)}") from e
+            
+            error_str = str(e).lower()
+            failure_mode = FailureMode.UNKNOWN
+            if "timeout" in error_str:
+                failure_mode = FailureMode.TIMEOUT
+            elif "context" in error_str or "length" in error_str or "exceed" in error_str:
+                failure_mode = FailureMode.CONTEXT_EXCEEDED
+            
+            return GenerationResult(
+                text="",
+                tokens_input=len(prompt.split()),
+                tokens_output=0,
+                latency_ms=latency_ms,
+                finish_reason="error",
+                gpu_memory_mb=None,
+                failure_mode=failure_mode,
+                error_message=str(e),
+            )
     
     def generate_batch(
         self,

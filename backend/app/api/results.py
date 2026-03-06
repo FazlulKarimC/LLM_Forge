@@ -386,8 +386,8 @@ async def export_results(
             {
                 "id": str(run.id),
                 "example_id": run.example_id,
-                "input_text": run.input_text,
-                "output_text": run.output_text,
+                "prompt": run.prompt,
+                "raw_output": run.raw_output,
                 "expected_output": run.expected_output,
                 "is_correct": run.is_correct,
                 "score": run.score,

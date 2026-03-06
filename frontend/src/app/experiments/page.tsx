@@ -164,6 +164,52 @@ export default function ExperimentsPage() {
                     </div>
                 </div>
 
+                {/* Activity Timeline — 5 most recent experiments */}
+                {experiments.length > 0 && (
+                    <div className="card p-4 mb-6">
+                        <h3 className="text-sm font-semibold text-(--text-heading) mb-3">Recent Activity</h3>
+                        <div className="space-y-2">
+                            {experiments.slice(0, 5).map((exp) => {
+                                const created = new Date(exp.created_at);
+                                const completed = exp.completed_at ? new Date(exp.completed_at) : null;
+                                const elapsed = completed
+                                    ? `${((completed.getTime() - created.getTime()) / 1000).toFixed(0)}s`
+                                    : null;
+                                const statusIcon = {
+                                    completed: "✓",
+                                    failed: "✗",
+                                    running: "⟳",
+                                    queued: "⏳",
+                                    pending: "○",
+                                }[exp.status] || "○";
+                                const statusColor = {
+                                    completed: "text-green-600",
+                                    failed: "text-red-600",
+                                    running: "text-blue-600",
+                                    queued: "text-yellow-600",
+                                    pending: "text-(--text-muted)",
+                                }[exp.status] || "text-(--text-muted)";
+                                return (
+                                    <div key={exp.id} className="flex items-center gap-3 text-xs text-(--text-muted)">
+                                        <span className={`font-bold text-sm ${statusColor}`}>{statusIcon}</span>
+                                        <span className="font-medium text-(--text-body) truncate max-w-[160px]">{exp.name}</span>
+                                        <span className="text-(--text-muted)">·</span>
+                                        <span className="font-mono">{exp.config.model_name.split('/').pop()}</span>
+                                        <span className="text-(--text-muted)">·</span>
+                                        <span>{formatDate(exp.created_at)}</span>
+                                        {elapsed && (
+                                            <>
+                                                <span className="text-(--text-muted)">→</span>
+                                                <span className="text-green-600 font-medium">{elapsed}</span>
+                                            </>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                )}
+
                 {/* Experiments Table */}
                 <div className="card overflow-hidden">
                     <table className="min-w-full divide-y divide-border">

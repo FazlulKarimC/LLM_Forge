@@ -11,7 +11,7 @@ from typing import Optional
 from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.run import Run
+from app.models.run import Run, FailureMode
 
 
 class RunService:
@@ -37,8 +37,8 @@ class RunService:
     async def create_run(
         self,
         experiment_id: UUID,
-        input_text: str,
-        output_text: str,
+        prompt: str,
+        raw_output: str,
         tokens_input: int,
         tokens_output: int,
         latency_ms: float,
@@ -57,6 +57,8 @@ class RunService:
         faithfulness_score: Optional[float] = None,
         retrieved_chunks: Optional[dict] = None,
         context_relevance_score: Optional[float] = None,
+        failure_mode: Optional[FailureMode] = None,
+        error_message: Optional[str] = None,
         attempt: int = 1,
     ) -> Run:
         """
@@ -64,8 +66,8 @@ class RunService:
         
         Args:
             experiment_id: Parent experiment UUID
-            input_text: Full prompt sent to model
-            output_text: Generated response
+            prompt: Full prompt sent to model
+            raw_output: Generated response
             tokens_input: Input token count
             tokens_output: Output token count
             latency_ms: Generation time in milliseconds
@@ -92,8 +94,8 @@ class RunService:
         run = Run(
             experiment_id=experiment_id,
             example_id=example_id,
-            input_text=input_text,
-            output_text=output_text,
+            prompt=prompt,
+            raw_output=raw_output,
             expected_output=expected_output,
             is_correct=is_correct,
             score=score,
@@ -111,6 +113,8 @@ class RunService:
             faithfulness_score=faithfulness_score,
             retrieved_chunks=retrieved_chunks,
             context_relevance_score=context_relevance_score,
+            failure_mode=failure_mode,
+            error_message=error_message,
             attempt=attempt,
         )
         

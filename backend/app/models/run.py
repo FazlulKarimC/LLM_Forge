@@ -9,16 +9,27 @@ TODO (Iteration 2): Add token counting
 TODO (Iteration 3): Add trace data for agents
 """
 
+import enum
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import ForeignKey, String, Text, Float, Integer, Boolean, DateTime, UniqueConstraint
+from sqlalchemy import ForeignKey, String, Text, Float, Integer, Boolean, DateTime, UniqueConstraint, Enum as SQLEnum
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
 
+class FailureMode(str, enum.Enum):
+    """Categorized failure types for LLM outputs."""
+    FORMAT_ERROR = "format_error"            # Output not valid JSON/XML as requested
+    HALLUCINATION = "hallucination"          # Factually incorrect or unsupported by context
+    REFUSAL = "refusal"                      # Model refused to answer
+    TRUNCATED = "truncated"                  # Hit max_tokens
+    TIMEOUT = "timeout"                      # Generation timed out
+    API_ERROR = "api_error"                  # Provider API failure
+    CONTEXT_EXCEEDED = "context_exceeded"    # Prompt too long
+    UNKNOWN = "unknown"                      # Other failure
 
 class Run(Base):
     """
@@ -80,8 +91,8 @@ class Run(Base):
     example_id: Mapped[str] = mapped_column(String(255), nullable=True)
     
     # ----- Input/Output -----
-    input_text: Mapped[str] = mapped_column(Text, nullable=False)
-    output_text: Mapped[str] = mapped_column(Text, nullable=True)
+    prompt: Mapped[str] = mapped_column(Text, nullable=False)
+    raw_output: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     expected_output: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     
     # ----- Evaluation -----
@@ -98,6 +109,10 @@ class Run(Base):
     tokens_output: Mapped[int] = mapped_column(Integer, nullable=True)
     latency_ms: Mapped[float] = mapped_column(Float, nullable=True)
     gpu_memory_mb: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    
+    # ----- Failure Tracking -----
+    failure_mode: Mapped[Optional[FailureMode]] = mapped_column(SQLEnum(FailureMode, name="failure_mode"), nullable=True)
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     
     # ----- Agent-specific -----
     agent_trace: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)

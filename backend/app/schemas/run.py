@@ -10,6 +10,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, ConfigDict
 
+from app.models.run import FailureMode
+
 
 class AgentStep(BaseModel):
     """Single step in agent trace."""
@@ -41,8 +43,8 @@ class RunResponse(BaseModel):
     example_id: Optional[str]
     
     # Input/Output
-    input_text: str
-    output_text: Optional[str]
+    prompt: str
+    raw_output: Optional[str]
     expected_output: Optional[str]
     
     # Evaluation
@@ -58,6 +60,10 @@ class RunResponse(BaseModel):
     tokens_input: Optional[int]
     tokens_output: Optional[int]
     latency_ms: Optional[float]
+    
+    # Failure Tracking
+    failure_mode: Optional[FailureMode] = None
+    error_message: Optional[str] = None
     
     # Agent-specific
     agent_trace: Optional[AgentTrace] = None

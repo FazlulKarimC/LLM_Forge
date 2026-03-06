@@ -89,20 +89,40 @@ class MetricsService:
 
         logger.info(f"Found {len(runs)} runs (attempt {max_attempt}), computing metrics...")
 
+        # Fetch experiment to get model_name for pricing
+        from app.models.experiment import Experiment
+        exp_query = select(Experiment).where(Experiment.id == experiment_id)
+        exp_result = await self.db.execute(exp_query)
+        experiment = exp_result.scalar_one_or_none()
+        model_name = experiment.config.get("model_name", "") if experiment and experiment.config else ""
+
         # Compute metrics
         accuracy = self._compute_accuracy(runs)
         latency = self._compute_latency(runs, wall_clock_ms)
-        cost = self._compute_cost(runs)
+        cost = self._compute_cost(runs, model_name=model_name)
         faithfulness_metrics = self._compute_faithfulness(runs)
         similarity_metrics = self._compute_semantic_similarity(runs)
+        failure_modes = self._compute_failure_modes(runs)
+
+        # Generate natural language summary
+        summary_text = self._generate_summary(
+            accuracy=accuracy,
+            latency=latency,
+            cost=cost,
+            faithfulness=faithfulness_metrics,
+            failure_modes=failure_modes,
+            experiment_id=experiment_id
+        )
 
         # Build raw metrics dict
         raw_metrics = {
+            "summary_text": summary_text,
             "accuracy": accuracy,
             "latency": latency,
             "cost": cost,
             "faithfulness": faithfulness_metrics,
             "semantic_similarity": similarity_metrics,
+            "failure_modes": failure_modes,
             "attempt": max_attempt,
             "per_run": [
                 {
@@ -116,6 +136,8 @@ class MetricsService:
                     "latency_ms": run.latency_ms,
                     "tokens_input": run.tokens_input,
                     "tokens_output": run.tokens_output,
+                    "failure_mode": run.failure_mode.value if run.failure_mode else None,
+                    "error_message": run.error_message,
                 }
                 for run in runs
             ],
@@ -176,6 +198,56 @@ class MetricsService:
             delete(Result).where(Result.experiment_id == experiment_id)
         )
         await self.db.flush()
+
+    def _generate_summary(self, accuracy: dict, latency: dict, cost: dict, faithfulness: dict, failure_modes: dict, experiment_id: UUID) -> str:
+        """
+        Generate a 3-4 sentence natural language summary from computed metrics.
+        """
+        acc = accuracy.get("accuracy_any", 0) * 100
+        total = accuracy.get("total_evaluated", 0)
+        p50 = latency.get("p50", 0)
+        
+        # Estimate cost (assuming generic $0.15/1M input and $0.60/1M output tokens as a baseline)
+        input_cost = (cost.get("total_tokens_input", 0) / 1_000_000) * 0.15
+        output_cost = (cost.get("total_tokens_output", 0) / 1_000_000) * 0.60
+        total_cost = input_cost + output_cost
+
+        summary = f"This experiment achieved {acc:.1f}% overall correctness across {total} evaluated samples, with a median generation latency of {p50:.0f}ms. "
+        
+        # Add RAG/Faithfulness context if applicable
+        if faithfulness.get("count", 0) > 0:
+            hall_rate = faithfulness.get("hallucination_rate", 0) * 100
+            summary += f"The pipeline maintained a hallucination rate of {hall_rate:.1f}% based on NLI entailment scoring. "
+            
+        if total_cost > 0:
+            summary += f"Estimated inference cost for this run was ${total_cost:.4f}. "
+        else:
+            summary += "Inference was completed with no measurable API token costs. "
+            
+        total_failures = failure_modes.get("total_failures", 0)
+        if total_failures > 0:
+            counts = failure_modes.get("counts", {})
+            top_failures = ", ".join([f"{count} {mode.replace('_', ' ')}" for mode, count in sorted(counts.items(), key=lambda item: item[1], reverse=True)[:2]])
+            summary += f"Encountered {total_failures} failures during execution (top: {top_failures})."
+            
+        return summary.strip()
+        
+    def _compute_failure_modes(self, runs: List[Run]) -> dict:
+        """Aggregate failure modes across runs."""
+        from collections import Counter
+        counts = Counter()
+        error_messages = []
+        for r in runs:
+            if r.failure_mode:
+                counts[r.failure_mode.value] += 1
+                if r.error_message:
+                    error_messages.append({"mode": r.failure_mode.value, "error": r.error_message, "example_id": r.example_id})
+                    
+        return {
+            "counts": dict(counts),
+            "total_failures": sum(counts.values()),
+            "sample_errors": error_messages[:10]  # Keep a sample of up to 10 errors
+        }
 
     # =========================================================================
     # P0 #1: Accuracy from stored booleans (not reconstructed from score)
@@ -263,15 +335,29 @@ class MetricsService:
             "throughput_source": throughput_source,
         }
 
-    def _compute_cost(self, runs: List[Run]) -> dict:
+    def _compute_cost(self, runs: List[Run], model_name: str = "") -> dict:
         """
         Compute cost proxy metrics from runs.
 
-        Returns total tokens, runs count, estimated GPU time.
+        Returns total tokens, runs count, estimated GPU time,
+        and cost estimation using pricing lookup.
         """
+        from app.core.pricing import estimate_cost
+
         total_input = sum(run.tokens_input or 0 for run in runs)
         total_output = sum(run.tokens_output or 0 for run in runs)
         total_latency_ms = sum(run.latency_ms or 0 for run in runs)
+
+        # Estimate cost using pricing table
+        cost_estimate = estimate_cost(model_name, total_input, total_output)
+
+        # Cost per correct answer
+        correct_count = sum(1 for r in runs if r.is_correct)
+        cost_per_correct = (
+            round(cost_estimate["total_cost_usd"] / correct_count, 6)
+            if correct_count > 0
+            else None
+        )
 
         return {
             "total_tokens_input": total_input,
@@ -279,6 +365,9 @@ class MetricsService:
             "total_tokens": total_input + total_output,
             "total_runs": len(runs),
             "gpu_time_seconds": total_latency_ms / 1000.0,
+            "total_cost_usd": cost_estimate["total_cost_usd"],
+            "cost_per_correct_answer": cost_per_correct,
+            "provider": cost_estimate["provider"],
         }
 
     # =========================================================================

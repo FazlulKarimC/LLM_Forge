@@ -13,7 +13,7 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.core.config import settings
-
+from unittest.mock import patch, MagicMock
 @pytest.fixture
 def client():
     """Create test client."""
@@ -63,12 +63,16 @@ class TestExperimentCoreEndpoints:
         assert len(data["details"]) > 0
         assert "config" in data["details"][0]["field"]
     
-    def test_custom_app_exception_404(self, client):
+    @patch('app.services.experiment_service.ExperimentService.get')
+    def test_custom_app_exception_404(self, mock_get, client):
         """
         Verify our base `AppException` (ResourceNotFound) handler formats
         errors into standardized JSON with context and `request_id`.
         """
         fake_uuid = str(uuid4())
+        # Mock the service to raise ResourceNotFound instead of hitting the DB
+        from unittest.mock import AsyncMock
+        mock_get.return_value = None
         response = client.get(f"{settings.API_V1_PREFIX}/experiments/{fake_uuid}")
         
         assert response.status_code == 404
@@ -85,7 +89,8 @@ class TestExperimentCoreEndpoints:
         response = client.get("/api/v1/does-not-exist")
         assert response.status_code == 404
 
-from unittest.mock import patch, MagicMock
+
+
 
 class TestExperimentRunCustomHeaders:
     """Tests for starting an experiment with custom headers."""

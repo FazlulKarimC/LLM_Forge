@@ -121,6 +121,7 @@ async def list_experiments(
     status: Optional[ExperimentStatus] = None,
     method: Optional[str] = None,
     model: Optional[str] = None,
+    tag: Optional[str] = None,
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
@@ -131,6 +132,7 @@ async def list_experiments(
         status=status,
         method=method,
         model=model,
+        tag=tag,
         skip=skip,
         limit=limit,
     )

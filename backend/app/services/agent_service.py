@@ -102,7 +102,7 @@ class Tool(ABC):
         ...
     
     @abstractmethod
-    def execute(self, input_text: str) -> ToolResult:
+    def execute(self, input_text: str, profiler: Optional["ProfilerContext"] = None) -> ToolResult:
         """Execute the tool with the given input."""
         ...
 
@@ -141,7 +141,7 @@ class WikipediaSearchTool(Tool):
             "Returns the first few sentences of the most relevant article."
         )
     
-    def execute(self, input_text: str) -> ToolResult:
+    def execute(self, input_text: str, profiler: Optional["ProfilerContext"] = None) -> ToolResult:
         start = time.perf_counter()
         query = input_text.strip().strip('"\'')
         
@@ -284,7 +284,7 @@ class CalculatorTool(Tool):
             "Supports: +, -, *, /, **, %, parentheses."
         )
     
-    def execute(self, input_text: str) -> ToolResult:
+    def execute(self, input_text: str, profiler: Optional["ProfilerContext"] = None) -> ToolResult:
         start = time.perf_counter()
         expr = input_text.strip().strip('"\'')
         
@@ -387,7 +387,7 @@ class RetrievalTool(Tool):
             "Returns the most relevant text passages from the knowledge base."
         )
     
-    def execute(self, input_text: str) -> ToolResult:
+    def execute(self, input_text: str, profiler: Optional["ProfilerContext"] = None) -> ToolResult:
         start = time.perf_counter()
         query = input_text.strip().strip('"\'')
         
@@ -588,7 +588,7 @@ class ReActAgent:
         
         return False
     
-    def run(self, question: str) -> AgentResult:
+    def run(self, question: str, profiler: Optional["ProfilerContext"] = None) -> AgentResult:
         """
         Run the ReAct loop to answer a question.
         
@@ -625,7 +625,11 @@ class ReActAgent:
             prompt = self._build_system_prompt(question, trace)
             
             try:
-                gen_result = self._engine.generate(prompt, self._gen_config)
+                if profiler:
+                    with profiler.section("agent_llm_call"):
+                        gen_result = self._engine.generate(prompt, self._gen_config)
+                else:
+                    gen_result = self._engine.generate(prompt, self._gen_config)
                 total_tokens_in += gen_result.tokens_input
                 total_tokens_out += gen_result.tokens_output
             except Exception as e:
@@ -675,7 +679,12 @@ class ReActAgent:
                 step.action_input = parsed["action_input"] or ""
                 
                 tool = self._tools[parsed["action"]]
-                tool_result = tool.execute(step.action_input)
+                if profiler:
+                    with profiler.section(f"tool_{tool.name}"):
+                        tool_result = tool.execute(step.action_input, profiler)
+                else:
+                    tool_result = tool.execute(step.action_input)
+                    
                 step.observation = tool_result.output
                 tool_call_count += 1
                 

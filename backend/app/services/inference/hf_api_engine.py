@@ -24,6 +24,7 @@ from app.services.inference.base import (
     GenerationConfig,
     GenerationResult,
 )
+from app.models.run import FailureMode
 
 logger = logging.getLogger(__name__)
 
@@ -90,11 +91,6 @@ class HFAPIEngine(InferenceEngine):
         self._client = self._make_client()
         logger.info(f"HFAPIEngine: switched to model {model_name} (provider={self._provider})") 
     
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10),
-        retry=retry_if_not_exception_type(ValueError)
-    )
     def generate(
         self,
         prompt: str,
@@ -138,14 +134,20 @@ class HFAPIEngine(InferenceEngine):
             # Get token counts from response usage
             tokens_input = response.usage.prompt_tokens if response.usage else len(prompt.split())
             tokens_output = response.usage.completion_tokens if response.usage else len(generated_text.split())
+            finish_reason = response.choices[0].finish_reason or "stop"
+            
+            failure_mode = None
+            if finish_reason == "length":
+                failure_mode = FailureMode.TRUNCATED
 
             return GenerationResult(
                 text=generated_text,
                 tokens_input=tokens_input,
                 tokens_output=tokens_output,
                 latency_ms=latency_ms,
-                finish_reason=response.choices[0].finish_reason or "stop",
+                finish_reason=finish_reason,
                 gpu_memory_mb=None,  # N/A for API
+                failure_mode=failure_mode,
             )
 
         except ValueError as e:
@@ -156,7 +158,27 @@ class HFAPIEngine(InferenceEngine):
         except Exception as e:
             latency_ms = (time.perf_counter() - start_time) * 1000
             logger.error(f"HF API inference failed (provider={self._provider}, model={self._model_name}): {e}")
-            raise RuntimeError(f"HF API inference failed: {str(e)}") from e
+            
+            error_str = str(e).lower()
+            failure_mode = FailureMode.API_ERROR
+            if "timeout" in error_str:
+                failure_mode = FailureMode.TIMEOUT
+            elif "context" in error_str or "length" in error_str or "exceed" in error_str:
+                failure_mode = FailureMode.CONTEXT_EXCEEDED
+            elif "rate limit" in error_str or "429" in error_str:
+                 # It's an API error but specifically rate limit. We could add RATE_LIMIT but API_ERROR is fine for now
+                 pass
+
+            return GenerationResult(
+                text="",
+                tokens_input=len(prompt.split()),
+                tokens_output=0,
+                latency_ms=latency_ms,
+                finish_reason="error",
+                gpu_memory_mb=None,
+                failure_mode=failure_mode,
+                error_message=str(e),
+            )
     
     def generate_batch(
         self,

@@ -56,12 +56,15 @@ class RunSummary(BaseModel):
     parsed_answer: Optional[str] = None
     semantic_similarity: Optional[float] = None
     latency_ms: Optional[float] = None
-    input_text: str = ""
-    output_text: Optional[str] = None
+    prompt: str = ""
+    raw_output: Optional[str] = None
     expected_output: Optional[str] = None
     faithfulness_score: Optional[float] = None
     context_relevance_score: Optional[float] = None
     attempt: Optional[int] = None
+    agent_trace: Optional[Dict[str, Any]] = None
+    failure_mode: Optional[str] = None
+    error_message: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 

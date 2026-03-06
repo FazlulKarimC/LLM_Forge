@@ -4,6 +4,7 @@ from typing import List
 
 from app.services.inference.openai_engine import OpenAIEngine
 from app.services.inference.base import GenerationConfig
+from app.models.run import FailureMode
 
 class TestOpenAIEngine:
     def test_initialization(self):
@@ -61,8 +62,9 @@ class TestOpenAIEngine:
         engine = OpenAIEngine(base_url="http://test.local/v1", api_key="key", model_name="test-model")
         config = GenerationConfig(temperature=0.5, max_tokens=100, top_p=0.9)
         
-        with pytest.raises(Exception):
-            engine.generate("Hello world", config)
+        result = engine.generate("Hello world", config)
+        assert result.failure_mode == FailureMode.UNKNOWN
+        assert "API Error" in result.error_message
 
     @patch('app.services.inference.openai_engine.OpenAIEngine.generate')
     def test_generate_batch(self, mock_generate):

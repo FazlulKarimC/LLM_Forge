@@ -189,6 +189,7 @@ class ExperimentCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     description: Optional[str] = None
     config: ExperimentConfig
+    tags: Optional[List[str]] = Field(default=None, description="Free-form labels for organization")
 
 
 class ExperimentResponse(BaseModel):
@@ -202,6 +203,8 @@ class ExperimentResponse(BaseModel):
     started_at: Optional[datetime]
     completed_at: Optional[datetime]
     error_message: Optional[str]
+    tags: Optional[List[str]] = None
+    run_manifest: Optional[Dict[str, Any]] = None
     
     # Pydantic v2 style — replaces deprecated inner `class Config`
     model_config = ConfigDict(from_attributes=True)

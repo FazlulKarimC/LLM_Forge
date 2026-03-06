@@ -113,14 +113,35 @@ class ExperimentService:
         Returns:
             Created experiment with generated ID
         """
+        import hashlib
+        
+        config_dict = data.config.model_dump()
+        
+        # Build immutable run manifest for reproducibility
+        manifest_data = {
+            "dataset_name": data.config.dataset_name,
+            "model_name": data.config.model_name,
+            "provider": "hf_api",
+            "reasoning_method": data.config.reasoning_method.value,
+            "hyperparameters": config_dict.get("hyperparameters", {}),
+            "num_samples": data.config.num_samples,
+            "rag": config_dict.get("rag"),
+            "agent": config_dict.get("agent"),
+            "optimization": config_dict.get("optimization"),
+        }
+        manifest_json = json.dumps(manifest_data, sort_keys=True, default=str)
+        manifest_data["manifest_hash"] = hashlib.sha256(manifest_json.encode()).hexdigest()
+        
         experiment = Experiment(
             name=data.name,
             description=data.description,
-            config=data.config.model_dump(),
+            config=config_dict,
             method=data.config.reasoning_method.value,
             model_name=data.config.model_name,
             dataset_name=data.config.dataset_name,
             status=ExperimentStatus.PENDING,
+            tags=data.tags or [],
+            run_manifest=manifest_data,
         )
         self.db.add(experiment)
         await self.db.flush()
@@ -155,6 +176,7 @@ class ExperimentService:
         status: Optional[ExperimentStatus] = None,
         method: Optional[str] = None,
         model: Optional[str] = None,
+        tag: Optional[str] = None,
         skip: int = 0,
         limit: int = 20,
     ) -> ExperimentListResponse:
@@ -165,6 +187,7 @@ class ExperimentService:
             status: Filter by status
             method: Filter by reasoning method
             model: Filter by model name
+            tag: Filter by tag (experiments containing this tag)
             skip: Pagination offset
             limit: Max results
         
@@ -181,6 +204,11 @@ class ExperimentService:
             conditions.append(Experiment.method == method)
         if model:
             conditions.append(Experiment.model_name.ilike(f"%{model}%"))
+        if tag:
+            # JSONB array containment — works on PostgreSQL
+            from sqlalchemy import cast, type_coerce
+            from sqlalchemy.dialects.postgresql import JSONB
+            conditions.append(Experiment.tags.cast(JSONB).contains([tag]))
         
         # Count total matching
         count_query = select(func.count(Experiment.id)).where(and_(*conditions))
@@ -654,8 +682,8 @@ class ExperimentService:
                         
                     runs_batch_data.append({
                             "example_id": item["id"],
-                            "input_text": prompts[local_idx],
-                            "output_text": result.text,
+                            "prompt": prompts[local_idx],
+                            "raw_output": result.text,
                             "expected_output": item["answer"],
                             "is_correct": is_exact or is_substring,
                             "score": f1_score,
@@ -667,6 +695,8 @@ class ExperimentService:
                             "tokens_output": result.tokens_output,
                             "latency_ms": result.latency_ms,
                             "gpu_memory_mb": result.gpu_memory_mb,
+                            "failure_mode": result.failure_mode,
+                            "error_message": result.error_message,
                             "attempt": current_attempt,
                         })
                     
@@ -693,7 +723,7 @@ class ExperimentService:
                             # react_agent.run() makes multiple sync HTTP calls;
                             # offload to thread-pool to keep the event loop free.
                             agent_result = await asyncio.to_thread(
-                                react_agent.run, item["question"]
+                                react_agent.run, item["question"], profiler
                             )
                         
                         with profiler.section("parsing"):
@@ -715,8 +745,8 @@ class ExperimentService:
                         
                         runs_batch_data.append({
                             "example_id": item["id"],
-                            "input_text": prompt,
-                            "output_text": raw_output,
+                            "prompt": prompt,
+                            "raw_output": raw_output,
                             "expected_output": item["answer"],
                             "is_correct": is_exact or is_substring,
                             "score": f1_score,
@@ -860,8 +890,8 @@ class ExperimentService:
                     
                     runs_batch_data.append({
                         "example_id": item["id"],
-                        "input_text": prompt,
-                        "output_text": result.text,
+                        "prompt": prompt,
+                        "raw_output": result.text,
                         "expected_output": item["answer"],
                         "is_correct": is_exact or is_substring,
                         "score": f1_score,
@@ -877,6 +907,8 @@ class ExperimentService:
                         "faithfulness_score": faithfulness,
                         "retrieved_chunks": {"chunks": context_chunks} if use_rag else None,
                         "context_relevance_score": ctx_relevance,
+                        "failure_mode": result.failure_mode,
+                        "error_message": result.error_message,
                         "attempt": current_attempt,
                     })
 
@@ -896,29 +928,20 @@ class ExperimentService:
             wall_end_for_metrics = _time.perf_counter()
             wall_ms = (wall_end_for_metrics - wall_start) * 1000
             await metrics_svc.compute_and_save(experiment_id, wall_clock_ms=wall_ms)
-            await self.db.commit()
-            logger.info("[EXECUTE] ✓ Metrics computed and saved")
             
             # ─── Step 9b: Save optimization report into raw_metrics ───
             wall_end = _time.perf_counter()
             opt_report.total_wall_time_ms = (wall_end - wall_start) * 1000
-            opt_report.cache_stats = cache.stats() if cache else {}
-            opt_report.profiling_summary = profiler.summary()
-            opt_report.batch_stats = batch_stats
             
-            # Update raw_metrics on the latest Result row
-            from sqlalchemy import select
-            from app.models.result import Result
-            result_row = await self.db.execute(
-                select(Result).where(Result.experiment_id == experiment_id)
-                .order_by(Result.computed_at.desc()).limit(1)
-            )
-            result_obj = result_row.scalar_one_or_none()
+            res_query = select(Result).where(Result.experiment_id == experiment_id)
+            res_result = await self.db.execute(res_query)
+            result_obj = res_result.scalar_one_or_none()
+            
             if result_obj:
-                from sqlalchemy.orm.attributes import flag_modified
                 existing_raw = dict(result_obj.raw_metrics or {})
                 existing_raw["optimization"] = opt_report.to_dict()
                 result_obj.raw_metrics = existing_raw
+                from sqlalchemy.orm.attributes import flag_modified
                 flag_modified(result_obj, "raw_metrics")
                 await self.db.flush()
                 await self.db.commit()

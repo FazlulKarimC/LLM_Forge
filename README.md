@@ -1,5 +1,7 @@
 # LlmForge
 
+[![CI](https://github.com/FazlulKarimC/LLM_Forge/actions/workflows/ci.yml/badge.svg)](https://github.com/FazlulKarimC/LLM_Forge/actions/workflows/ci.yml)
+
 > A config-driven experimentation platform for systematically comparing LLM reasoning strategies — Naive Prompting, Chain-of-Thought, RAG, and ReAct Agents — with full metrics tracking, a research-grade dashboard, and support for both HuggingFace and Custom Hosted OpenAI-compatible models.
 
 [![Python](https://img.shields.io/badge/Python-3.11+-3776ab?logo=python&logoColor=white)](https://python.org)
@@ -169,15 +171,6 @@ curl http://localhost:8000/api/v1/results/{id}/metrics
 | `math_reasoning` | GSM8K-style Word Problems | 40 |
 | `react_bench` | Tool-use and Iterative Evaluation | 20 |
 | `knowledge_base` | RAG-focused Grounded QA | 50 |
-
----
-
-## Internal Code Documentation
-
-- **[DESIGN_SYSTEM.md](./DESIGN_SYSTEM.md)** — Frontend component UI rules, Tailwind v4 specs, 4-color unified palette.
-- **[OPTIMIZATION_GUIDE.md](./OPTIMIZATION_GUIDE.md)** — Core architectures regarding `PromptCache`, batch `ThreadPoolExecutor` parallelization, and `ProfilerContext` bottlenecks.
-- **[PHASES.md](./PHASES.md)** — Historical context log of the project's entire build genesis.
-- **Swagger Docs:** `http://localhost:8000/docs`
 
 ---
 
