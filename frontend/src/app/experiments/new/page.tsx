@@ -36,6 +36,7 @@ export default function NewExperimentPage() {
         model_name: string;
         reasoning_method: "naive" | "cot" | "react";
         dataset_name: string;
+        provider: "auto" | "hf_api" | "openrouter" | "groq" | "custom";
         temperature: number;
         max_tokens: number;
         num_samples: number;
@@ -54,6 +55,7 @@ export default function NewExperimentPage() {
         model_name: "meta-llama/Llama-3.2-1B-Instruct",
         reasoning_method: "naive",
         dataset_name: "trivia_qa",
+        provider: "auto",
         temperature: 0.1,
         max_tokens: 150,
         num_samples: 10,
@@ -159,6 +161,7 @@ export default function NewExperimentPage() {
             model_name: formData.model_name === "custom_hosted" ? customModelId : formData.model_name,
             reasoning_method: formData.reasoning_method,
             dataset_name: formData.dataset_name,
+            provider: formData.provider,
             hyperparameters: {
                 temperature: formData.temperature,
                 max_tokens: formData.max_tokens,
@@ -319,6 +322,27 @@ export default function NewExperimentPage() {
                                     <option value="react">ReAct Agent</option>
                                 </select>
                             </div>
+                            <div>
+                                <label className="block text-sm font-medium text-(--text-body)">Inference Provider</label>
+                                <select
+                                    value={formData.provider}
+                                    onChange={(e) => setFormData({ ...formData, provider: e.target.value as "auto" | "hf_api" | "openrouter" | "groq" | "custom" })}
+                                    className="mt-1 block w-full border border-border rounded-lg px-3 py-2 bg-(--bg-card) text-(--text-body)"
+                                >
+                                    <option value="auto">🔄 Auto (best available)</option>
+                                    <option value="hf_api">🤗 HF Inference API</option>
+                                    <option value="openrouter">🌐 OpenRouter</option>
+                                    <option value="groq">⚡ Groq</option>
+                                    <option value="custom">🔌 Custom Endpoint</option>
+                                </select>
+                                <p className="text-xs text-(--text-muted) mt-1">
+                                    {formData.provider === "auto" && "Router picks the best available provider with automatic fallback"}
+                                    {formData.provider === "hf_api" && "HuggingFace Inference API — free, but can be slow"}
+                                    {formData.provider === "openrouter" && "OpenRouter — free models via :free suffix (20 req/min)"}
+                                    {formData.provider === "groq" && "Groq — fast inference, strict rate limits (30 req/min)"}
+                                    {formData.provider === "custom" && "Your own OpenAI-compatible endpoint"}
+                                </p>
+                            </div>
                         </div>
 
                         {/* Custom Model Settings */}
@@ -450,6 +474,11 @@ export default function NewExperimentPage() {
                                     <optgroup label="🤖 Agent">
                                         <option value="react_bench">ReAct Agent Bench (30 Qs)</option>
                                     </optgroup>
+                                    <optgroup label="🛡️ Adversarial / Red-Team">
+                                        <option value="prompt_injection">Prompt Injection (10 Qs)</option>
+                                        <option value="jailbreak">Jailbreak Attempts (10 Qs)</option>
+                                        <option value="edge_cases">Edge Cases (10 Qs)</option>
+                                    </optgroup>
                                 </select>
                                 <p className="text-xs text-(--text-muted) mt-1">
                                     {formData.dataset_name === "trivia_qa" && "Single-hop factual recall questions"}
@@ -459,6 +488,9 @@ export default function NewExperimentPage() {
                                     {formData.dataset_name === "multi_hop" && "Requires combining 2+ facts — ideal for CoT & ReAct"}
                                     {formData.dataset_name === "math_reasoning" && "GSM8K-style word problems — ideal for CoT & calculator"}
                                     {formData.dataset_name === "react_bench" && "⭐ Multi-tool questions requiring search + calculation"}
+                                    {formData.dataset_name === "prompt_injection" && "🛡️ Tests resistance to instruction override attacks"}
+                                    {formData.dataset_name === "jailbreak" && "🛡️ Tests resistance to DAN-style jailbreak patterns"}
+                                    {formData.dataset_name === "edge_cases" && "🛡️ Tests graceful handling of unusual inputs"}
                                 </p>
                             </div>
                             <div>

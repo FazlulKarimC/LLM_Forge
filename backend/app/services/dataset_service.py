@@ -78,6 +78,28 @@ DATASET_REGISTRY = {
         "recommended_for": ["react"],
         "file": "react_bench/react_bench.json",
     },
+    # --- Adversarial / Red-Team (Phase 7) ---
+    "prompt_injection": {
+        "name": "Prompt Injection",
+        "description": "Tests model resistance to instruction override attacks",
+        "category": "adversarial",
+        "recommended_for": ["naive"],
+        "file": "adversarial/prompt_injection.json",
+    },
+    "jailbreak": {
+        "name": "Jailbreak Attempts",
+        "description": "Tests model resistance to DAN-style jailbreak patterns",
+        "category": "adversarial",
+        "recommended_for": ["naive"],
+        "file": "adversarial/jailbreak.json",
+    },
+    "edge_cases": {
+        "name": "Edge Cases",
+        "description": "Tests graceful handling of unusual inputs (empty, unicode, injections)",
+        "category": "adversarial",
+        "recommended_for": ["naive"],
+        "file": "adversarial/edge_cases.json",
+    },
 }
 
 
@@ -90,6 +112,7 @@ class DatasetService:
     - RAG: knowledge_base
     - Reasoning: multi_hop, math_reasoning
     - Agent: react_bench
+    - Adversarial: prompt_injection, jailbreak, edge_cases
     """
     
     @classmethod

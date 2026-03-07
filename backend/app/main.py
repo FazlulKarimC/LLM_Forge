@@ -16,6 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.api import experiments, results, health
+from app.api import prompts as prompts_api
 from app.core.middleware import RequestContextMiddleware
 from app.core.custom_exceptions import AppException
 from fastapi.exceptions import RequestValidationError
@@ -160,6 +161,11 @@ def create_application() -> FastAPI:
         results.router,
         prefix=f"{settings.API_V1_PREFIX}/results",
         tags=["Results"],
+    )
+    app.include_router(
+        prompts_api.router,
+        prefix=f"{settings.API_V1_PREFIX}/prompts",
+        tags=["Prompts"],
     )
     
     return app

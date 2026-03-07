@@ -25,6 +25,7 @@ from app.core.database import Base
 from app.models.experiment import Experiment
 from app.models.result import Result
 from app.models.run import Run
+from app.models.prompt_version import PromptVersion
 
 # Alembic Config object
 config = context.config

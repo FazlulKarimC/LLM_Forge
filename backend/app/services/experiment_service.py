@@ -23,6 +23,7 @@ from sqlalchemy import select, func, and_
 
 from app.core.config import settings
 from app.models.experiment import Experiment
+from app.models.result import Result
 from app.schemas.experiment import (
     ExperimentCreate,
     ExperimentResponse,
@@ -426,32 +427,72 @@ class ExperimentService:
             )
             
             
-            # Step 3: Initialize inference engine
+            # Step 3: Initialize inference engine (Phase 6 — provider-aware)
             model_name = experiment_response.config.model_name
+            provider = getattr(experiment_response.config, 'provider', None)
+            provider_value = provider.value if provider else "auto"
             engine_type = settings.INFERENCE_ENGINE
             
-            # Auto-detect mock models regardless of INFERENCE_ENGINE setting
+            # Auto-detect mock models regardless of provider setting
             if "mock" in model_name.lower():
                 engine_type = "mock"
                 logger.info("[EXECUTE] Auto-detected mock model '%s', using MockEngine", model_name)
+                engine = MockEngine()
             elif custom_base_url:
-                engine_type = "openai_compatible"
+                engine_type = "custom"
                 logger.info("[EXECUTE] Custom base URL detected, using OpenAIEngine")
-            
-            logger.info("[EXECUTE] Engine type: %s", engine_type)
-            
-            if engine_type == "hf_api":
-                engine = HFAPIEngine(model_name=model_name)
-            elif engine_type == "openai_compatible":
                 from app.services.inference.openai_engine import OpenAIEngine
                 engine = OpenAIEngine(
                     base_url=custom_base_url, 
                     api_key=custom_api_key, 
                     model_name=model_name
                 )
+            elif provider_value == "openrouter":
+                engine_type = "openrouter"
+                from app.services.inference.openrouter_engine import OpenRouterEngine
+                engine = OpenRouterEngine(model_name=model_name)
+            elif provider_value == "groq":
+                engine_type = "groq"
+                from app.services.inference.groq_engine import GroqEngine
+                engine = GroqEngine(model_name=model_name)
+            elif provider_value == "auto":
+                # Build fallback chain: primary engine + available alternatives
+                engine_type = "auto (router)"
+                from app.services.inference.provider_router import ProviderRouter
+                
+                engines = []
+                # Primary: HF API (always available if token is set)
+                if settings.HF_TOKEN:
+                    engines.append(HFAPIEngine(model_name=model_name))
+                # Fallback 1: OpenRouter
+                if settings.OPENROUTER_API_KEY:
+                    try:
+                        from app.services.inference.openrouter_engine import OpenRouterEngine
+                        engines.append(OpenRouterEngine(model_name=model_name))
+                    except Exception as e:
+                        logger.warning("[EXECUTE] Could not init OpenRouter: %s", e)
+                # Fallback 2: Groq
+                if settings.GROQ_API_KEY:
+                    try:
+                        from app.services.inference.groq_engine import GroqEngine
+                        engines.append(GroqEngine(model_name=model_name))
+                    except Exception as e:
+                        logger.warning("[EXECUTE] Could not init Groq: %s", e)
+                
+                if not engines:
+                    # No API keys configured — fall back to HF API without key
+                    engines.append(HFAPIEngine(model_name=model_name))
+                
+                engine = ProviderRouter(engines=engines)
+                logger.info("[EXECUTE] Router initialized with %d providers", len(engines))
             else:
-                engine = MockEngine()
+                # Default: hf_api or settings-based
+                if engine_type == "hf_api":
+                    engine = HFAPIEngine(model_name=model_name)
+                else:
+                    engine = MockEngine()
             
+            logger.info("[EXECUTE] Engine type: %s", engine_type)
             engine.load_model(experiment_response.config.model_name)
             logger.info("[EXECUTE] ✓ Engine loaded: %s", experiment_response.config.model_name)
             

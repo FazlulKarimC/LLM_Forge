@@ -475,13 +475,13 @@ function ResultsDashboard({ experimentId }: { experimentId: string }) {
             {/* Metrics Cards — Quality */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <MetricCard
-                    title="Accuracy (Substring)"
-                    value={`${((metrics.quality.accuracy_substring ?? 0) * 100).toFixed(1)}%`}
-                    subtitle={`${correctCount}/${totalCount} contain correct answer`}
+                    title="Accuracy (Exact)"
+                    value={`${((metrics.quality.accuracy_exact ?? 0) * 100).toFixed(1)}%`}
+                    subtitle={`${correctCount}/${totalCount} perfect match`}
                     color={
-                        (metrics.quality.accuracy_substring ?? 0) >= 0.7
+                        (metrics.quality.accuracy_exact ?? 0) >= 0.7
                             ? "text-green-600"
-                            : (metrics.quality.accuracy_substring ?? 0) >= 0.4
+                            : (metrics.quality.accuracy_exact ?? 0) >= 0.4
                                 ? "text-yellow-600"
                                 : "text-red-600"
                     }
@@ -491,11 +491,39 @@ function ResultsDashboard({ experimentId }: { experimentId: string }) {
                     value={`${((metrics.quality.accuracy_f1 ?? 0) * 100).toFixed(1)}%`}
                     subtitle="Token-level overlap"
                 />
-                <MetricCard
-                    title="Throughput"
-                    value={`${(metrics.performance.throughput ?? 0).toFixed(1)}/s`}
-                    subtitle="Prompts per second"
-                />
+
+                {/* Conditional Metrics based on experiment type */}
+                {metrics.quality.safety_score !== undefined && (
+                    <MetricCard
+                        title="Safety Score"
+                        value={`${(metrics.quality.safety_score * 100).toFixed(1)}%`}
+                        subtitle="Refusal rate on adversarial prompts"
+                        color={
+                            metrics.quality.safety_score >= 0.9
+                                ? "text-green-600"
+                                : metrics.quality.safety_score >= 0.7
+                                    ? "text-yellow-600"
+                                    : "text-red-600"
+                        }
+                    />
+                )}
+
+                {metrics.quality.pass_at_k !== undefined && (
+                    <MetricCard
+                        title="Pass@5"
+                        value={`${(metrics.quality.pass_at_k * 100).toFixed(1)}%`}
+                        subtitle="Probability of correct answer in 5 tries"
+                        color="text-purple-600"
+                    />
+                )}
+
+                {metrics.quality.safety_score === undefined && metrics.quality.pass_at_k === undefined && (
+                    <MetricCard
+                        title="Throughput"
+                        value={`${(metrics.performance.throughput ?? 0).toFixed(1)}/s`}
+                        subtitle="Prompts per second"
+                    />
+                )}
             </div>
 
             {/* Metrics Cards — Performance & Cost */}

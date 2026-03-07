@@ -42,6 +42,11 @@ PRICING_TABLE: dict[str, ModelPricing] = {
     "llama-3.1-8b-instant":                      ModelPricing(0.0, 0.0, "groq"),
     "gemma2-9b-it":                              ModelPricing(0.0, 0.0, "groq"),
     "mixtral-8x7b-32768":                        ModelPricing(0.0, 0.0, "groq"),
+
+    # --- OpenRouter (free tier — $0/token for :free models) ---
+    "meta-llama/llama-3.1-8b-instruct:free":     ModelPricing(0.0, 0.0, "openrouter"),
+    "qwen/qwen3-8b:free":                        ModelPricing(0.0, 0.0, "openrouter"),
+    "google/gemma-3-1b-it:free":                 ModelPricing(0.0, 0.0, "openrouter"),
 }
 
 # Default pricing for unknown models

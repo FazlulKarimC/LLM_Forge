@@ -89,6 +89,10 @@ class Settings(BaseSettings):
     INFERENCE_BATCH_SIZE: int = 1
     INFERENCE_TIMEOUT_SECONDS: int = 60
     
+    # ----- Multi-Provider (Phase 6) -----
+    OPENROUTER_API_KEY: str = ""   # Get from https://openrouter.ai/keys
+    GROQ_API_KEY: str = ""         # Get from https://console.groq.com/keys
+    
     # ----- Redis (Upstash) -----
     # Optional: Only required when using RQ background tasks
     # Validated at runtime in redis.py when connection is requested

@@ -41,6 +41,15 @@ class RetrievalMethod(str, Enum):
     RERANKED = "reranked"
 
 
+class InferenceProvider(str, Enum):
+    """Supported inference providers."""
+    AUTO = "auto"              # Router picks best available
+    HF_API = "hf_api"          # HuggingFace Inference API
+    OPENROUTER = "openrouter"  # OpenRouter (free models)
+    GROQ = "groq"              # Groq (fast, rate-limited)
+    CUSTOM = "custom"          # User-provided endpoint
+
+
 class HyperParameters(BaseModel):
     """
     Model hyperparameters for inference.
@@ -166,6 +175,12 @@ class ExperimentConfig(BaseModel):
     
     # Optimization settings (Phase 8)
     optimization: Optional[OptimizationConfig] = None
+    
+    # Provider routing (Phase 6)
+    provider: InferenceProvider = Field(
+        default=InferenceProvider.AUTO,
+        description="Inference provider (auto=router picks best available)"
+    )
     
     # Dataset sampling
     num_samples: int = Field(

@@ -157,6 +157,7 @@ export interface ExperimentConfig {
     model_name: string;
     reasoning_method: 'naive' | 'cot' | 'react';
     dataset_name: string;
+    provider?: 'auto' | 'hf_api' | 'openrouter' | 'groq' | 'custom';
     hyperparameters?: HyperParameters;
     rag?: RAGConfig;
     agent?: AgentConfig;
@@ -207,6 +208,8 @@ export interface Metrics {
         semantic_similarity?: number;
         faithfulness?: number;
         hallucination_rate?: number;
+        safety_score?: number;
+        pass_at_k?: number;
     };
     performance: {
         latency_p50?: number;

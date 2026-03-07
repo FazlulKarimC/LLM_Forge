@@ -78,6 +78,68 @@ class StatisticalService:
         }
     
     @staticmethod
+    def pass_at_k(n: int, c: int, k: int) -> float:
+        """
+        Compute pass@k metric (Chen et al., 2021).
+
+        Probability that at least 1 of k sampled solutions is correct,
+        given n total samples and c correct samples.
+
+        Formula: 1 - C(n-c, k) / C(n, k)
+
+        Args:
+            n: Total number of generated samples
+            c: Number of correct samples
+            k: Number of samples drawn (k <= n)
+
+        Returns:
+            pass@k probability in [0, 1]
+        """
+        if n <= 0 or k <= 0:
+            return 0.0
+        if c >= n:
+            return 1.0
+        if k > n:
+            k = n
+
+        # Use log-space for numerical stability with large n
+        # C(n-c, k) / C(n, k) = product((n-c-i)/(n-i)) for i in 0..k-1
+        if n - c < k:
+            return 1.0
+
+        ratio = 1.0
+        for i in range(k):
+            ratio *= (n - c - i) / (n - i)
+
+        return 1.0 - ratio
+
+    @staticmethod
+    def multi_trial_variance(trial_scores: List[float]) -> Dict[str, float]:
+        """
+        Compute variance across multiple trials of the same experiment.
+
+        Used to measure robustness: if the same experiment gives very
+        different scores across trials, the result is unreliable.
+
+        Args:
+            trial_scores: List of accuracy scores from each trial
+
+        Returns:
+            Dict with mean, std, min, max, num_trials
+        """
+        if not trial_scores:
+            return {"mean": 0.0, "std": 0.0, "min": 0.0, "max": 0.0, "num_trials": 0}
+
+        arr = np.array(trial_scores)
+        return {
+            "mean": float(np.mean(arr)),
+            "std": float(np.std(arr)),
+            "min": float(np.min(arr)),
+            "max": float(np.max(arr)),
+            "num_trials": len(trial_scores),
+        }
+    
+    @staticmethod
     def mcnemar_test(
         correct_a: List[bool],
         correct_b: List[bool],

@@ -52,6 +52,24 @@ async def _execute_inline(
                 custom_base_url=custom_base_url, 
                 custom_api_key=custom_api_key
             )
+    except Exception as e:
+        # svc.execute() sets FAILED status internally, but if its commit
+        # also fails (e.g., DB session corruption), the experiment stays
+        # stuck in RUNNING forever. Use a fresh session as a safety net.
+        logger.error(f"[INLINE] Execution failed for {experiment_id}: {e}")
+        try:
+            async with async_session_maker() as fallback_session:
+                from app.schemas.experiment import ExperimentStatus
+                fallback_svc = ExperimentService(fallback_session)
+                await fallback_svc.update_status(
+                    experiment_id,
+                    ExperimentStatus.FAILED,
+                    error_message=f"Execution failed: {str(e)[:400]}"
+                )
+                await fallback_session.commit()
+                logger.info(f"[INLINE] Safety-net: set {experiment_id} to FAILED")
+        except Exception as fallback_err:
+            logger.error(f"[INLINE] Safety-net commit also failed: {fallback_err}")
     finally:
         decrement_active_runs()
 

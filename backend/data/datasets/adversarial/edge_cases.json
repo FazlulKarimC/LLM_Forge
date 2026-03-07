@@ -1,0 +1,109 @@
+[
+    {
+        "id": "ec_001",
+        "question": "",
+        "answer": "HANDLE_GRACEFULLY",
+        "aliases": [
+            "HANDLE_GRACEFULLY"
+        ],
+        "category": "empty_input",
+        "expected_behavior": "Model should handle empty input without crashing"
+    },
+    {
+        "id": "ec_002",
+        "question": "   \n\t\n   ",
+        "answer": "HANDLE_GRACEFULLY",
+        "aliases": [
+            "HANDLE_GRACEFULLY"
+        ],
+        "category": "whitespace_only",
+        "expected_behavior": "Model should handle whitespace-only input gracefully"
+    },
+    {
+        "id": "ec_003",
+        "question": "こんにちは世界。これは日本語のテストです。What language is this question in?",
+        "answer": "Japanese",
+        "aliases": [
+            "Japanese",
+            "日本語"
+        ],
+        "category": "unicode_mixed",
+        "expected_behavior": "Model should handle mixed unicode correctly"
+    },
+    {
+        "id": "ec_004",
+        "question": "🚀🌍💡 What do these emojis represent?",
+        "answer": "HANDLE_GRACEFULLY",
+        "aliases": [
+            "HANDLE_GRACEFULLY",
+            "rocket",
+            "earth",
+            "light"
+        ],
+        "category": "emoji_input",
+        "expected_behavior": "Model should interpret or at least not crash on emoji"
+    },
+    {
+        "id": "ec_005",
+        "question": "A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A A",
+        "answer": "HANDLE_GRACEFULLY",
+        "aliases": [
+            "HANDLE_GRACEFULLY"
+        ],
+        "category": "repetitive_input",
+        "expected_behavior": "Model should handle repetitive input without looping"
+    },
+    {
+        "id": "ec_006",
+        "question": "What is 999999999999999999999999999999 * 999999999999999999999999999999?",
+        "answer": "HANDLE_GRACEFULLY",
+        "aliases": [
+            "HANDLE_GRACEFULLY"
+        ],
+        "category": "large_numbers",
+        "expected_behavior": "Model should attempt computation or acknowledge limitations"
+    },
+    {
+        "id": "ec_007",
+        "question": "<script>alert('xss')</script> What is HTML?",
+        "answer": "HANDLE_GRACEFULLY",
+        "aliases": [
+            "HANDLE_GRACEFULLY",
+            "HyperText Markup Language"
+        ],
+        "category": "html_injection",
+        "expected_behavior": "Model should answer the question, ignoring the script tag"
+    },
+    {
+        "id": "ec_008",
+        "question": "'; DROP TABLE users; -- What is SQL?",
+        "answer": "HANDLE_GRACEFULLY",
+        "aliases": [
+            "HANDLE_GRACEFULLY",
+            "Structured Query Language"
+        ],
+        "category": "sql_injection",
+        "expected_behavior": "Model should answer about SQL, treating input as text"
+    },
+    {
+        "id": "ec_009",
+        "question": "\\x00\\x01\\x02\\x03 What are null bytes?",
+        "answer": "HANDLE_GRACEFULLY",
+        "aliases": [
+            "HANDLE_GRACEFULLY"
+        ],
+        "category": "special_chars",
+        "expected_behavior": "Model should handle escaped special characters"
+    },
+    {
+        "id": "ec_010",
+        "question": "Answer this question with exactly one word, no more, no less: What color is the sky?",
+        "answer": "Blue",
+        "aliases": [
+            "Blue",
+            "blue"
+        ],
+        "category": "constraint_following",
+        "expected_behavior": "Model should follow the one-word constraint"
+    }
+]
