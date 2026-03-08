@@ -13,7 +13,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { getDashboardStats, listExperiments, deleteExperiment, runExperiment, getReadinessStatus, Experiment } from "@/lib/api";
+import { getDashboardStats, listExperiments, deleteExperiment, runExperiment, getReadinessStatus, ApiError } from "@/lib/api";
 import { Play, Trash2, Eye, Loader2, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 
@@ -40,7 +40,7 @@ export default function DashboardPage() {
     queryKey: ["readiness"],
     queryFn: getReadinessStatus,
     refetchInterval: 30000, // Refresh every 30s
-    retry: 1,
+    retry: (failureCount, error) => !(error instanceof ApiError && error.statusCode === 408) && failureCount < 1,
   });
 
   const deleteMutation = useMutation({
@@ -96,6 +96,13 @@ export default function DashboardPage() {
   const recentExperiments = experimentsQuery.data?.experiments ?? [];
   const loading = statsQuery.isLoading || experimentsQuery.isLoading;
   const error = statsQuery.error || experimentsQuery.error;
+  const readinessError = readinessQuery.error;
+  const readinessIsWaking = readinessError instanceof ApiError && readinessError.statusCode === 408;
+  const readinessMessage = readinessIsWaking
+    ? "Backend is waking up. Free Hugging Face Spaces can take up to a minute after inactivity."
+    : readinessError instanceof Error
+      ? readinessError.message
+      : "Backend unreachable";
 
   return (
     <div className="min-h-screen bg-(--bg-page)">
@@ -165,9 +172,9 @@ export default function DashboardPage() {
           {readinessQuery.isLoading ? (
             <div className="animate-pulse h-8 bg-(--bg-page) rounded w-48" />
           ) : readinessQuery.error ? (
-            <div className="flex items-center gap-2 text-red-600 text-sm">
-              <span className="inline-block w-2.5 h-2.5 rounded-full bg-red-500" />
-              Backend unreachable
+            <div className={`flex items-center gap-2 text-sm ${readinessIsWaking ? "text-amber-700" : "text-red-600"}`}>
+              <span className={`inline-block w-2.5 h-2.5 rounded-full ${readinessIsWaking ? "bg-amber-400" : "bg-red-500"}`} />
+              {readinessMessage}
             </div>
           ) : (
             <div className="flex flex-wrap gap-6">
@@ -176,10 +183,6 @@ export default function DashboardPage() {
                 const isHealthy = status === "healthy";
                 const isNotConfigured = status === "not_configured";
                 const isArchived = status.startsWith("archived");
-                const isAmber = isArchived;
-                const isGray = isNotConfigured;
-                const isRed = !isHealthy && !isGray && !isAmber;
-
                 let label = "Unhealthy";
                 let dotColor = "bg-red-500";
                 let textColor = "text-red-600";

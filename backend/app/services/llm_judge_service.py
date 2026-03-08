@@ -8,6 +8,8 @@ Uses free HF Inference API with a small instruct model.
 Only evaluates a random subset of runs to stay within free-tier limits.
 """
 
+import asyncio
+import json
 import logging
 import random
 from typing import List, Optional, Dict, Any
@@ -18,6 +20,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.run import Run
+from app.services.inference.base import GenerationConfig
+from app.services.inference.hf_api_engine import HFAPIEngine
 
 logger = logging.getLogger(__name__)
 
@@ -77,7 +81,6 @@ class LLMJudgeService:
         Returns:
             Dictionary with per-dimension scores and metadata
         """
-        # Fetch runs
         query = select(Run).where(Run.experiment_id == experiment_id)
         result = await self.db.execute(query)
         all_runs = result.scalars().all()
@@ -85,40 +88,55 @@ class LLMJudgeService:
         if not all_runs:
             return {"error": "No runs found", "scores": {}}
         
-        # Filter to the right attempt
         if attempt is None:
             attempt = max(r.attempt for r in all_runs)
         runs = [r for r in all_runs if r.attempt == attempt]
         
-        # Sample randomly
         if len(runs) > self.sample_size:
             runs = random.sample(runs, self.sample_size)
         
         logger.info(
-            f"[LLM-JUDGE] Evaluating {len(runs)} sampled runs "
-            f"from experiment {experiment_id} (attempt {attempt})"
+            "[LLM-JUDGE] Evaluating %s sampled runs from experiment %s (attempt %s)",
+            len(runs),
+            experiment_id,
+            attempt,
         )
+
+        try:
+            judge_engine = HFAPIEngine(model_name=self.model_id)
+        except ValueError:
+            logger.warning("[LLM-JUDGE] HF_TOKEN not set, skipping judge evaluation")
+            return {
+                "error": "HF_TOKEN not set",
+                "scores": {},
+                "sample_size": len(runs),
+                "evaluated": 0,
+                "attempt": attempt,
+            }
         
-        # Evaluate each sampled run
         judgments: List[Dict[str, int]] = []
         evaluated_ids = []
-        
-        for run in runs:
-            if not run.output_text or not run.expected_output:
-                continue
-            
-            try:
-                judgment = await self._judge_single(
-                    question=run.input_text,
-                    expected=run.expected_output,
-                    response=run.output_text,
-                )
-                if judgment:
-                    judgments.append(judgment)
-                    evaluated_ids.append(str(run.id))
-            except Exception as e:
-                logger.warning(f"[LLM-JUDGE] Failed to judge run {run.id}: {e}")
-                continue
+
+        try:
+            for run in runs:
+                if not run.raw_output or not run.expected_output:
+                    continue
+                
+                try:
+                    judgment = await self._judge_single(
+                        question=run.prompt,
+                        expected=run.expected_output,
+                        response=run.raw_output,
+                        engine=judge_engine,
+                    )
+                    if judgment:
+                        judgments.append(judgment)
+                        evaluated_ids.append(str(run.id))
+                except Exception as e:
+                    logger.warning("[LLM-JUDGE] Failed to judge run %s: %s", run.id, e)
+                    continue
+        finally:
+            judge_engine.unload_model()
         
         if not judgments:
             return {
@@ -126,9 +144,9 @@ class LLMJudgeService:
                 "scores": {},
                 "sample_size": len(runs),
                 "evaluated": 0,
+                "attempt": attempt,
             }
         
-        # Aggregate scores
         aggregated = {}
         for dim in JUDGE_DIMENSIONS:
             values = [j.get(dim, 0) for j in judgments if dim in j]
@@ -159,71 +177,48 @@ class LLMJudgeService:
         question: str,
         expected: str,
         response: str,
+        engine: HFAPIEngine,
     ) -> Optional[Dict[str, int]]:
         """
         Judge a single (question, expected, response) triple.
         
         Returns dict with coherence, helpfulness, factuality scores (1-5).
         """
-        import json
-        import os
-        
-        hf_token = os.getenv("HF_TOKEN")
-        if not hf_token:
-            logger.warning("[LLM-JUDGE] HF_TOKEN not set, skipping judge evaluation")
-            return None
-        
         prompt = JUDGE_PROMPT_TEMPLATE.format(
-            question=question[:500],  # Truncate for API limits
+            question=question[:500],
             expected=expected[:500],
             response=response[:500],
         )
-        
+
+        generation = await asyncio.to_thread(
+            engine.generate,
+            prompt,
+            GenerationConfig(
+                max_tokens=100,
+                temperature=0.1,
+                top_p=0.9,
+            ),
+        )
+
+        if generation.error_message or not generation.text:
+            logger.warning("[LLM-JUDGE] Judge generation failed: %s", generation.error_message or generation.finish_reason)
+            return None
+
+        json_start = generation.text.find("{")
+        json_end = generation.text.rfind("}") + 1
+        if json_start < 0 or json_end <= json_start:
+            return None
+
         try:
-            import httpx
-            
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                resp = await client.post(
-                    f"https://api-inference.huggingface.co/models/{self.model_id}",
-                    headers={"Authorization": f"Bearer {hf_token}"},
-                    json={
-                        "inputs": prompt,
-                        "parameters": {
-                            "max_new_tokens": 100,
-                            "temperature": 0.1,
-                            "return_full_text": False,
-                        },
-                    },
-                )
-                
-                if resp.status_code != 200:
-                    logger.warning(f"[LLM-JUDGE] HF API returned {resp.status_code}")
-                    return None
-                
-                data = resp.json()
-                if isinstance(data, list) and data:
-                    generated = data[0].get("generated_text", "")
-                else:
-                    return None
-            
-            # Parse JSON from response
-            # Try to find JSON in the response
-            json_start = generated.find("{")
-            json_end = generated.rfind("}") + 1
-            if json_start >= 0 and json_end > json_start:
-                parsed = json.loads(generated[json_start:json_end])
-                
-                # Validate scores are in range
-                result = {}
-                for dim in JUDGE_DIMENSIONS:
-                    val = parsed.get(dim)
-                    if isinstance(val, (int, float)) and 1 <= val <= 5:
-                        result[dim] = int(val)
-                
-                return result if result else None
-            
+            parsed = json.loads(generation.text[json_start:json_end])
+        except json.JSONDecodeError as e:
+            logger.warning("[LLM-JUDGE] Failed to parse judge response: %s", e)
             return None
-            
-        except (json.JSONDecodeError, httpx.HTTPError) as e:
-            logger.warning(f"[LLM-JUDGE] Parse/HTTP error: {e}")
-            return None
+        
+        result = {}
+        for dim in JUDGE_DIMENSIONS:
+            val = parsed.get(dim)
+            if isinstance(val, (int, float)) and 1 <= val <= 5:
+                result[dim] = int(val)
+        
+        return result if result else None

@@ -20,10 +20,10 @@ import {
     exportResults,
     exportMarkdownReport,
     runExperiment,
-    Metrics,
+    ApiError,
     RunSummary,
-    ProfileData,
 } from "@/lib/api";
+import { toast } from "sonner";
 
 interface Props {
     params: Promise<{ id: string }>;
@@ -357,6 +357,7 @@ function ResultsDashboard({ experimentId }: { experimentId: string }) {
     const {
         data: runs,
         isLoading: runsLoading,
+        error: runsError,
     } = useQuery({
         queryKey: ["runs", experimentId],
         queryFn: () => getRunSummaries(experimentId),
@@ -369,7 +370,7 @@ function ResultsDashboard({ experimentId }: { experimentId: string }) {
         try {
             await exportResults(experimentId);
         } catch (e) {
-            console.error("Export failed:", e);
+            toast.error(e instanceof Error ? e.message : "Export failed");
         } finally {
             setExporting(false);
         }
@@ -391,10 +392,13 @@ function ResultsDashboard({ experimentId }: { experimentId: string }) {
     }
 
     if (metricsError || !metrics) {
+        const isMissingResults = metricsError instanceof ApiError && metricsError.statusCode === 404;
         return (
             <div className="card p-6">
-                <p className="text-(--text-muted) text-center py-4">
-                    No results available yet. Run the experiment to see metrics.
+                <p className={`text-center py-4 ${isMissingResults ? "text-(--text-muted)" : "text-(--error)"}`}>
+                    {isMissingResults
+                        ? "Results are not available yet for the latest run."
+                        : `Failed to load metrics: ${metricsError instanceof Error ? metricsError.message : "Unknown error"}`}
                 </p>
             </div>
         );
@@ -437,7 +441,7 @@ function ResultsDashboard({ experimentId }: { experimentId: string }) {
                         try {
                             await exportMarkdownReport(experimentId, undefined, metrics ?? undefined, runs ?? undefined);
                         } catch (e) {
-                            console.error("Markdown export failed:", e);
+                            toast.error(e instanceof Error ? e.message : "Report export failed");
                         } finally {
                             setExporting(false);
                         }
@@ -452,6 +456,22 @@ function ResultsDashboard({ experimentId }: { experimentId: string }) {
                     Export Report
                 </button>
             </div>
+
+            {runsError && (
+                <div className="card p-4 border-l-4 border-l-(--error)">
+                    <p className="text-sm text-(--error)">
+                        Failed to load per-run results: {runsError instanceof Error ? runsError.message : "Unknown error"}
+                    </p>
+                </div>
+            )}
+
+            {!runsError && totalCount === 0 && (
+                <div className="card p-6">
+                    <p className="text-sm text-(--text-muted)">
+                        Metrics loaded, but no per-run logs were returned for the latest attempt.
+                    </p>
+                </div>
+            )}
 
             {/* AI Summary */}
             {metrics.summary_text && (

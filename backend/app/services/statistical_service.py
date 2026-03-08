@@ -261,6 +261,11 @@ class StatisticalService:
         
         if not runs_a or not runs_b:
             raise ValueError("Both experiments must have runs to compare")
+
+        latest_attempt_a = max(run.attempt for run in runs_a)
+        latest_attempt_b = max(run.attempt for run in runs_b)
+        runs_a = [run for run in runs_a if run.attempt == latest_attempt_a]
+        runs_b = [run for run in runs_b if run.attempt == latest_attempt_b]
         
         # Index runs by example_id for matching
         runs_a_by_example = {r.example_id: r for r in runs_a}
@@ -299,8 +304,8 @@ class StatisticalService:
                     "example_id": example_id,
                     "a_correct": ca,
                     "b_correct": cb,
-                    "a_output": run_a.output_text,
-                    "b_output": run_b.output_text,
+                    "a_output": run_a.raw_output,
+                    "b_output": run_b.raw_output,
                     "expected": run_a.expected_output,
                     "a_score": sa,
                     "b_score": sb,

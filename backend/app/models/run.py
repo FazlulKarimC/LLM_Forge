@@ -48,8 +48,8 @@ class Run(Base):
         example_id: ID from dataset (for reproducibility)
         
         Input/Output:
-        - input_text: Full prompt sent to model
-        - output_text: Generated response
+        - prompt: Full prompt sent to model
+        - raw_output: Generated response
         - expected_output: Ground truth answer
         
         Evaluation:
@@ -71,7 +71,7 @@ class Run(Base):
     
     # Unique constraint for idempotency: prevents duplicate runs per example
     __table_args__ = (
-        UniqueConstraint("experiment_id", "example_id", name="uq_runs_experiment_example"),
+        UniqueConstraint("experiment_id", "example_id", "attempt", name="uq_runs_experiment_example_attempt"),
     )
     
     id: Mapped[uuid.UUID] = mapped_column(

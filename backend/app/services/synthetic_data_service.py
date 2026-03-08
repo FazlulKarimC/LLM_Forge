@@ -5,11 +5,14 @@ Generates QA pairs from knowledge base chunks using a free HF instruct model.
 Reduces manual effort for creating evaluation datasets.
 """
 
-import logging
-import os
+import asyncio
 import json
+import logging
 import random
 from typing import List, Dict, Any, Optional
+
+from app.services.inference.base import GenerationConfig
+from app.services.inference.hf_api_engine import HFAPIEngine
 
 logger = logging.getLogger(__name__)
 
@@ -57,44 +60,44 @@ class SyntheticDatasetService:
         Returns:
             Dictionary with generated QA pairs and metadata
         """
-        hf_token = os.getenv("HF_TOKEN")
-        if not hf_token:
-            return {"error": "HF_TOKEN not set", "pairs": []}
-        
         if seed is not None:
             random.seed(seed)
         
-        # Budget cap: limit chunks processed
         if max_chunks and len(chunks) > max_chunks:
             chunks = random.sample(chunks, max_chunks)
         
         total_pairs = min(len(chunks) * pairs_per_chunk, DEFAULT_MAX_PAIRS)
-        
         logger.info(
-            f"[SYNTHETIC] Generating ~{total_pairs} QA pairs "
-            f"from {len(chunks)} chunks"
+            "[SYNTHETIC] Generating ~%s QA pairs from %s chunks",
+            total_pairs,
+            len(chunks),
         )
+
+        try:
+            engine = HFAPIEngine(model_name=self.model_id)
+        except ValueError:
+            return {"error": "HF_TOKEN not set", "pairs": []}
         
         all_pairs: List[Dict[str, str]] = []
         errors = 0
+
+        try:
+            for i, chunk in enumerate(chunks):
+                if len(all_pairs) >= DEFAULT_MAX_PAIRS:
+                    break
+                
+                try:
+                    pairs = await self._generate_from_chunk(chunk, pairs_per_chunk, engine)
+                    for pair in pairs:
+                        pair["source_chunk_index"] = i
+                        pair["source_text"] = chunk[:200] + "..." if len(chunk) > 200 else chunk
+                    all_pairs.extend(pairs)
+                except Exception as e:
+                    logger.warning("[SYNTHETIC] Failed on chunk %s: %s", i, e)
+                    errors += 1
+        finally:
+            engine.unload_model()
         
-        for i, chunk in enumerate(chunks):
-            if len(all_pairs) >= DEFAULT_MAX_PAIRS:
-                break
-            
-            try:
-                pairs = await self._generate_from_chunk(
-                    chunk, pairs_per_chunk, hf_token
-                )
-                for pair in pairs:
-                    pair["source_chunk_index"] = i
-                    pair["source_text"] = chunk[:200] + "..." if len(chunk) > 200 else chunk
-                all_pairs.extend(pairs)
-            except Exception as e:
-                logger.warning(f"[SYNTHETIC] Failed on chunk {i}: {e}")
-                errors += 1
-        
-        # Assign IDs
         for idx, pair in enumerate(all_pairs):
             pair["id"] = f"synthetic_{idx:04d}"
         
@@ -111,44 +114,31 @@ class SyntheticDatasetService:
         self,
         chunk: str,
         n: int,
-        hf_token: str,
+        engine: HFAPIEngine,
     ) -> List[Dict[str, str]]:
         """Generate n QA pairs from a single text chunk."""
-        import httpx
-        
         prompt = QA_GENERATION_PROMPT.format(
-            passage=chunk[:1500],  # Truncate for token limits
+            passage=chunk[:1500],
             n=n,
         )
+
+        generation = await asyncio.to_thread(
+            engine.generate,
+            prompt,
+            GenerationConfig(
+                max_tokens=500,
+                temperature=0.7,
+                top_p=0.9,
+            ),
+        )
+
+        if generation.error_message or not generation.text:
+            raise RuntimeError(generation.error_message or "Synthetic generation failed")
         
-        async with httpx.AsyncClient(timeout=45.0) as client:
-            resp = await client.post(
-                f"https://api-inference.huggingface.co/models/{self.model_id}",
-                headers={"Authorization": f"Bearer {hf_token}"},
-                json={
-                    "inputs": prompt,
-                    "parameters": {
-                        "max_new_tokens": 500,
-                        "temperature": 0.7,
-                        "return_full_text": False,
-                    },
-                },
-            )
-            
-            if resp.status_code != 200:
-                raise Exception(f"HF API returned {resp.status_code}")
-            
-            data = resp.json()
-            if isinstance(data, list) and data:
-                generated = data[0].get("generated_text", "")
-            else:
-                return []
-        
-        # Parse JSON array from response
-        json_start = generated.find("[")
-        json_end = generated.rfind("]") + 1
+        json_start = generation.text.find("[")
+        json_end = generation.text.rfind("]") + 1
         if json_start >= 0 and json_end > json_start:
-            parsed = json.loads(generated[json_start:json_end])
+            parsed = json.loads(generation.text[json_start:json_end])
             if isinstance(parsed, list):
                 return [
                     {"question": p["question"], "answer": p["answer"]}

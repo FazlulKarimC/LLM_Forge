@@ -360,10 +360,11 @@ class TestReActAgentRun:
         
         result = agent.run("Test")
         trace_dict = result.trace_as_dict()
-        assert isinstance(trace_dict, list)
-        assert len(trace_dict) > 0
-        assert "step" in trace_dict[0]
-        assert "thought" in trace_dict[0]
+        assert isinstance(trace_dict, dict)
+        assert trace_dict["total_tool_calls"] == 0
+        assert len(trace_dict["steps"]) > 0
+        assert "step" in trace_dict["steps"][0]
+        assert "thought" in trace_dict["steps"][0]
 
 
 # =============================================================================

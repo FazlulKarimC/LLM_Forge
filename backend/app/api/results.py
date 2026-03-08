@@ -9,6 +9,7 @@ Endpoints for experiment results and metrics:
 - Export results
 """
 
+import json
 import logging
 from typing import List, Optional
 from uuid import UUID
@@ -65,6 +66,27 @@ def _result_to_metrics_response(result: Result) -> MetricsResponse:
         ),
         computed_at=result.computed_at,
     )
+
+
+async def _latest_runs_for_experiment(db: AsyncSession, experiment_id: UUID) -> List[Run]:
+    """Return only the latest-attempt runs for an experiment."""
+    attempt_query = (
+        select(Run.attempt)
+        .where(Run.experiment_id == experiment_id)
+        .order_by(Run.attempt.desc())
+        .limit(1)
+    )
+    attempt_result = await db.execute(attempt_query)
+    latest_attempt = attempt_result.scalar_one_or_none()
+    if latest_attempt is None:
+        return []
+
+    runs_query = select(Run).where(
+        Run.experiment_id == experiment_id,
+        Run.attempt == latest_attempt,
+    )
+    runs_result = await db.execute(runs_query)
+    return runs_result.scalars().all()
 
 
 
@@ -219,10 +241,8 @@ async def get_results(
     # Optionally include runs
     runs = None
     if include_runs:
-        run_query = select(Run).where(Run.experiment_id == experiment_id)
-        run_result = await db.execute(run_query)
-        run_rows = run_result.scalars().all()
-        
+        run_rows = await _latest_runs_for_experiment(db, experiment_id)
+
         from app.schemas.run import RunResponse
         runs = [RunResponse.model_validate(r) for r in run_rows]
     
@@ -285,9 +305,7 @@ async def get_run_summaries(
     Returns all runs with: id, example_id, is_correct, score, latency_ms,
     input_text, output_text, expected_output.
     """
-    query = select(Run).where(Run.experiment_id == experiment_id)
-    result = await db.execute(query)
-    runs = result.scalars().all()
+    runs = await _latest_runs_for_experiment(db, experiment_id)
     
     if not runs:
         raise HTTPException(
@@ -368,10 +386,8 @@ async def export_results(
     res_result = await db.execute(res_query)
     db_result = res_result.scalar_one_or_none()
     
-    # Get runs
-    run_query = select(Run).where(Run.experiment_id == experiment_id)
-    run_result = await db.execute(run_query)
-    runs = run_result.scalars().all()
+    # Get runs from the latest attempt only
+    runs = await _latest_runs_for_experiment(db, experiment_id)
     
     export_data = {
         "experiment": {
@@ -475,14 +491,17 @@ async def generate_synthetic_dataset(
     
     Uses a free HF instruct model to create evaluation datasets.
     """
+    from app.core.config import settings
     from app.services.synthetic_data_service import SyntheticDatasetService
-    from app.services.rag_service import RAGPipeline
+    from app.services.rag_service import ChunkingService
     
-    # Load knowledge base chunks
+    # Load knowledge base chunks without initializing the full RAG stack.
     try:
-        rag = RAGPipeline()
-        rag.load_knowledge_base()
-        chunks = [chunk.text for chunk in rag.chunks[:max_chunks * 2]]  # Load extra for selection
+        articles_path = settings.data_dir / "knowledge_base" / "articles.json"
+        with articles_path.open("r", encoding="utf-8") as f:
+            articles = json.load(f)
+        chunk_objects = ChunkingService.chunk_articles(articles)
+        chunks = [chunk.text for chunk in chunk_objects[:max_chunks * 2]]
     except Exception as e:
         raise HTTPException(
             status_code=500,

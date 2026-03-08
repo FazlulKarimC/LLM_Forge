@@ -54,6 +54,7 @@ class TraceStep:
     action: Optional[str] = None
     action_input: Optional[str] = None
     observation: Optional[str] = None
+    tool_success: Optional[bool] = None
     
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -62,6 +63,7 @@ class TraceStep:
             "action": self.action,
             "action_input": self.action_input,
             "observation": self.observation,
+            "tool_success": self.tool_success,
         }
 
 
@@ -78,8 +80,15 @@ class AgentResult:
     total_tokens_input: int = 0
     total_tokens_output: int = 0
     
-    def trace_as_dict(self) -> List[Dict[str, Any]]:
-        return [step.to_dict() for step in self.trace]
+    def trace_as_dict(self) -> Dict[str, Any]:
+        successful_tool_calls = sum(1 for step in self.trace if step.tool_success is True)
+        failed_tool_calls = sum(1 for step in self.trace if step.tool_success is False)
+        return {
+            "steps": [step.to_dict() for step in self.trace],
+            "total_tool_calls": self.tool_calls,
+            "successful_tool_calls": successful_tool_calls,
+            "failed_tool_calls": failed_tool_calls,
+        }
 
 
 # =============================================================================
@@ -686,6 +695,7 @@ class ReActAgent:
                     tool_result = tool.execute(step.action_input)
                     
                 step.observation = tool_result.output
+                step.tool_success = tool_result.success
                 tool_call_count += 1
                 
                 logger.info(

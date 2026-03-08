@@ -13,7 +13,8 @@ import logging
 from typing import List, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Query, Request
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -31,6 +32,27 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+async def _active_run_count(service: ExperimentService) -> int:
+    """Best-effort queued/running count used for global concurrency gating."""
+    try:
+        stats = await service.get_stats()
+    except SQLAlchemyError as exc:
+        logger.warning("Skipping concurrency check because stats query failed: %s", exc)
+        return 0
+
+    if not isinstance(stats, dict):
+        logger.warning("Skipping concurrency check because stats payload was not a dict: %s", type(stats).__name__)
+        return 0
+
+    running = stats.get("running", 0)
+    queued = stats.get("queued", 0)
+    if not isinstance(running, int) or not isinstance(queued, int):
+        logger.warning("Skipping concurrency check because stats payload was malformed: %s", stats)
+        return 0
+
+    return running + queued
+
+
 async def _execute_inline(
     experiment_id: UUID, 
     custom_base_url: Optional[str] = None, 
@@ -41,7 +63,6 @@ async def _execute_inline(
     Used as fallback when Redis/RQ is unavailable.
     """
     from app.core.database import async_session_maker
-    from app.core.rate_limit import decrement_active_runs
     
     try:
         logger.info(f"[INLINE] Running experiment {experiment_id} inline (no Redis)")
@@ -70,8 +91,6 @@ async def _execute_inline(
                 logger.info(f"[INLINE] Safety-net: set {experiment_id} to FAILED")
         except Exception as fallback_err:
             logger.error(f"[INLINE] Safety-net commit also failed: {fallback_err}")
-    finally:
-        decrement_active_runs()
 
 
 def _enqueue_or_fallback(
@@ -205,8 +224,6 @@ async def get_experiment(
     return experiment
 
 
-from fastapi import Header
-
 @router.post("/{experiment_id}/run", response_model=ExperimentResponse)
 async def run_experiment(
     experiment_id: UUID,
@@ -246,7 +263,16 @@ async def run_experiment(
             raise ValidationException(message="Custom LLM base URL must include a valid hostname")
         if settings.ENVIRONMENT != "development":
             raise ValidationException(message="Custom LLM execution is only allowed in development mode")
-    
+
+    from app.core.rate_limit import MAX_CONCURRENT_RUNS
+    active_runs = await _active_run_count(service)
+    if active_runs >= MAX_CONCURRENT_RUNS:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Server is busy - {MAX_CONCURRENT_RUNS} experiments are already queued or running. Please wait for one to complete.",
+            headers={"Retry-After": "30"},
+        )
+
     await service.update_status(experiment_id, ExperimentStatus.QUEUED)
     await db.commit()
     

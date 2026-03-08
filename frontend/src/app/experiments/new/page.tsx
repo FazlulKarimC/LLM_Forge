@@ -8,12 +8,13 @@
  * Styled with DESIGN_SYSTEM.md.
  */
 
-import { useState, useRef } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { createExperiment, runExperiment, getAvailableModels, ExperimentConfig, CreateExperimentRequest, AgentConfig } from "@/lib/api";
+import { createExperiment, runExperiment, getAvailableModels, ExperimentConfig, CreateExperimentRequest } from "@/lib/api";
+import { toast } from "sonner";
 
 
 export default function NewExperimentPage() {
@@ -70,7 +71,6 @@ export default function NewExperimentPage() {
         seed: "",
     });
 
-    const runAfterCreateRef = useRef(false);
     const [validationError, setValidationError] = useState<string | null>(null);
     const [runError, setRunError] = useState<string | null>(null);
 
@@ -89,12 +89,12 @@ export default function NewExperimentPage() {
     });
 
     const createMutation = useMutation({
-        mutationFn: createExperiment,
-        onSuccess: async (experiment) => {
+        mutationFn: ({ request }: { request: CreateExperimentRequest; shouldRun: boolean }) => createExperiment(request),
+        onSuccess: async (experiment, variables) => {
             queryClient.invalidateQueries({ queryKey: ["experiments"] });
             queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
 
-            if (runAfterCreateRef.current) {
+            if (variables.shouldRun) {
                 try {
                     await runExperiment(
                         experiment.id,
@@ -103,11 +103,11 @@ export default function NewExperimentPage() {
                     );
                 } catch (err) {
                     // Surface the error as a banner — user can retry from the detail page
-                    setRunError(
-                        err instanceof Error
-                            ? `Experiment created but failed to start: ${err.message}`
-                            : 'Experiment created but failed to start. Retry from the detail page.'
-                    );
+                    const message = err instanceof Error
+                        ? `Experiment created but failed to start: ${err.message}`
+                        : 'Experiment created but failed to start. Retry from the detail page.';
+                    setRunError(message);
+                    toast.error(message);
                 }
             }
             router.push(`/experiments/${experiment.id}`);
@@ -135,7 +135,6 @@ export default function NewExperimentPage() {
             return;
         }
         setValidationError(null);
-        runAfterCreateRef.current = shouldRun;
         if (formData.model_name === "custom_hosted") {
             if (!customBaseUrl.trim() || !customModelId.trim()) {
                 setValidationError("Base URL and Model ID are required for custom hosted models.");
@@ -201,7 +200,8 @@ export default function NewExperimentPage() {
             config,
         };
 
-        createMutation.mutate(request);
+        setRunError(null);
+        createMutation.mutate({ request, shouldRun });
     };
 
     const selectedModel = availableModels.find(m => m.value === formData.model_name);
@@ -661,7 +661,7 @@ export default function NewExperimentPage() {
                             disabled={createMutation.isPending}
                             className="px-6 py-2 rounded-full border border-border text-(--text-body) hover:bg-(--bg-page) transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                         >
-                            {createMutation.isPending && !runAfterCreateRef.current ? "Creating..." : "Create Experiment"}
+                            {createMutation.isPending && !createMutation.variables?.shouldRun ? "Creating..." : "Create Experiment"}
                         </button>
                         <button
                             type="button"
@@ -669,7 +669,7 @@ export default function NewExperimentPage() {
                             onClick={(e) => handleSubmit(e, true)}
                             className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer inline-flex items-center gap-2"
                         >
-                            {createMutation.isPending && runAfterCreateRef.current ? (
+                            {createMutation.isPending && createMutation.variables?.shouldRun ? (
                                 <>
                                     <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
                                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />

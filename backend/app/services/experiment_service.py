@@ -721,7 +721,7 @@ class ExperimentService:
                                 parsed_answer, aliases
                             )
                         
-                    runs_batch_data.append({
+                        runs_batch_data.append({
                             "example_id": item["id"],
                             "prompt": prompts[local_idx],
                             "raw_output": result.text,

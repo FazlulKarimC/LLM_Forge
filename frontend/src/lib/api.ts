@@ -34,92 +34,135 @@ if (process.env.NODE_ENV === 'production' && !process.env.NEXT_PUBLIC_API_URL) {
 }
 
 /**
- * Base fetch wrapper with error handling, timeout, and retry.
+ * Shared fetch wrapper with error handling, timeout, and retry.
  */
-async function fetchAPI<T>(
-    endpoint: string,
-    options: RequestInit = {}
-): Promise<T> {
-    const url = `${API_BASE_URL}${endpoint}`;
-    const TIMEOUT_MS = 15000;
-    const MAX_RETRIES = 1; // Single retry for 5xx/network errors
+type FetchWithHandlingOptions = {
+    timeoutMs?: number;
+    maxRetries?: number;
+};
 
-    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+function sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function buildApiError(response: Response): Promise<ApiError> {
+    let errorMessage = `API Error: ${response.status}`;
+    let requestId = response.headers.get('X-Request-ID') || undefined;
+    let details: Record<string, unknown>[] | undefined;
+    let retryAfter: number | undefined;
+
+    const retryAfterHeader = response.headers.get('Retry-After');
+    if (retryAfterHeader) {
+        const parsedRetryAfter = Number(retryAfterHeader);
+        if (!Number.isNaN(parsedRetryAfter)) {
+            retryAfter = parsedRetryAfter;
+        }
+    }
+
+    const contentType = response.headers.get('Content-Type') || '';
+    try {
+        if (contentType.includes('application/json')) {
+            const errorData = await response.json();
+            errorMessage = errorData.message || errorData.detail || errorMessage;
+            requestId = errorData.request_id || requestId;
+            details = errorData.details;
+            if (response.status === 429 && errorData.retry_after) {
+                retryAfter = errorData.retry_after;
+            }
+        } else {
+            const errorText = (await response.text()).trim();
+            if (errorText) {
+                errorMessage = errorText;
+            }
+        }
+    } catch {
+        // Fall back to status code only.
+    }
+
+    return new ApiError(errorMessage, response.status, requestId, details, retryAfter);
+}
+
+async function fetchWithHandling(
+    url: string,
+    options: RequestInit = {},
+    config: FetchWithHandlingOptions = {}
+): Promise<Response> {
+    const { timeoutMs = 15000, maxRetries = 1 } = config;
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
+        const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
         try {
+            const headers = new Headers(options.headers);
+            const hasBody = options.body !== undefined && options.body !== null;
+            if (hasBody && !headers.has('Content-Type') && !(options.body instanceof FormData)) {
+                headers.set('Content-Type', 'application/json');
+            }
+
             const response = await fetch(url, {
                 ...options,
                 signal: controller.signal,
-                headers: {
-                    'Content-Type': 'application/json',
-                    ...options.headers,
-                },
+                headers,
             });
 
             clearTimeout(timeout);
 
             if (!response.ok) {
-                let errorMessage = `API Error: ${response.status}`;
-                let requestId: string | undefined;
-                let details: Record<string, unknown>[] | undefined;
-                let retryAfter: number | undefined;
-
-                try {
-                    const errorData = await response.json();
-                    errorMessage = errorData.message || errorData.detail || errorMessage;
-                    requestId = errorData.request_id || response.headers.get('X-Request-ID') || undefined;
-                    details = errorData.details;
-                    if (response.status === 429 && errorData.retry_after) {
-                        retryAfter = errorData.retry_after;
-                    }
-                } catch {
-                    requestId = response.headers.get('X-Request-ID') || undefined;
-                }
-
-                // Retry on 5xx (but not 429 or 4xx)
-                if (response.status >= 500 && attempt < MAX_RETRIES) {
-                    await new Promise(r => setTimeout(r, 2000)); // Wait 2s before retry
+                const apiError = await buildApiError(response);
+                if (response.status >= 500 && attempt < maxRetries) {
+                    await sleep(2000);
                     continue;
                 }
-
-                throw new ApiError(errorMessage, response.status, requestId, details, retryAfter);
+                throw apiError;
             }
 
-            // Handle 204 No Content
-            if (response.status === 204) {
-                return undefined as unknown as T;
-            }
-
-            return response.json();
+            return response;
         } catch (err) {
             clearTimeout(timeout);
 
-            // If it's already an ApiError, rethrow
-            if (err instanceof ApiError) throw err;
+            if (err instanceof ApiError) {
+                throw err;
+            }
 
-            // Retry on network/timeout errors
-            if (attempt < MAX_RETRIES) {
-                await new Promise(r => setTimeout(r, 2000));
+            if (attempt < maxRetries) {
+                await sleep(2000);
                 continue;
             }
 
-            // AbortController timeout
             if (err instanceof DOMException && err.name === 'AbortError') {
-                throw new ApiError('Request timed out. The server may be starting up — please try again.', 408);
+                throw new ApiError('Request timed out. The backend may still be waking up on Hugging Face Spaces.', 408);
             }
 
-            // Network error
-            throw new ApiError(
-                err instanceof Error ? err.message : 'Network error',
-                0
-            );
+            throw new ApiError(err instanceof Error ? err.message : 'Network error', 0);
         }
     }
 
-    // Should never reach here, but TypeScript needs it
     throw new ApiError('Unexpected retry exhaustion', 500);
+}
+
+/**
+ * Base fetch wrapper with JSON parsing.
+ */
+async function fetchAPI<T>(
+    endpoint: string,
+    options: RequestInit = {}
+): Promise<T> {
+    const response = await fetchWithHandling(`${API_BASE_URL}${endpoint}`, options);
+
+    if (response.status === 204) {
+        return undefined as unknown as T;
+    }
+
+    return response.json();
+}
+
+function getApiRootUrl(): string {
+    return (
+        process.env.NEXT_PUBLIC_API_BASE_URL ||
+        API_BASE_URL.replace(/\/api\/v1\/?$/, '') ||
+        'http://localhost:8000'
+    );
 }
 
 // =============================================================================
@@ -398,9 +441,7 @@ export async function getProfile(experimentId: string): Promise<ProfileData> {
  */
 export async function exportResults(experimentId: string, experimentName?: string): Promise<void> {
     const url = `${API_BASE_URL}/results/${experimentId}/export`;
-    const response = await fetch(url);
-    if (!response.ok) throw new Error('Export failed');
-
+    const response = await fetchWithHandling(url, {}, { timeoutMs: 20000, maxRetries: 0 });
     const data = await response.json();
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const downloadUrl = URL.createObjectURL(blob);
@@ -425,8 +466,7 @@ export async function exportMarkdownReport(
     runs?: RunSummary[],
 ): Promise<void> {
     const url = `${API_BASE_URL}/results/${experimentId}/export`;
-    const response = await fetch(url);
-    if (!response.ok) throw new Error('Export failed');
+    const response = await fetchWithHandling(url, {}, { timeoutMs: 20000, maxRetries: 0 });
     const data = await response.json();
 
     const name = experimentName || data.experiment?.name || experimentId;
@@ -514,14 +554,10 @@ export async function getAvailableModels(): Promise<{ models: ModelOption[] }> {
  * Health check.
  */
 export async function healthCheck(): Promise<{ status: string }> {
-    // Use a separate base URL env var to avoid fragile string manipulation.
-    // NEXT_PUBLIC_API_BASE_URL should be the root (e.g. https://myapp.hf.space)
-    // NEXT_PUBLIC_API_URL should be the full API path (e.g. https://myapp.hf.space/api/v1)
-    const baseUrl =
-        process.env.NEXT_PUBLIC_API_BASE_URL ||
-        API_BASE_URL.replace(/\/api\/v1\/?$/, '') ||
-        'http://localhost:8000';
-    const response = await fetch(`${baseUrl}/health`);
+    const response = await fetchWithHandling(`${getApiRootUrl()}/health`, {}, {
+        timeoutMs: 20000,
+        maxRetries: 0,
+    });
     return response.json();
 }
 
@@ -538,17 +574,10 @@ export interface ReadinessStatus {
  * Get system readiness status.
  */
 export async function getReadinessStatus(): Promise<ReadinessStatus> {
-    const baseUrl =
-        process.env.NEXT_PUBLIC_API_BASE_URL ||
-        API_BASE_URL.replace(/\/api\/v1\/?$/, '') ||
-        'http://localhost:8000';
-    const response = await fetch(`${baseUrl}/ready`);
-    if (!response.ok) {
-        const errorText = await response.text().catch(() => 'Unknown error');
-        throw new Error(
-            `Readiness check failed (${response.status}): ${errorText}`
-        );
-    }
+    const response = await fetchWithHandling(`${getApiRootUrl()}/ready`, {}, {
+        timeoutMs: 20000,
+        maxRetries: 0,
+    });
     return response.json();
 }
 
