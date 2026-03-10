@@ -1,621 +1,448 @@
 "use client";
 
-/**
- * Experiment Comparison Page
- *
- * Side-by-side comparison of two experiments.
- * Shows metrics differences, statistical significance, and per-example analysis.
- */
-
 import { useQuery } from "@tanstack/react-query";
-import { useState, useEffect, Suspense } from "react";
-import { useSearchParams } from "next/navigation";
+import { Fragment, Suspense, useMemo, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import {
-    listExperiments,
-    compareExperiments,
-    getStatisticalComparison,
-    type Experiment,
-    type ComparisonResponse,
-    type StatisticalComparison,
-} from "@/lib/api";
+  FlaskConical,
+  GitCompareArrows,
+  ScanSearch,
+  Sigma,
+} from "lucide-react";
 
-// =============================================================================
-// Metric Comparison Card
-// =============================================================================
+import {
+  compareExperiments,
+  getStatisticalComparison,
+  listExperiments,
+  type Experiment,
+  type StatisticalComparison,
+} from "@/lib/api";
+import { EmptyState, MetricBar, PageHeader, Panel, PanelHeader, SkeletonBlock, StatusPill } from "@/components/ui/primitives";
+import { cn } from "@/lib/utils";
+
+function formatMetric(value?: number, format: "percent" | "ms" | "number" = "percent") {
+  if (value == null) return "--";
+  if (format === "percent") return `${(value * 100).toFixed(1)}%`;
+  if (format === "ms") return `${value.toFixed(0)} ms`;
+  return value.toLocaleString();
+}
+
+function getValidSelection(selectedIds: string[], experimentIds: Set<string>) {
+  return selectedIds.filter((id) => experimentIds.has(id)).slice(0, 2);
+}
 
 function MetricCompareCard({
-    label,
-    valueA,
-    valueB,
-    format = "percent",
-    higherIsBetter = true,
+  label,
+  valueA,
+  valueB,
+  format = "percent",
+  higherIsBetter = true,
 }: {
-    label: string;
-    valueA?: number;
-    valueB?: number;
-    format?: "percent" | "ms" | "number";
-    higherIsBetter?: boolean;
+  label: string;
+  valueA?: number;
+  valueB?: number;
+  format?: "percent" | "ms" | "number";
+  higherIsBetter?: boolean;
 }) {
-    const formatValue = (v?: number) => {
-        if (v == null) return "—";
-        if (format === "percent") return `${(v * 100).toFixed(1)}%`;
-        if (format === "ms") return `${v.toFixed(0)}ms`;
-        return v.toLocaleString();
-    };
+  const diff = valueA != null && valueB != null ? valueB - valueA : null;
+  const isPositive = diff != null && (higherIsBetter ? diff > 0 : diff < 0);
+  const tone = diff == null ? "" : isPositive ? "text-[var(--success)]" : "text-[color:color-mix(in_oklab,var(--destructive)_84%,white_12%)]";
+  const percentage = diff == null ? 0 : Math.min(100, Math.max(0, Math.abs(diff) * (format === "percent" ? 100 : 10)));
 
-    const diff = valueA != null && valueB != null ? valueB - valueA : null;
-    const isImprovement = diff != null && (higherIsBetter ? diff > 0 : diff < 0);
-    const isRegression = diff != null && (higherIsBetter ? diff < 0 : diff > 0);
-
-    const diffText = diff != null
-        ? format === "percent"
-            ? `${diff > 0 ? "+" : ""}${(diff * 100).toFixed(1)}%`
-            : format === "ms"
-                ? `${diff > 0 ? "+" : ""}${diff.toFixed(0)}ms`
-                : `${diff > 0 ? "+" : ""}${diff.toFixed(2)}`
-        : "";
-
-    return (
-        <div className="bg-(--bg-card) border border-border rounded-xl p-5 hover:shadow-md transition-shadow">
-            <p className="text-xs font-medium text-(--text-muted) uppercase tracking-wider mb-3">{label}</p>
-            <div className="flex items-baseline gap-2">
-                <div className="flex items-baseline gap-1">
-                    <span className="text-xs font-medium text-(--text-muted)">A</span>
-                    <span className="text-xl font-semibold text-(--text-heading) font-mono">{formatValue(valueA)}</span>
-                </div>
-                <span className="text-(--text-muted) mx-1">vs</span>
-                <div className="flex items-baseline gap-1">
-                    <span className="text-xs font-medium text-(--text-muted)">B</span>
-                    <span className="text-xl font-semibold text-(--text-heading) font-mono">{formatValue(valueB)}</span>
-                </div>
-            </div>
-            {diffText && (
-                <div className="mt-2 pt-2 border-t border-border">
-                    <span className={`text-sm font-semibold font-mono ${isImprovement ? "text-green-600" : isRegression ? "text-red-500" : "text-(--text-muted)"
-                        }`}>
-                        {isImprovement ? "▲ " : isRegression ? "▼ " : ""}{diffText}
-                    </span>
-                    <span className="text-xs text-(--text-muted) ml-1">
-                        {isImprovement ? "(better)" : isRegression ? "(worse)" : ""}
-                    </span>
-                </div>
-            )}
+  return (
+    <div className="metric-card">
+      <div className="metric-label">{label}</div>
+      <div className="grid grid-cols-2 gap-3 text-sm">
+        <div className="rounded-[14px] border border-[var(--border)] bg-[var(--surface-2)] p-3">
+          <div className="section-label">A</div>
+          <div className="metric-value mt-2 text-2xl">{formatMetric(valueA, format)}</div>
         </div>
-    );
+        <div className="rounded-[14px] border border-[var(--border)] bg-[var(--surface-2)] p-3">
+          <div className="section-label">B</div>
+          <div className="metric-value mt-2 text-2xl">{formatMetric(valueB, format)}</div>
+        </div>
+      </div>
+      {diff != null ? (
+        <div className="space-y-2">
+          <div className={cn("metric-value text-sm", tone)}>
+            {format === "percent"
+              ? `${diff > 0 ? "+" : ""}${(diff * 100).toFixed(1)}%`
+              : format === "ms"
+                ? `${diff > 0 ? "+" : ""}${diff.toFixed(0)} ms`
+                : `${diff > 0 ? "+" : ""}${diff.toFixed(2)}`}
+          </div>
+          <MetricBar value={percentage} />
+        </div>
+      ) : null}
+    </div>
+  );
 }
-
-// =============================================================================
-// Agreement Summary
-// =============================================================================
 
 function AgreementSummary({ summary }: { summary: StatisticalComparison["summary"] }) {
-    const total = summary.both_correct + summary.both_wrong + summary.a_only_correct + summary.b_only_correct;
-    if (total === 0) return null;
+  const total = summary.both_correct + summary.both_wrong + summary.a_only_correct + summary.b_only_correct;
+  if (!total) return null;
 
-    const pct = (v: number) => `${((v / total) * 100).toFixed(1)}%`;
+  const segments = [
+    { label: "Both correct", value: summary.both_correct, color: "var(--success)" },
+    { label: "A only", value: summary.a_only_correct, color: "var(--primary)" },
+    { label: "B only", value: summary.b_only_correct, color: "var(--accent)" },
+    { label: "Both wrong", value: summary.both_wrong, color: "color-mix(in oklab, var(--destructive) 84%, white 12%)" },
+  ];
 
-    const items = [
-        { label: "Both Correct", value: summary.both_correct, pct: pct(summary.both_correct), bg: "#dcfce7", color: "#166534", icon: "✓✓" },
-        { label: "Both Wrong", value: summary.both_wrong, pct: pct(summary.both_wrong), bg: "#fee2e2", color: "#991b1b", icon: "✗✗" },
-        { label: "Only A Correct", value: summary.a_only_correct, pct: pct(summary.a_only_correct), bg: "#fef3c7", color: "#92400e", icon: "✓✗" },
-        { label: "Only B Correct", value: summary.b_only_correct, pct: pct(summary.b_only_correct), bg: "#dbeafe", color: "#1e40af", icon: "✗✓" },
-    ];
-
-    return (
-        <div className="bg-(--bg-card) border border-border rounded-xl p-6">
-            <h3 className="text-base font-serif text-(--text-heading) mb-4 flex items-center gap-2">
-                <span className="text-lg">📊</span> Agreement Analysis
-            </h3>
-            <div className="grid grid-cols-2 gap-3">
-                {items.map(item => (
-                    <div key={item.label} className="text-center p-3 rounded-lg" style={{ background: item.bg }}>
-                        <p className="text-xs font-mono mb-1" style={{ color: item.color, opacity: 0.7 }}>{item.icon}</p>
-                        <p className="text-2xl font-bold font-mono" style={{ color: item.color }}>{item.value}</p>
-                        <p className="text-xs font-medium mt-0.5" style={{ color: item.color }}>{item.label}</p>
-                        <p className="text-xs mt-0.5" style={{ color: item.color, opacity: 0.7 }}>{item.pct}</p>
-                    </div>
-                ))}
-            </div>
-            {/* Simple visual bar */}
-            <div className="mt-4 flex rounded-full overflow-hidden h-2">
-                {total > 0 && (
-                    <>
-                        <div style={{ width: pct(summary.both_correct), background: "#22c55e" }} />
-                        <div style={{ width: pct(summary.a_only_correct), background: "#f59e0b" }} />
-                        <div style={{ width: pct(summary.b_only_correct), background: "#3b82f6" }} />
-                        <div style={{ width: pct(summary.both_wrong), background: "#ef4444" }} />
-                    </>
-                )}
-            </div>
+  return (
+    <Panel>
+      <PanelHeader label="Agreement" title="Outcome distribution" description="How often the experiments agree, disagree, or both fail on the same examples." />
+      <div className="panel-body space-y-4">
+        <div className="flex h-3 overflow-hidden rounded-full bg-[var(--muted)]">
+          {segments.map((segment) => (
+            <div key={segment.label} style={{ width: `${(segment.value / total) * 100}%`, background: segment.color }} />
+          ))}
         </div>
-    );
+        <div className="grid gap-3 sm:grid-cols-2">
+          {segments.map((segment) => (
+            <div key={segment.label} className="rounded-[16px] border border-[var(--border)] bg-[var(--surface-2)] p-4">
+              <div className="section-label">{segment.label}</div>
+              <div className="metric-value mt-2 text-2xl">{segment.value}</div>
+              <div className="metric-caption mt-1">{((segment.value / total) * 100).toFixed(1)}% of common examples</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </Panel>
+  );
 }
 
-// =============================================================================
-// Statistical Significance Card
-// =============================================================================
-
-function SignificanceCard({ stats }: { stats: StatisticalComparison }) {
-    const significant = stats.mcnemar.is_significant;
-
-    return (
-        <div className="bg-(--bg-card) border border-border rounded-xl p-6">
-            <h3 className="text-base font-serif text-(--text-heading) mb-4 flex items-center gap-2">
-                <span className="text-lg">🔬</span> Statistical Significance
-            </h3>
-
-            {/* Verdict */}
-            <div className={`flex items-center gap-3 px-4 py-3 rounded-lg mb-4 ${significant ? "bg-green-50 border border-green-200" : "bg-yellow-50 border border-yellow-200"
-                }`}>
-                <span className={`inline-block w-2.5 h-2.5 rounded-full ${significant ? "bg-green-500" : "bg-yellow-500"}`} />
-                <span className={`text-sm font-medium ${significant ? "text-green-800" : "text-yellow-800"}`}>
-                    {significant
-                        ? "Statistically significant difference (p < 0.05)"
-                        : "Not statistically significant (p ≥ 0.05)"}
-                </span>
+function SignificancePanel({ stats }: { stats: StatisticalComparison }) {
+  return (
+    <Panel>
+      <PanelHeader
+        label="Significance"
+        title="Statistical view"
+        description="McNemar and bootstrap outputs stay visible so the winner is defensible in an interview, not just visually obvious."
+      />
+      <div className="panel-body space-y-4">
+        <div className={cn("alert", stats.mcnemar.is_significant ? "alert-info" : "alert-warning")}>
+          <Sigma className="mt-0.5 size-4 shrink-0" />
+          <div className="space-y-1">
+            <div className="font-semibold">
+              {stats.mcnemar.is_significant ? "Difference is statistically significant" : "Difference is not statistically significant"}
             </div>
-
-            {/* Metrics grid */}
-            <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
-                <div>
-                    <p className="text-(--text-muted) text-xs mb-0.5">McNemar&apos;s p-value</p>
-                    <p className="font-mono font-semibold text-(--text-heading) text-base">
-                        {stats.mcnemar.p_value < 0.0001 ? "< 0.0001" : stats.mcnemar.p_value.toFixed(4)}
-                    </p>
-                </div>
-                <div>
-                    <p className="text-(--text-muted) text-xs mb-0.5">Common Examples</p>
-                    <p className="font-mono font-semibold text-(--text-heading) text-base">
-                        {stats.num_common_examples}
-                    </p>
-                </div>
-                <div>
-                    <p className="text-(--text-muted) text-xs mb-0.5">Accuracy A (95% CI)</p>
-                    <p className="font-mono text-(--text-heading)">
-                        {(stats.accuracy_a * 100).toFixed(1)}%
-                        <span className="text-(--text-muted) text-xs ml-1">
-                            [{((stats.accuracy_ci_a ?? stats.bootstrap_ci_a).lower * 100).toFixed(1)}, {((stats.accuracy_ci_a ?? stats.bootstrap_ci_a).upper * 100).toFixed(1)}]
-                        </span>
-                    </p>
-                </div>
-                <div>
-                    <p className="text-(--text-muted) text-xs mb-0.5">Accuracy B (95% CI)</p>
-                    <p className="font-mono text-(--text-heading)">
-                        {(stats.accuracy_b * 100).toFixed(1)}%
-                        <span className="text-(--text-muted) text-xs ml-1">
-                            [{((stats.accuracy_ci_b ?? stats.bootstrap_ci_b).lower * 100).toFixed(1)}, {((stats.accuracy_ci_b ?? stats.bootstrap_ci_b).upper * 100).toFixed(1)}]
-                        </span>
-                    </p>
-                </div>
-                {stats.f1_ci_a && stats.f1_ci_b && (
-                    <>
-                        <div>
-                            <p className="text-(--text-muted) text-xs mb-0.5">F1 Score A (95% CI)</p>
-                            <p className="font-mono text-(--text-heading)">
-                                {(stats.f1_ci_a.mean * 100).toFixed(1)}%
-                                <span className="text-(--text-muted) text-xs ml-1">
-                                    [{(stats.f1_ci_a.lower * 100).toFixed(1)}, {(stats.f1_ci_a.upper * 100).toFixed(1)}]
-                                </span>
-                            </p>
-                        </div>
-                        <div>
-                            <p className="text-(--text-muted) text-xs mb-0.5">F1 Score B (95% CI)</p>
-                            <p className="font-mono text-(--text-heading)">
-                                {(stats.f1_ci_b.mean * 100).toFixed(1)}%
-                                <span className="text-(--text-muted) text-xs ml-1">
-                                    [{(stats.f1_ci_b.lower * 100).toFixed(1)}, {(stats.f1_ci_b.upper * 100).toFixed(1)}]
-                                </span>
-                            </p>
-                        </div>
-                    </>
-                )}
-            </div>
+            <p className="text-sm text-[var(--muted-foreground)]">McNemar p-value {stats.mcnemar.p_value < 0.0001 ? "< 0.0001" : stats.mcnemar.p_value.toFixed(4)}</p>
+          </div>
         </div>
-    );
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="metric-card">
+            <div className="metric-label">Accuracy A</div>
+            <div className="metric-value text-3xl">{(stats.accuracy_a * 100).toFixed(1)}%</div>
+            <div className="metric-caption">95% CI {(stats.accuracy_ci_a ?? stats.bootstrap_ci_a).lower.toFixed(2)} to {(stats.accuracy_ci_a ?? stats.bootstrap_ci_a).upper.toFixed(2)}</div>
+          </div>
+          <div className="metric-card">
+            <div className="metric-label">Accuracy B</div>
+            <div className="metric-value text-3xl">{(stats.accuracy_b * 100).toFixed(1)}%</div>
+            <div className="metric-caption">95% CI {(stats.accuracy_ci_b ?? stats.bootstrap_ci_b).lower.toFixed(2)} to {(stats.accuracy_ci_b ?? stats.bootstrap_ci_b).upper.toFixed(2)}</div>
+          </div>
+        </div>
+      </div>
+    </Panel>
+  );
 }
 
-// =============================================================================
-// Per-Example Differences Table
-// =============================================================================
-
-function DifferencesTable({ diffs, nameA, nameB }: {
-    diffs: StatisticalComparison["per_example_differences"];
-    nameA: string;
-    nameB: string;
+function DifferencesTable({
+  diffs,
+  nameA,
+  nameB,
+}: {
+  diffs: StatisticalComparison["per_example_differences"];
+  nameA: string;
+  nameB: string;
 }) {
-    const [expanded, setExpanded] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<string | null>(null);
 
-    if (!diffs.length) {
-        return (
-            <div className="bg-(--bg-card) border border-border rounded-xl p-8 text-center">
-                <p className="text-(--text-muted) text-lg mb-1">🎯 Perfect Agreement</p>
-                <p className="text-sm text-(--text-muted)">Both experiments agree on all examples.</p>
-            </div>
-        );
-    }
-
+  if (!diffs.length) {
     return (
-        <div className="bg-(--bg-card) border border-border rounded-xl overflow-hidden">
-            <div className="px-6 py-4 border-b border-border">
-                <h3 className="text-base font-serif text-(--text-heading) flex items-center gap-2">
-                    <span className="text-lg">🔍</span> Per-Example Differences
-                    <span className="text-xs font-normal text-(--text-muted) bg-(--bg-page) px-2 py-0.5 rounded-full ml-1">
-                        {diffs.length} disagreements
-                    </span>
-                </h3>
-                <p className="text-xs text-(--text-muted) mt-1">Click a row to expand model outputs</p>
-            </div>
-            <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-border">
-                    <thead className="bg-(--bg-page)">
-                        <tr>
-                            <th className="px-4 py-2.5 text-left text-xs font-semibold text-(--text-muted) uppercase tracking-wider">Example</th>
-                            <th className="px-4 py-2.5 text-center text-xs font-semibold text-(--text-muted) uppercase tracking-wider">{nameA.length > 20 ? nameA.slice(0, 20) + "…" : nameA}</th>
-                            <th className="px-4 py-2.5 text-center text-xs font-semibold text-(--text-muted) uppercase tracking-wider">{nameB.length > 20 ? nameB.slice(0, 20) + "…" : nameB}</th>
-                            <th className="px-4 py-2.5 text-left text-xs font-semibold text-(--text-muted) uppercase tracking-wider">Expected</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border">
-                        {diffs.map((d) => (
-                            <tr
-                                key={d.example_id}
-                                className="hover:bg-(--bg-page) cursor-pointer transition-colors"
-                                onClick={() => setExpanded(expanded === d.example_id ? null : d.example_id)}
-                            >
-                                <td className="px-4 py-3 text-sm font-mono text-(--text-body)">{d.example_id}</td>
-                                <td className="px-4 py-3 text-center">
-                                    <span className={`inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold ${d.a_correct
-                                        ? "bg-green-100 text-green-700"
-                                        : "bg-red-100 text-red-700"
-                                        }`}>
-                                        {d.a_correct ? "✓" : "✗"}
-                                    </span>
-                                    {expanded === d.example_id && d.a_output && (
-                                        <p className="mt-2 text-xs text-(--text-body) text-left max-w-xs wrap-break-word bg-(--bg-page) rounded p-2">{d.a_output}</p>
-                                    )}
-                                </td>
-                                <td className="px-4 py-3 text-center">
-                                    <span className={`inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold ${d.b_correct
-                                        ? "bg-green-100 text-green-700"
-                                        : "bg-red-100 text-red-700"
-                                        }`}>
-                                        {d.b_correct ? "✓" : "✗"}
-                                    </span>
-                                    {expanded === d.example_id && d.b_output && (
-                                        <p className="mt-2 text-xs text-(--text-body) text-left max-w-xs wrap-break-word bg-(--bg-page) rounded p-2">{d.b_output}</p>
-                                    )}
-                                </td>
-                                <td className="px-4 py-3 text-sm text-(--text-muted) max-w-xs truncate">{d.expected}</td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-            </div>
-        </div>
+      <EmptyState
+        icon={<ScanSearch className="size-5" />}
+        title="No disagreements found"
+        description="Both experiments produced identical correctness outcomes across the common example set."
+      />
     );
-}
+  }
 
-// =============================================================================
-// Inner page component — contains useSearchParams() so must live inside Suspense
-// =============================================================================
+  return (
+    <Panel>
+      <PanelHeader
+        label="Disagreements"
+        title={`Per-example review (${diffs.length})`}
+        description="Expand a row to compare both outputs against the expected answer."
+      />
+      <div className="panel-body overflow-x-auto">
+        <table className="data-table min-w-[780px]">
+          <thead>
+            <tr>
+              <th>Example</th>
+              <th>{nameA}</th>
+              <th>{nameB}</th>
+              <th>Expected answer</th>
+            </tr>
+          </thead>
+          <tbody>
+            {diffs.map((diff) => {
+              const isExpanded = expanded === diff.example_id;
+              return (
+                <Fragment key={diff.example_id}>
+                  <tr className="data-row cursor-pointer" onClick={() => setExpanded(isExpanded ? null : diff.example_id)}>
+                    <td className="font-mono text-xs">{diff.example_id}</td>
+                    <td>
+                      <span className={cn("status-pill", diff.a_correct ? "status-completed" : "status-failed")}>{diff.a_correct ? "Correct" : "Incorrect"}</span>
+                    </td>
+                    <td>
+                      <span className={cn("status-pill", diff.b_correct ? "status-completed" : "status-failed")}>{diff.b_correct ? "Correct" : "Incorrect"}</span>
+                    </td>
+                    <td className="text-sm text-[var(--muted-foreground)]">{diff.expected}</td>
+                  </tr>
+                  {isExpanded ? (
+                    <tr>
+                      <td colSpan={4} className="!p-0">
+                        <div className="grid gap-3 border-b border-[var(--border)] bg-[var(--surface-2)] p-4 lg:grid-cols-3">
+                          <div className="rounded-[16px] border border-[var(--border)] bg-[var(--surface-1)] p-4">
+                            <div className="section-label">{nameA}</div>
+                            <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-[var(--muted-foreground)]">{diff.a_output || "No output"}</p>
+                          </div>
+                          <div className="rounded-[16px] border border-[var(--border)] bg-[var(--surface-1)] p-4">
+                            <div className="section-label">{nameB}</div>
+                            <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-[var(--muted-foreground)]">{diff.b_output || "No output"}</p>
+                          </div>
+                          <div className="rounded-[16px] border border-[var(--border)] bg-[var(--surface-1)] p-4">
+                            <div className="section-label">Expected</div>
+                            <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-[var(--muted-foreground)]">{diff.expected}</p>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : null}
+                </Fragment>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </Panel>
+  );
+}
 
 function ComparePageInner() {
-    const [selectedIds, setSelectedIds] = useState<string[]>([]);
-    const searchParams = useSearchParams();
-    const preselect = searchParams.get('preselect');
+  const searchParams = useSearchParams();
+  const preselect = searchParams.get("preselect");
+  const [selectedIds, setSelectedIds] = useState<string[]>(() => (preselect ? [preselect] : []));
 
-    // Fetch all completed experiments for selection
-    const { data: expData, isLoading: listLoading } = useQuery({
-        queryKey: ["experiments", "completed"],
-        queryFn: () => listExperiments({ status: "completed", limit: 50 }),
+  const experimentsQuery = useQuery({
+    queryKey: ["experiments", "completed"],
+    queryFn: () => listExperiments({ status: "completed", limit: 50 }),
+  });
+
+  const experiments = useMemo(() => experimentsQuery.data?.experiments ?? [], [experimentsQuery.data?.experiments]);
+  const experimentIds = useMemo(() => new Set(experiments.map((experiment) => experiment.id)), [experiments]);
+  const effectiveSelectedIds = useMemo(() => getValidSelection(selectedIds, experimentIds), [selectedIds, experimentIds]);
+
+  const comparisonQuery = useQuery({
+    queryKey: ["comparison", effectiveSelectedIds],
+    queryFn: () => compareExperiments(effectiveSelectedIds),
+    enabled: effectiveSelectedIds.length === 2,
+  });
+
+  const statsQuery = useQuery({
+    queryKey: ["statistical", effectiveSelectedIds],
+    queryFn: () => getStatisticalComparison(effectiveSelectedIds[0], effectiveSelectedIds[1]),
+    enabled: effectiveSelectedIds.length === 2,
+  });
+
+  const selectedA = experiments.find((experiment) => experiment.id === effectiveSelectedIds[0]);
+  const selectedB = experiments.find((experiment) => experiment.id === effectiveSelectedIds[1]);
+  const comparison = comparisonQuery.data;
+  const expA = comparison?.experiments[0];
+  const expB = comparison?.experiments[1];
+
+  function toggleSelection(id: string) {
+    setSelectedIds((current) => {
+      const base = getValidSelection(current, experimentIds);
+
+      if (base.includes(id)) {
+        return base.filter((item) => item !== id);
+      }
+
+      if (base.length < 2) {
+        return [...base, id];
+      }
+
+      return [base[1], id];
     });
+  }
 
-    const experiments = expData?.experiments ?? [];
+  return (
+    <div className="page-stack">
+      <PageHeader
+        eyebrow={<><GitCompareArrows className="size-3.5" /> Comparison workspace</>}
+        title="Judge experiments side by side."
+        description="Use the same shell to inspect metrics, significance, and disagreement examples without inventing new backend requirements."
+        actions={<Link href="/experiments" className="btn-secondary">Back to experiments</Link>}
+      />
 
-    // Auto-select experiment from URL ?preselect=<id> (e.g., from detail page "Compare" button)
-    useEffect(() => {
-        if (!preselect || !experiments.length) return;
-        if (experiments.some(e => e.id === preselect) && !selectedIds.includes(preselect)) {
-            setSelectedIds([preselect]);
-        }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [preselect, experiments.length]);
+      <section className="grid gap-4 xl:grid-cols-[0.82fr_1.18fr]">
+        <Panel>
+          <PanelHeader
+            label="Selection"
+            title="Choose two completed runs"
+            description="The oldest selected item is replaced when you choose a third candidate."
+            actions={effectiveSelectedIds.length ? <button type="button" className="btn-secondary" onClick={() => setSelectedIds([])}>Clear</button> : null}
+          />
+          <div className="panel-body">
+            {experimentsQuery.isLoading ? (
+              <div className="space-y-3">
+                {Array.from({ length: 5 }).map((_, index) => <SkeletonBlock key={index} className="h-[96px]" />)}
+              </div>
+            ) : experiments.length === 0 ? (
+              <EmptyState
+                icon={<FlaskConical className="size-5" />}
+                title="No completed experiments"
+                description="Finish at least two runs before opening the comparison workspace."
+                action={<Link href="/experiments/new" className="btn-primary">Create experiment</Link>}
+              />
+            ) : (
+              <div className="space-y-3">
+                {experiments.map((experiment: Experiment) => {
+                  const selectedIndex = effectiveSelectedIds.indexOf(experiment.id);
+                  const active = selectedIndex !== -1;
+                  const slot = selectedIndex === 0 ? "A" : selectedIndex === 1 ? "B" : null;
 
-    // Fetch comparison when 2 experiments selected
-    const { data: comparison, isLoading: compLoading, error: compError } = useQuery({
-        queryKey: ["comparison", selectedIds],
-        queryFn: () => compareExperiments(selectedIds),
-        enabled: selectedIds.length >= 2,
-    });
-
-    // Fetch statistical comparison when exactly 2 selected
-    const { data: stats, isLoading: statsLoading, error: statsError } = useQuery({
-        queryKey: ["statistical", selectedIds],
-        queryFn: () => getStatisticalComparison(selectedIds[0], selectedIds[1]),
-        enabled: selectedIds.length === 2,
-    });
-
-    const toggleSelect = (id: string) => {
-        setSelectedIds((prev) =>
-            prev.includes(id)
-                ? prev.filter((i) => i !== id)
-                : prev.length < 2
-                    ? [...prev, id]
-                    : [prev[1], id] // Replace oldest selection
-        );
-    };
-
-    const clearSelection = () => setSelectedIds([]);
-
-    const expA = comparison?.experiments?.[0];
-    const expB = comparison?.experiments?.[1];
-
-    // Get full experiment objects for the selector labels
-    const selectedExpA = experiments.find(e => e.id === selectedIds[0]);
-    const selectedExpB = experiments.find(e => e.id === selectedIds[1]);
-
-    return (
-        <div className="min-h-screen bg-(--bg-page)">
-            <header className="bg-(--bg-card) shadow-sm border-b border-border">
-                <div className="max-w-7xl mx-auto px-4 py-6">
-                    <Link href="/experiments" className="text-primary hover:underline text-sm">
-                        ← Back to Experiments
-                    </Link>
-                    <div className="flex items-center justify-between mt-1">
-                        <div>
-                            <h1 className="text-2xl font-serif text-(--text-heading)">
-                                Compare Experiments
-                            </h1>
-                            <p className="text-sm text-(--text-muted) mt-1">
-                                Select 2 completed experiments to compare side-by-side
-                            </p>
+                  return (
+                    <button
+                      key={experiment.id}
+                      type="button"
+                      onClick={() => toggleSelection(experiment.id)}
+                      className={cn(
+                        "w-full rounded-[20px] border p-4 text-left transition-all",
+                        active
+                          ? "border-[color:color-mix(in_oklab,var(--accent)_34%,transparent)] bg-[color:color-mix(in_oklab,var(--accent)_10%,transparent)]"
+                          : "border-[var(--border)] bg-[var(--surface-2)] hover:border-[var(--border-strong)] hover:bg-[var(--surface-3)]"
+                      )}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="space-y-2">
+                          <div className="text-base font-semibold tracking-[-0.03em]">{experiment.name}</div>
+                          <div className="flex flex-wrap gap-2 text-xs text-[var(--muted-foreground)]">
+                            <span className="chip">{experiment.config.reasoning_method.toUpperCase()}</span>
+                            <span className="chip">{experiment.config.model_name.split("/").pop()}</span>
+                            <span className="chip">{experiment.config.dataset_name}</span>
+                          </div>
                         </div>
-                        {selectedIds.length > 0 && (
-                            <button
-                                onClick={clearSelection}
-                                className="text-sm text-(--text-muted) hover:text-(--text-body) border border-border rounded-lg px-3 py-1.5 hover:bg-(--bg-page) transition-colors cursor-pointer"
-                            >
-                                Clear Selection
-                            </button>
-                        )}
-                    </div>
-                </div>
-            </header>
+                        {slot ? <span className="status-pill status-running">Slot {slot}</span> : <StatusPill status={experiment.status} />}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </Panel>
 
-            <main className="max-w-7xl mx-auto px-4 py-8 space-y-8">
-                {/* Experiment Selector */}
-                <div className="bg-(--bg-card) border border-border rounded-xl p-6">
-                    <div className="flex items-center justify-between mb-4">
-                        <h2 className="text-base font-serif text-(--text-heading)">Select Experiments</h2>
-                        <span className="text-xs text-(--text-muted)">
-                            {selectedIds.length}/2 selected
-                        </span>
-                    </div>
-
-                    {listLoading ? (
-                        <div className="text-center py-8">
-                            <div className="animate-pulse text-(--text-muted)">Loading experiments...</div>
-                        </div>
-                    ) : experiments.length === 0 ? (
-                        <div className="text-center py-8">
-                            <p className="text-(--text-muted) text-lg mb-2">No completed experiments</p>
-                            <p className="text-sm text-(--text-muted)">
-                                Run some experiments first, then return here to compare results.
-                            </p>
-                            <Link
-                                href="/experiments/new"
-                                className="inline-block mt-4 bg-primary text-(--text-on-dark) rounded-full px-5 py-2 text-sm font-medium hover:opacity-90 transition-opacity"
-                            >
-                                Create Experiment
-                            </Link>
-                        </div>
-                    ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                            {experiments.map((exp: Experiment) => {
-                                const isSelected = selectedIds.includes(exp.id);
-                                const index = selectedIds.indexOf(exp.id);
-                                const label = index === 0 ? "A" : index === 1 ? "B" : null;
-                                const borderColor = index === 0 ? "border-primary" : index === 1 ? "border-blue-500" : "";
-
-                                return (
-                                    <button
-                                        key={exp.id}
-                                        onClick={() => toggleSelect(exp.id)}
-                                        className={`p-4 rounded-xl border-2 text-left transition-all cursor-pointer group ${isSelected
-                                            ? `${borderColor} bg-opacity-5 shadow-sm`
-                                            : "border-border hover:border-primary/40 hover:shadow-sm"
-                                            }`}
-                                    >
-                                        <div className="flex items-center justify-between mb-1.5">
-                                            <span className="font-medium text-(--text-heading) text-sm truncate mr-2">
-                                                {exp.name}
-                                            </span>
-                                            {label ? (
-                                                <span className={`shrink-0 text-xs font-bold px-2.5 py-0.5 rounded-full ${index === 0
-                                                    ? "bg-primary text-(--text-on-dark)"
-                                                    : "bg-blue-500 text-white"
-                                                    }`}>
-                                                    {label}
-                                                </span>
-                                            ) : (
-                                                <span className="shrink-0 text-xs text-(--text-muted) opacity-0 group-hover:opacity-100 transition-opacity">
-                                                    Click to select
-                                                </span>
-                                            )}
-                                        </div>
-                                        <p className="text-xs text-(--text-muted)">
-                                            <span className="inline-block bg-(--bg-page) rounded px-1.5 py-0.5 font-medium mr-1.5">
-                                                {exp.config.reasoning_method.toUpperCase()}
-                                            </span>
-                                            {exp.config.model_name.split("/").pop()}
-                                        </p>
-                                        {exp.config.dataset_name && (
-                                            <p className="text-xs text-(--text-muted) mt-1 opacity-70">
-                                                📋 {exp.config.dataset_name}
-                                            </p>
-                                        )}
-                                    </button>
-                                );
-                            })}
-                        </div>
+        {effectiveSelectedIds.length < 2 ? (
+          <EmptyState
+            icon={<GitCompareArrows className="size-5" />}
+            title={effectiveSelectedIds.length === 1 ? "Select one more experiment" : "Select two experiments to compare"}
+            description="Once two completed runs are selected, the metrics, significance, and disagreement analysis will render here."
+          />
+        ) : comparisonQuery.isLoading || statsQuery.isLoading ? (
+          <div className="space-y-4">
+            <SkeletonBlock className="h-[180px]" />
+            <SkeletonBlock className="h-[220px]" />
+            <SkeletonBlock className="h-[320px]" />
+          </div>
+        ) : comparisonQuery.error || statsQuery.error || !comparison || !expA || !expB ? (
+          <div className="alert alert-danger">
+            <ScanSearch className="mt-0.5 size-4 shrink-0" />
+            <div className="space-y-1">
+              <div className="font-semibold">Comparison failed to load</div>
+              <p className="text-sm text-[var(--muted-foreground)]">
+                {comparisonQuery.error instanceof Error
+                  ? comparisonQuery.error.message
+                  : statsQuery.error instanceof Error
+                    ? statsQuery.error.message
+                    : "The comparison response was incomplete."}
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <Panel>
+              <PanelHeader
+                label="Selected pair"
+                title="Active comparison"
+                description="The view keeps the model, method, and dataset context attached to the metrics so the screenshot explains itself."
+              />
+              <div className="panel-body grid gap-3 lg:grid-cols-2">
+                {[selectedA, selectedB].map((experiment, index) => (
+                  <div
+                    key={experiment?.id ?? index}
+                    className={cn(
+                      "rounded-[18px] border p-4",
+                      index === 0
+                        ? "border-[color:color-mix(in_oklab,var(--primary)_34%,transparent)] bg-[color:color-mix(in_oklab,var(--primary)_10%,transparent)]"
+                        : "border-[color:color-mix(in_oklab,var(--accent)_34%,transparent)] bg-[color:color-mix(in_oklab,var(--accent)_10%,transparent)]"
                     )}
-                </div>
-
-                {/* Results Area */}
-                {selectedIds.length < 2 ? (
-                    <div className="bg-(--bg-card) border-2 border-dashed border-border rounded-xl p-12 text-center">
-                        <p className="text-4xl mb-3 opacity-40">⚖️</p>
-                        <p className="text-(--text-muted) text-lg font-medium">
-                            {selectedIds.length === 0
-                                ? "Select 2 experiments to compare"
-                                : "Select 1 more experiment"
-                            }
-                        </p>
-                        <p className="text-sm text-(--text-muted) mt-1">
-                            Click the experiment cards above to select them
-                        </p>
+                  >
+                    <div className="section-label">Experiment {index === 0 ? "A" : "B"}</div>
+                    <div className="mt-2 text-xl font-semibold tracking-[-0.04em]">{experiment?.name}</div>
+                    <div className="mt-3 flex flex-wrap gap-2 text-xs text-[var(--muted-foreground)]">
+                      <span className="chip">{experiment?.config.reasoning_method.toUpperCase()}</span>
+                      <span className="chip">{experiment?.config.model_name.split("/").pop()}</span>
+                      <span className="chip">{experiment?.config.dataset_name}</span>
                     </div>
-                ) : compLoading || statsLoading ? (
-                    <div className="bg-(--bg-card) border border-border rounded-xl p-12 text-center">
-                        <div className="inline-block animate-spin text-3xl mb-3">⚙️</div>
-                        <p className="text-(--text-muted) font-medium">Loading comparison data...</p>
-                    </div>
-                ) : (compError || statsError) ? (
-                    <div className="bg-red-50 border border-red-200 rounded-xl p-6 text-center">
-                        <p className="text-red-700 font-medium mb-1">Failed to load comparison</p>
-                        <p className="text-red-600 text-sm">
-                            {compError instanceof Error ? compError.message
-                                : statsError instanceof Error ? statsError.message
-                                    : String(compError || statsError || "Unknown error")}
-                        </p>
-                        <p className="text-xs text-red-500 mt-2">
-                            Make sure both experiments have completed with results.
-                        </p>
-                    </div>
-                ) : comparison && expA && expB ? (
-                    <div className="space-y-8">
-                        {/* Experiment Labels */}
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="bg-(--bg-card) border border-border rounded-xl p-5 border-l-4 border-l-primary">
-                                <div className="flex items-center gap-2 mb-1">
-                                    <span className="text-xs font-bold bg-primary text-(--text-on-dark) px-2 py-0.5 rounded-full">A</span>
-                                    <p className="text-xs font-medium text-(--text-muted) uppercase tracking-wide">Experiment A</p>
-                                </div>
-                                <p className="font-semibold text-(--text-heading) text-lg">{expA.experiment_name}</p>
-                                <p className="text-sm text-(--text-muted) mt-1">
-                                    <span className="inline-block bg-(--bg-page) rounded px-1.5 py-0.5 font-medium text-xs mr-1.5">
-                                        {expA.method.toUpperCase()}
-                                    </span>
-                                    {expA.model.split("/").pop()}
-                                </p>
-                                {selectedExpA?.config.dataset_name && (
-                                    <p className="text-xs text-(--text-muted) mt-1">📋 {selectedExpA.config.dataset_name}</p>
-                                )}
-                            </div>
-                            <div className="bg-(--bg-card) border border-border rounded-xl p-5 border-l-4 border-l-blue-500">
-                                <div className="flex items-center gap-2 mb-1">
-                                    <span className="text-xs font-bold bg-blue-500 text-white px-2 py-0.5 rounded-full">B</span>
-                                    <p className="text-xs font-medium text-(--text-muted) uppercase tracking-wide">Experiment B</p>
-                                </div>
-                                <p className="font-semibold text-(--text-heading) text-lg">{expB.experiment_name}</p>
-                                <p className="text-sm text-(--text-muted) mt-1">
-                                    <span className="inline-block bg-(--bg-page) rounded px-1.5 py-0.5 font-medium text-xs mr-1.5">
-                                        {expB.method.toUpperCase()}
-                                    </span>
-                                    {expB.model.split("/").pop()}
-                                </p>
-                                {selectedExpB?.config.dataset_name && (
-                                    <p className="text-xs text-(--text-muted) mt-1">📋 {selectedExpB.config.dataset_name}</p>
-                                )}
-                            </div>
-                        </div>
+                  </div>
+                ))}
+              </div>
+            </Panel>
 
-                        {/* Metrics Comparison Grid */}
-                        <div>
-                            <h2 className="text-xl font-serif text-(--text-heading) mb-4 flex items-center gap-2">
-                                <span>📈</span> Metrics Comparison
-                            </h2>
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                <MetricCompareCard
-                                    label="Exact Match Accuracy"
-                                    valueA={expA.metrics.quality.accuracy_exact}
-                                    valueB={expB.metrics.quality.accuracy_exact}
-                                />
-                                <MetricCompareCard
-                                    label="F1 Score"
-                                    valueA={expA.metrics.quality.accuracy_f1}
-                                    valueB={expB.metrics.quality.accuracy_f1}
-                                />
-                                <MetricCompareCard
-                                    label="Substring Accuracy"
-                                    valueA={expA.metrics.quality.accuracy_substring}
-                                    valueB={expB.metrics.quality.accuracy_substring}
-                                />
-                                <MetricCompareCard
-                                    label="Latency p50"
-                                    valueA={expA.metrics.performance.latency_p50}
-                                    valueB={expB.metrics.performance.latency_p50}
-                                    format="ms"
-                                    higherIsBetter={false}
-                                />
-                                <MetricCompareCard
-                                    label="Latency p95"
-                                    valueA={expA.metrics.performance.latency_p95}
-                                    valueB={expB.metrics.performance.latency_p95}
-                                    format="ms"
-                                    higherIsBetter={false}
-                                />
-                                <MetricCompareCard
-                                    label="Total Tokens"
-                                    valueA={(expA.metrics.cost.total_tokens_input || 0) + (expA.metrics.cost.total_tokens_output || 0)}
-                                    valueB={(expB.metrics.cost.total_tokens_input || 0) + (expB.metrics.cost.total_tokens_output || 0)}
-                                    format="number"
-                                    higherIsBetter={false}
-                                />
-                            </div>
-                        </div>
+            <Panel>
+              <PanelHeader label="Metrics" title="Head-to-head performance" description="Compare quality, latency, and cost without leaving the active pair." />
+              <div className="panel-body grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                <MetricCompareCard label="Exact match accuracy" valueA={expA.metrics.quality.accuracy_exact} valueB={expB.metrics.quality.accuracy_exact} />
+                <MetricCompareCard label="F1 score" valueA={expA.metrics.quality.accuracy_f1} valueB={expB.metrics.quality.accuracy_f1} />
+                <MetricCompareCard label="Substring accuracy" valueA={expA.metrics.quality.accuracy_substring} valueB={expB.metrics.quality.accuracy_substring} />
+                <MetricCompareCard label="Latency p50" valueA={expA.metrics.performance.latency_p50} valueB={expB.metrics.performance.latency_p50} format="ms" higherIsBetter={false} />
+                <MetricCompareCard label="Latency p95" valueA={expA.metrics.performance.latency_p95} valueB={expB.metrics.performance.latency_p95} format="ms" higherIsBetter={false} />
+                <MetricCompareCard
+                  label="Total tokens"
+                  valueA={(expA.metrics.cost.total_tokens_input || 0) + (expA.metrics.cost.total_tokens_output || 0)}
+                  valueB={(expB.metrics.cost.total_tokens_input || 0) + (expB.metrics.cost.total_tokens_output || 0)}
+                  format="number"
+                  higherIsBetter={false}
+                />
+              </div>
+            </Panel>
 
-                        {/* Statistical Analysis */}
-                        {stats && (
-                            <>
-                                <div>
-                                    <h2 className="text-xl font-serif text-(--text-heading) mb-4 flex items-center gap-2">
-                                        <span>📊</span> Statistical Analysis
-                                    </h2>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                        <SignificanceCard stats={stats} />
-                                        <AgreementSummary summary={stats.summary} />
-                                    </div>
-                                </div>
+            {statsQuery.data ? (
+              <div className="grid gap-4 xl:grid-cols-2">
+                <SignificancePanel stats={statsQuery.data} />
+                <AgreementSummary summary={statsQuery.data.summary} />
+              </div>
+            ) : null}
 
-                                <DifferencesTable
-                                    diffs={stats.per_example_differences}
-                                    nameA={expA.experiment_name}
-                                    nameB={expB.experiment_name}
-                                />
-                            </>
-                        )}
-                    </div>
-                ) : null}
-            </main>
-        </div>
-    );
+            {statsQuery.data ? (
+              <DifferencesTable diffs={statsQuery.data.per_example_differences} nameA={selectedA?.name ?? "A"} nameB={selectedB?.name ?? "B"} />
+            ) : null}
+          </div>
+        )}
+      </section>
+    </div>
+  );
 }
-
-// =============================================================================
-// Default Export — wraps inner component in Suspense (required by Next.js 15
-// because useSearchParams() is used inside ComparePageInner).
-// =============================================================================
 
 export default function ComparePage() {
-    return (
-        <Suspense fallback={
-            <div className="min-h-screen bg-(--bg-page) flex items-center justify-center">
-                <div className="text-(--text-muted) animate-pulse">Loading comparison page...</div>
-            </div>
-        }>
-            <ComparePageInner />
-        </Suspense>
-    );
+  return (
+    <Suspense fallback={<div className="page-stack"><SkeletonBlock className="h-[180px]" /><SkeletonBlock className="h-[400px]" /></div>}>
+      <ComparePageInner />
+    </Suspense>
+  );
 }
+

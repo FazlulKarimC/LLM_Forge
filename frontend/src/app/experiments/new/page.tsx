@@ -1,694 +1,609 @@
 "use client";
 
-/**
- * New Experiment Page
- * 
- * Form for creating a new experiment configuration.
- * Uses TanStack Query for mutation.
- * Styled with DESIGN_SYSTEM.md.
- */
-
-import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import Link from "next/link";
 import { motion } from "framer-motion";
-import { createExperiment, runExperiment, getAvailableModels, ExperimentConfig, CreateExperimentRequest } from "@/lib/api";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+import { AlertTriangle, ArrowRight, Database, Layers3, LoaderCircle, PlugZap, WandSparkles } from "lucide-react";
 import { toast } from "sonner";
 
+import { createExperiment, CreateExperimentRequest, ExperimentConfig, getAvailableModels, runExperiment } from "@/lib/api";
+import { MetricBar, PageHeader, Panel, PanelHeader } from "@/components/ui/primitives";
+
+const datasetGroups = [
+  {
+    label: "General",
+    options: [
+      { value: "trivia_qa", label: "TriviaQA", description: "Single-hop factual recall questions" },
+      { value: "commonsense_qa", label: "Commonsense QA", description: "Everyday knowledge and reasoning" },
+      { value: "sample", label: "Sample Questions", description: "Built-in smoke test questions" },
+    ],
+  },
+  {
+    label: "RAG",
+    options: [{ value: "knowledge_base", label: "Knowledge Base QA", description: "Grounded questions answerable from indexed articles" }],
+  },
+  {
+    label: "Reasoning",
+    options: [
+      { value: "multi_hop", label: "Multi-Hop QA", description: "Requires combining multiple facts" },
+      { value: "math_reasoning", label: "Math Reasoning", description: "Word-problem style reasoning" },
+    ],
+  },
+  {
+    label: "Agent",
+    options: [{ value: "react_bench", label: "ReAct Bench", description: "Tool-use questions requiring search and calculation" }],
+  },
+  {
+    label: "Safety",
+    options: [
+      { value: "prompt_injection", label: "Prompt Injection", description: "Tests instruction override resistance" },
+      { value: "jailbreak", label: "Jailbreak Attempts", description: "Tests DAN-style jailbreak resistance" },
+      { value: "edge_cases", label: "Edge Cases", description: "Tests unusual or malformed inputs" },
+    ],
+  },
+];
+
+const reasoningOptions = [
+  { value: "naive", label: "Naive prompting", description: "Baseline completion without explicit reasoning scaffolding" },
+  { value: "cot", label: "Chain of thought", description: "Encourage intermediate reasoning before the final answer" },
+  { value: "react", label: "ReAct agent", description: "Multi-step thought, tool use, and observation loops" },
+] as const;
+
+const providerOptions = [
+  { value: "auto", label: "Auto router", description: "Pick the best available provider and fall back automatically" },
+  { value: "hf_api", label: "Hugging Face API", description: "Serverless and free, but often slower" },
+  { value: "openrouter", label: "OpenRouter", description: "Use free-tier models with provider-side routing" },
+  { value: "groq", label: "Groq", description: "Very fast inference with stricter limits" },
+  { value: "custom", label: "Custom endpoint", description: "Your own OpenAI-compatible endpoint" },
+] as const;
+
+const retrievalOptions = [
+  { value: "none", label: "No retrieval", description: "Run the model on the prompt only" },
+  { value: "naive", label: "Naive RAG", description: "Dense retrieval over indexed chunks" },
+  { value: "hybrid", label: "Hybrid RAG", description: "Dense retrieval plus BM25" },
+  { value: "reranked", label: "Reranked RAG", description: "Hybrid retrieval followed by a reranker" },
+] as const;
+
+const presetConfigs = [
+  {
+    title: "Baseline vs reasoning",
+    description: "Start with a smaller QA dataset and compare naive prompting against CoT.",
+    apply: {
+      reasoning_method: "cot" as const,
+      dataset_name: "multi_hop",
+      num_samples: 20,
+      retrieval_method: "none" as const,
+    },
+  },
+  {
+    title: "RAG grounding check",
+    description: "Use the knowledge base dataset with hybrid retrieval to inspect grounded answers.",
+    apply: {
+      reasoning_method: "naive" as const,
+      dataset_name: "knowledge_base",
+      num_samples: 20,
+      retrieval_method: "hybrid" as const,
+    },
+  },
+  {
+    title: "Agent stress test",
+    description: "Run ReAct over the tool-use benchmark with explicit tool access.",
+    apply: {
+      reasoning_method: "react" as const,
+      dataset_name: "react_bench",
+      num_samples: 15,
+      retrieval_method: "none" as const,
+    },
+  },
+];
 
 export default function NewExperimentPage() {
-    const router = useRouter();
-    const queryClient = useQueryClient();
+  const router = useRouter();
+  const queryClient = useQueryClient();
 
-    // Fetch models from backend
-    const { data: modelsData } = useQuery({
-        queryKey: ["available-models"],
-        queryFn: getAvailableModels,
-        staleTime: 1000 * 60 * 5, // 5 minutes (reduced from 1 hour to ensure fresh model lists)
-    });
-    const availableModels = modelsData?.models ?? [
-        { value: "meta-llama/Llama-3.2-1B-Instruct", label: "Llama 3.2 (1B)", description: "Fast, efficient — default" },
-    ];
+  const modelsQuery = useQuery({
+    queryKey: ["available-models"],
+    queryFn: getAvailableModels,
+    staleTime: 1000 * 60 * 5,
+  });
 
-    const [formData, setFormData] = useState<{
-        name: string;
-        description: string;
-        model_name: string;
-        reasoning_method: "naive" | "cot" | "react";
-        dataset_name: string;
-        provider: "auto" | "hf_api" | "openrouter" | "groq" | "custom";
-        temperature: number;
-        max_tokens: number;
-        num_samples: number;
-        retrieval_method: "none" | "naive" | "hybrid" | "reranked";
-        rag_top_k: number;
-        agent_max_iterations: number;
-        agent_tools: string[];
-        enable_batching: boolean;
-        batch_size: number;
-        enable_caching: boolean;
-        cache_max_size: number;
-        seed: number | "";
-    }>({
-        name: "",
-        description: "",
-        model_name: "meta-llama/Llama-3.2-1B-Instruct",
-        reasoning_method: "naive",
-        dataset_name: "trivia_qa",
-        provider: "auto",
-        temperature: 0.1,
-        max_tokens: 150,
-        num_samples: 10,
-        retrieval_method: "none",
-        rag_top_k: 5,
-        agent_max_iterations: 5,
-        agent_tools: ["wikipedia_search", "calculator"],
-        enable_batching: false,
-        batch_size: 8,
-        enable_caching: false,
-        cache_max_size: 256,
-        seed: "",
-    });
+  const availableModels = modelsQuery.data?.models ?? [
+    { value: "meta-llama/Llama-3.2-1B-Instruct", label: "Llama 3.2 (1B)", description: "Fast, efficient default" },
+  ];
 
-    const [validationError, setValidationError] = useState<string | null>(null);
-    const [runError, setRunError] = useState<string | null>(null);
+  const [formData, setFormData] = useState({
+    name: "",
+    description: "",
+    model_name: "meta-llama/Llama-3.2-1B-Instruct",
+    reasoning_method: "naive" as "naive" | "cot" | "react",
+    dataset_name: "trivia_qa",
+    provider: "auto" as "auto" | "hf_api" | "openrouter" | "groq" | "custom",
+    temperature: 0.1,
+    max_tokens: 150,
+    num_samples: 10,
+    retrieval_method: "none" as "none" | "naive" | "hybrid" | "reranked",
+    rag_top_k: 5,
+    agent_max_iterations: 5,
+    agent_tools: ["wikipedia_search", "calculator"],
+    enable_batching: false,
+    batch_size: 8,
+    enable_caching: false,
+    cache_max_size: 256,
+    seed: "" as number | "",
+  });
 
-    // Custom LLM States
-    const [customBaseUrl, setCustomBaseUrl] = useState(() => {
-        if (typeof window !== "undefined") return localStorage.getItem("customBaseUrl") || "http://localhost:8000/v1";
-        return "http://localhost:8000/v1";
-    });
-    const [customApiKey, setCustomApiKey] = useState(() => {
-        if (typeof window !== "undefined") return localStorage.getItem("customApiKey") || "";
-        return "";
-    });
-    const [customModelId, setCustomModelId] = useState(() => {
-        if (typeof window !== "undefined") return localStorage.getItem("customModelId") || "";
-        return "";
-    });
+  const [validationError, setValidationError] = useState<string | null>(null);
+  const [runError, setRunError] = useState<string | null>(null);
 
-    const createMutation = useMutation({
-        mutationFn: ({ request }: { request: CreateExperimentRequest; shouldRun: boolean }) => createExperiment(request),
-        onSuccess: async (experiment, variables) => {
-            queryClient.invalidateQueries({ queryKey: ["experiments"] });
-            queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
+  const [customBaseUrl, setCustomBaseUrl] = useState(() => {
+    if (typeof window !== "undefined") return localStorage.getItem("customBaseUrl") || "http://localhost:8000/v1";
+    return "http://localhost:8000/v1";
+  });
+  const [customApiKey, setCustomApiKey] = useState(() => {
+    if (typeof window !== "undefined") return localStorage.getItem("customApiKey") || "";
+    return "";
+  });
+  const [customModelId, setCustomModelId] = useState(() => {
+    if (typeof window !== "undefined") return localStorage.getItem("customModelId") || "";
+    return "";
+  });
 
-            if (variables.shouldRun) {
-                try {
-                    await runExperiment(
-                        experiment.id,
-                        formData.model_name === "custom_hosted" ? customBaseUrl : undefined,
-                        formData.model_name === "custom_hosted" ? customApiKey : undefined
-                    );
-                } catch (err) {
-                    // Surface the error as a banner — user can retry from the detail page
-                    const message = err instanceof Error
-                        ? `Experiment created but failed to start: ${err.message}`
-                        : 'Experiment created but failed to start. Retry from the detail page.';
-                    setRunError(message);
-                    toast.error(message);
-                }
-            }
-            router.push(`/experiments/${experiment.id}`);
-        },
-    });
+  const createMutation = useMutation({
+    mutationFn: ({ request }: { request: CreateExperimentRequest; shouldRun: boolean }) => createExperiment(request),
+    onSuccess: async (experiment, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["experiments"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
 
-    const handleSubmit = (e: React.FormEvent, shouldRun: boolean = false) => {
-        e.preventDefault();
-
-        // --- Client-side validation ---
-        if (!formData.name.trim()) {
-            setValidationError("Experiment name is required.");
-            return;
+      if (variables.shouldRun) {
+        try {
+          await runExperiment(
+            experiment.id,
+            formData.model_name === "custom_hosted" ? customBaseUrl : undefined,
+            formData.model_name === "custom_hosted" ? customApiKey : undefined
+          );
+        } catch (error) {
+          const message = error instanceof Error
+            ? `Experiment created but failed to start: ${error.message}`
+            : "Experiment created but failed to start. Retry from the detail page.";
+          setRunError(message);
+          toast.error(message);
         }
-        if (formData.num_samples < 1 || formData.num_samples > 500) {
-            setValidationError("Samples must be between 1 and 500.");
-            return;
-        }
-        if (formData.enable_batching && (formData.batch_size < 1 || formData.batch_size > 32)) {
-            setValidationError("Batch size must be between 1 and 32.");
-            return;
-        }
-        if (formData.enable_caching && (formData.cache_max_size < 8 || formData.cache_max_size > 4096)) {
-            setValidationError("Cache max size must be between 8 and 4096.");
-            return;
-        }
-        setValidationError(null);
-        if (formData.model_name === "custom_hosted") {
-            if (!customBaseUrl.trim() || !customModelId.trim()) {
-                setValidationError("Base URL and Model ID are required for custom hosted models.");
-                return;
-            }
-            // Save to local storage for future use
-            if (typeof window !== "undefined") {
-                try {
-                    const settings = JSON.parse(localStorage.getItem("customLLMSettings") || "{}");
-                    settings[customModelId] = { baseUrl: customBaseUrl, apiKey: customApiKey };
-                    localStorage.setItem("customLLMSettings", JSON.stringify(settings));
-                } catch (e) {
-                    console.error("Failed to save custom LLM settings", e);
-                }
-                // Backward compatibility
-                localStorage.setItem("customBaseUrl", customBaseUrl);
-                localStorage.setItem("customApiKey", customApiKey);
-                localStorage.setItem("customModelId", customModelId);
-            }
-        }
+      }
 
-        const config: ExperimentConfig = {
-            model_name: formData.model_name === "custom_hosted" ? customModelId : formData.model_name,
-            reasoning_method: formData.reasoning_method,
-            dataset_name: formData.dataset_name,
-            provider: formData.provider,
-            hyperparameters: {
-                temperature: formData.temperature,
-                max_tokens: formData.max_tokens,
-                ...(formData.seed !== "" ? { seed: formData.seed as number } : {})
-            },
-            num_samples: formData.num_samples,
-        };
+      router.push(`/experiments/${experiment.id}`);
+    },
+  });
 
-        if (formData.retrieval_method !== "none") {
-            config.rag = {
-                retrieval_method: formData.retrieval_method,
-                top_k: formData.rag_top_k,
-            };
-        }
+  const selectedModel = availableModels.find((model) => model.value === formData.model_name);
+  const selectedDataset = datasetGroups.flatMap((group) => group.options).find((dataset) => dataset.value === formData.dataset_name);
+  const complexityScore = Math.min(100, Math.round((formData.num_samples / 60) * 45 + (formData.max_tokens / 800) * 25 + (formData.retrieval_method !== "none" ? 15 : 0) + (formData.reasoning_method === "react" ? 15 : formData.reasoning_method === "cot" ? 8 : 0)));
 
-        if (formData.reasoning_method === "react") {
-            config.agent = {
-                max_iterations: formData.agent_max_iterations,
-                tools: formData.agent_tools,
-            };
-        }
+  function updateField<K extends keyof typeof formData>(key: K, value: (typeof formData)[K]) {
+    setFormData((current) => ({ ...current, [key]: value }));
+  }
 
-        // Optimization settings (Phase 8)
-        if (formData.enable_batching || formData.enable_caching) {
-            config.optimization = {
-                enable_batching: formData.enable_batching,
-                batch_size: formData.batch_size,
-                enable_caching: formData.enable_caching,
-                cache_max_size: formData.cache_max_size,
-                enable_profiling: true,
-            };
-        }
+  function applyPreset(preset: (typeof presetConfigs)[number]["apply"]) {
+    setFormData((current) => ({
+      ...current,
+      reasoning_method: preset.reasoning_method,
+      dataset_name: preset.dataset_name,
+      num_samples: preset.num_samples,
+      retrieval_method: preset.retrieval_method,
+    }));
+  }
 
-        const request: CreateExperimentRequest = {
-            name: formData.name,
-            description: formData.description || undefined,
-            config,
-        };
+  function handleSubmit(event: React.FormEvent, shouldRun = false) {
+    event.preventDefault();
 
-        setRunError(null);
-        createMutation.mutate({ request, shouldRun });
+    if (!formData.name.trim()) {
+      setValidationError("Experiment name is required.");
+      return;
+    }
+    if (formData.num_samples < 1 || formData.num_samples > 500) {
+      setValidationError("Samples must be between 1 and 500.");
+      return;
+    }
+    if (formData.enable_batching && (formData.batch_size < 1 || formData.batch_size > 32)) {
+      setValidationError("Batch size must be between 1 and 32.");
+      return;
+    }
+    if (formData.enable_caching && (formData.cache_max_size < 8 || formData.cache_max_size > 4096)) {
+      setValidationError("Cache size must be between 8 and 4096.");
+      return;
+    }
+    if (formData.model_name === "custom_hosted" && (!customBaseUrl.trim() || !customModelId.trim())) {
+      setValidationError("Custom hosted models require a base URL and a model id.");
+      return;
+    }
+
+    setValidationError(null);
+    setRunError(null);
+
+    if (formData.model_name === "custom_hosted" && typeof window !== "undefined") {
+      try {
+        const settings = JSON.parse(localStorage.getItem("customLLMSettings") || "{}");
+        settings[customModelId] = { baseUrl: customBaseUrl, apiKey: customApiKey };
+        localStorage.setItem("customLLMSettings", JSON.stringify(settings));
+        localStorage.setItem("customBaseUrl", customBaseUrl);
+        localStorage.setItem("customApiKey", customApiKey);
+        localStorage.setItem("customModelId", customModelId);
+      } catch (error) {
+        console.error("Failed to store custom model settings", error);
+      }
+    }
+
+    const config: ExperimentConfig = {
+      model_name: formData.model_name === "custom_hosted" ? customModelId : formData.model_name,
+      reasoning_method: formData.reasoning_method,
+      dataset_name: formData.dataset_name,
+      provider: formData.provider,
+      hyperparameters: {
+        temperature: formData.temperature,
+        max_tokens: formData.max_tokens,
+        ...(formData.seed !== "" ? { seed: formData.seed as number } : {}),
+      },
+      num_samples: formData.num_samples,
     };
 
-    const selectedModel = availableModels.find(m => m.value === formData.model_name);
+    if (formData.retrieval_method !== "none") {
+      config.rag = {
+        retrieval_method: formData.retrieval_method,
+        top_k: formData.rag_top_k,
+      };
+    }
 
-    return (
-        <div className="min-h-screen bg-(--bg-page)">
-            <header className="bg-(--bg-card) shadow-sm border-b border-border">
-                <div className="max-w-7xl mx-auto px-4 py-6">
-                    <Link href="/experiments" className="text-primary hover:underline text-sm">
-                        ← Back to Experiments
-                    </Link>
-                    <h1 className="text-2xl font-serif text-(--text-heading) mt-1">
-                        New Experiment
-                    </h1>
-                </div>
-            </header>
+    if (formData.reasoning_method === "react") {
+      config.agent = {
+        max_iterations: formData.agent_max_iterations,
+        tools: formData.agent_tools,
+      };
+    }
 
-            <motion.main
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5 }}
-                className="max-w-7xl mx-auto px-4 py-8"
-            >
-                <form onSubmit={(e) => handleSubmit(e, false)} className="card p-6 space-y-6">
-                    {/* Validation Error Display */}
-                    {validationError && (
-                        <div className="bg-red-50 border border-red-200 rounded-xl p-4">
-                            <p className="text-(--error) text-sm font-medium">⚠ {validationError}</p>
-                        </div>
-                    )}
+    if (formData.enable_batching || formData.enable_caching) {
+      config.optimization = {
+        enable_batching: formData.enable_batching,
+        batch_size: formData.batch_size,
+        enable_caching: formData.enable_caching,
+        cache_max_size: formData.cache_max_size,
+        enable_profiling: true,
+      };
+    }
 
-                    {/* Run Error Display (Create & Run flow) */}
-                    {runError && (
-                        <div className="bg-yellow-50 border border-yellow-300 rounded-xl p-4">
-                            <p className="text-yellow-800 text-sm font-medium">⚠ {runError}</p>
-                        </div>
-                    )}
+    const request: CreateExperimentRequest = {
+      name: formData.name,
+      description: formData.description || undefined,
+      config,
+    };
 
-                    {/* API Error Display */}
-                    {createMutation.error && (
+    createMutation.mutate({ request, shouldRun });
+  }
 
-                        <div className="bg-red-50 border border-red-200 rounded-xl p-4">
-                            <p className="text-(--error)">
-                                {createMutation.error instanceof Error ? createMutation.error.message : "Failed to create experiment"}
-                            </p>
-                        </div>
-                    )}
+  return (
+    <div className="page-stack">
+      <PageHeader
+        eyebrow={<><WandSparkles className="size-3.5" /> Experiment builder</>}
+        title="Compose a run the backend already understands."
+        description="Every control here maps directly to the current experiment schema. The redesign changes structure and feedback, not backend capabilities."
+        actions={<Link href="/experiments" className="btn-secondary">Back to experiments</Link>}
+      />
 
-                    {/* Basic Info */}
-                    <section>
-                        <h2 className="text-lg font-serif text-(--text-heading) mb-4">Basic Information</h2>
-                        <div className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium text-(--text-body)">
-                                    Experiment Name *
-                                </label>
-                                <input
-                                    type="text"
-                                    required
-                                    value={formData.name}
-                                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                                    className="mt-1 block w-full border border-border rounded-lg px-3 py-2 bg-(--bg-card) text-(--text-body) focus:outline-none focus:ring-2 focus:ring-primary"
-                                    placeholder="e.g., naive_vs_cot_comparison"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-(--text-body)">
-                                    Description
-                                </label>
-                                <textarea
-                                    value={formData.description}
-                                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                                    className="mt-1 block w-full border border-border rounded-lg px-3 py-2 bg-(--bg-card) text-(--text-body) focus:outline-none focus:ring-2 focus:ring-primary"
-                                    rows={2}
-                                    placeholder="Optional description..."
-                                />
-                            </div>
-                        </div>
-                    </section>
-
-                    {/* Model Configuration */}
-                    <section>
-                        <h2 className="text-lg font-serif text-(--text-heading) mb-4">Model Configuration</h2>
-                        <div className="grid grid-cols-2 gap-4">
-                            <div>
-                                <label className="block text-sm font-medium text-(--text-body)">Model</label>
-                                <select
-                                    value={formData.model_name}
-                                    onChange={(e) => setFormData({ ...formData, model_name: e.target.value })}
-                                    className="mt-1 block w-full border border-border rounded-lg px-3 py-2 bg-(--bg-card) text-(--text-body)"
-                                >
-                                    <optgroup label="Free HF Serverless API">
-                                        {availableModels.map(model => (
-                                            <option key={model.value} value={model.value}>
-                                                {model.label}
-                                            </option>
-                                        ))}
-                                    </optgroup>
-                                    <optgroup label="Custom Options">
-                                        <option value="custom_hosted">🔌 Custom Hosted Model (OpenAI-Compatible)</option>
-                                    </optgroup>
-                                </select>
-                                {formData.model_name === "custom_hosted" ? (
-                                    <p className="text-xs text-(--text-muted) mt-1">Connect to vLLM, Ollama, Together AI, groq, or any OpenAI-compatible API endpoint.</p>
-                                ) : selectedModel ? (
-                                    <p className="text-xs text-(--text-muted) mt-1">{selectedModel.description}</p>
-                                ) : null}
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-(--text-body)">Reasoning Method</label>
-                                <select
-                                    value={formData.reasoning_method}
-                                    onChange={(e) => setFormData({ ...formData, reasoning_method: e.target.value as "naive" | "cot" | "react" })}
-                                    className="mt-1 block w-full border border-border rounded-lg px-3 py-2 bg-(--bg-card) text-(--text-body)"
-                                >
-                                    <option value="naive">Naive</option>
-                                    <option value="cot">Chain of Thought</option>
-                                    <option value="react">ReAct Agent</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-(--text-body)">Inference Provider</label>
-                                <select
-                                    value={formData.provider}
-                                    onChange={(e) => setFormData({ ...formData, provider: e.target.value as "auto" | "hf_api" | "openrouter" | "groq" | "custom" })}
-                                    className="mt-1 block w-full border border-border rounded-lg px-3 py-2 bg-(--bg-card) text-(--text-body)"
-                                >
-                                    <option value="auto">🔄 Auto (best available)</option>
-                                    <option value="hf_api">🤗 HF Inference API</option>
-                                    <option value="openrouter">🌐 OpenRouter</option>
-                                    <option value="groq">⚡ Groq</option>
-                                    <option value="custom">🔌 Custom Endpoint</option>
-                                </select>
-                                <p className="text-xs text-(--text-muted) mt-1">
-                                    {formData.provider === "auto" && "Router picks the best available provider with automatic fallback"}
-                                    {formData.provider === "hf_api" && "HuggingFace Inference API — free, but can be slow"}
-                                    {formData.provider === "openrouter" && "OpenRouter — free models via :free suffix (20 req/min)"}
-                                    {formData.provider === "groq" && "Groq — fast inference, strict rate limits (30 req/min)"}
-                                    {formData.provider === "custom" && "Your own OpenAI-compatible endpoint"}
-                                </p>
-                            </div>
-                        </div>
-
-                        {/* Custom Model Settings */}
-                        {formData.model_name === "custom_hosted" && (
-                            <div className="mt-4 p-4 bg-(--bg-page) rounded-lg border border-border space-y-4">
-                                <h3 className="text-sm font-semibold text-(--text-heading) flex items-center gap-2">
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                        <path d="m10 13-2 2-2-2m2 2v-6m7 0 2 2-2 2m-2-2v6m-4-7V4h8v3" />
-                                    </svg>
-                                    Custom API Endpoint Settings
-                                </h3>
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <label className="block text-sm font-medium text-(--text-body)">Base URL *</label>
-                                        <input
-                                            type="url"
-                                            required={formData.model_name === "custom_hosted"}
-                                            value={customBaseUrl}
-                                            onChange={(e) => setCustomBaseUrl(e.target.value)}
-                                            className="mt-1 block w-full border border-border rounded-lg px-3 py-2 bg-(--bg-card) text-(--text-body) font-mono text-sm"
-                                            placeholder="http://localhost:8000/v1"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium text-(--text-body)">API Key (Optional)</label>
-                                        <input
-                                            type="password"
-                                            value={customApiKey}
-                                            onChange={(e) => setCustomApiKey(e.target.value)}
-                                            className="mt-1 block w-full border border-border rounded-lg px-3 py-2 bg-(--bg-card) text-(--text-body) font-mono text-sm"
-                                            placeholder="sk-..."
-                                        />
-                                        <p className="text-xs text-(--text-muted) mt-1">Not saved to DB. Only sent when running.</p>
-                                    </div>
-                                </div>
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <label className="block text-sm font-medium text-(--text-body)">Model ID *</label>
-                                        <input
-                                            type="text"
-                                            required={formData.model_name === "custom_hosted"}
-                                            value={customModelId}
-                                            onChange={(e) => setCustomModelId(e.target.value)}
-                                            className="mt-1 block w-full border border-border rounded-lg px-3 py-2 bg-(--bg-card) text-(--text-body) font-mono text-sm"
-                                            placeholder="e.g., Llama-3-8B-Instruct"
-                                        />
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-                    </section>
-
-                    {/* Hyperparameters */}
-                    <section>
-                        <h2 className="text-lg font-serif text-(--text-heading) mb-4">Hyperparameters</h2>
-                        <div className="grid grid-cols-3 gap-4">
-                            <div>
-                                <label className="block text-sm font-medium text-(--text-body)">Temperature</label>
-                                <input
-                                    type="number"
-                                    step="0.1"
-                                    min="0"
-                                    max="2"
-                                    value={formData.temperature}
-                                    onChange={(e) => setFormData({ ...formData, temperature: parseFloat(e.target.value) })}
-                                    className="mt-1 block w-full border border-border rounded-lg px-3 py-2 bg-(--bg-card) text-(--text-body)"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-(--text-body)">Max Tokens</label>
-                                <input
-                                    type="number"
-                                    min="1"
-                                    max="4096"
-                                    value={formData.max_tokens}
-                                    onChange={(e) => setFormData({ ...formData, max_tokens: parseInt(e.target.value) })}
-                                    className="mt-1 block w-full border border-border rounded-lg px-3 py-2 bg-(--bg-card) text-(--text-body)"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-(--text-body)">Seed (Optional)</label>
-                                <input
-                                    type="number"
-                                    min="0"
-                                    value={formData.seed}
-                                    onChange={(e) => setFormData({ ...formData, seed: e.target.value === "" ? "" : parseInt(e.target.value) })}
-                                    className="mt-1 block w-full border border-border rounded-lg px-3 py-2 bg-(--bg-card) text-(--text-body)"
-                                    placeholder="Random"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-(--text-body)">Samples</label>
-                                <input
-                                    type="number"
-                                    min="1"
-                                    max="500"
-                                    value={formData.num_samples}
-                                    onChange={(e) => setFormData({ ...formData, num_samples: parseInt(e.target.value) })}
-                                    className="mt-1 block w-full border border-border rounded-lg px-3 py-2 bg-(--bg-card) text-(--text-body)"
-                                />
-                                <p className="text-xs text-(--text-muted) mt-1">Max 500 samples</p>
-                            </div>
-                        </div>
-                    </section>
-
-                    {/* Dataset & Retrieval */}
-                    <section>
-                        <h2 className="text-lg font-serif text-(--text-heading) mb-4">Dataset & Retrieval</h2>
-                        <div className="grid grid-cols-2 gap-4">
-                            <div>
-                                <label className="block text-sm font-medium text-(--text-body)">Dataset</label>
-                                <select
-                                    value={formData.dataset_name}
-                                    onChange={(e) => setFormData({ ...formData, dataset_name: e.target.value })}
-                                    className="mt-1 block w-full border border-border rounded-lg px-3 py-2 bg-(--bg-card) text-(--text-body)"
-                                >
-                                    <optgroup label="📋 General">
-                                        <option value="trivia_qa">TriviaQA (100 Qs)</option>
-                                        <option value="commonsense_qa">Commonsense QA (30 Qs)</option>
-                                        <option value="sample">Sample Questions (10 Qs)</option>
-                                    </optgroup>
-                                    <optgroup label="📚 RAG">
-                                        <option value="knowledge_base">Knowledge Base QA (50 Qs)</option>
-                                    </optgroup>
-                                    <optgroup label="🧠 Reasoning">
-                                        <option value="multi_hop">Multi-Hop QA (40 Qs)</option>
-                                        <option value="math_reasoning">Math Reasoning (40 Qs)</option>
-                                    </optgroup>
-                                    <optgroup label="🤖 Agent">
-                                        <option value="react_bench">ReAct Agent Bench (30 Qs)</option>
-                                    </optgroup>
-                                    <optgroup label="🛡️ Adversarial / Red-Team">
-                                        <option value="prompt_injection">Prompt Injection (10 Qs)</option>
-                                        <option value="jailbreak">Jailbreak Attempts (10 Qs)</option>
-                                        <option value="edge_cases">Edge Cases (10 Qs)</option>
-                                    </optgroup>
-                                </select>
-                                <p className="text-xs text-(--text-muted) mt-1">
-                                    {formData.dataset_name === "trivia_qa" && "Single-hop factual recall questions"}
-                                    {formData.dataset_name === "commonsense_qa" && "Everyday knowledge and reasoning"}
-                                    {formData.dataset_name === "sample" && "Built-in smoke test questions"}
-                                    {formData.dataset_name === "knowledge_base" && "⭐ Questions answerable from indexed articles — ideal for RAG"}
-                                    {formData.dataset_name === "multi_hop" && "Requires combining 2+ facts — ideal for CoT & ReAct"}
-                                    {formData.dataset_name === "math_reasoning" && "GSM8K-style word problems — ideal for CoT & calculator"}
-                                    {formData.dataset_name === "react_bench" && "⭐ Multi-tool questions requiring search + calculation"}
-                                    {formData.dataset_name === "prompt_injection" && "🛡️ Tests resistance to instruction override attacks"}
-                                    {formData.dataset_name === "jailbreak" && "🛡️ Tests resistance to DAN-style jailbreak patterns"}
-                                    {formData.dataset_name === "edge_cases" && "🛡️ Tests graceful handling of unusual inputs"}
-                                </p>
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-(--text-body)">Retrieval Method</label>
-                                <select
-                                    value={formData.retrieval_method}
-                                    onChange={(e) => setFormData({ ...formData, retrieval_method: e.target.value as "none" | "naive" | "hybrid" | "reranked" })}
-                                    className="mt-1 block w-full border border-border rounded-lg px-3 py-2 bg-(--bg-card) text-(--text-body)"
-                                >
-                                    <option value="none">No RAG</option>
-                                    <option value="naive">Naive RAG</option>
-                                    <option value="hybrid">Hybrid RAG</option>
-                                    <option value="reranked">Reranked RAG</option>
-                                </select>
-                            </div>
-                        </div>
-                        {/* RAG-specific settings */}
-                        {formData.retrieval_method !== "none" && (
-                            <div className="mt-4 p-4 bg-(--bg-page) rounded-lg border border-border space-y-3">
-                                <h3 className="text-sm font-semibold text-(--text-heading) flex items-center gap-2">
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                        <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" />
-                                    </svg>
-                                    RAG Settings
-                                </h3>
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <label className="block text-sm font-medium text-(--text-body)">Top-K Chunks</label>
-                                        <input
-                                            type="number"
-                                            min="1"
-                                            max="20"
-                                            value={formData.rag_top_k}
-                                            onChange={(e) => setFormData({ ...formData, rag_top_k: parseInt(e.target.value) || 5 })}
-                                            className="mt-1 block w-full border border-border rounded-lg px-3 py-2 bg-(--bg-card) text-(--text-body)"
-                                        />
-                                        <p className="text-xs text-(--text-muted) mt-1">Number of context chunks to retrieve</p>
-                                    </div>
-                                    <div className="flex items-end">
-                                        <p className="text-xs text-(--text-muted) p-2 bg-(--bg-card) rounded-lg border border-border">
-                                            💡 <strong>Naive</strong>: Dense retrieval&ensp;•&ensp;<strong>Hybrid</strong>: Dense + BM25&ensp;•&ensp;<strong>Reranked</strong>: Hybrid + cross-encoder
-                                        </p>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-                    </section>
-
-                    {/* Agent Settings (Phase 6) */}
-                    {formData.reasoning_method === "react" && (
-                        <section>
-                            <h2 className="text-lg font-serif text-(--text-heading) mb-4">Agent Settings</h2>
-                            <div className="p-4 bg-(--bg-page) rounded-lg border border-border space-y-4">
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <label className="block text-sm font-medium text-(--text-body)">Max Iterations</label>
-                                        <input
-                                            type="number"
-                                            min="1"
-                                            max="20"
-                                            value={formData.agent_max_iterations}
-                                            onChange={(e) => setFormData({ ...formData, agent_max_iterations: parseInt(e.target.value) || 5 })}
-                                            className="mt-1 block w-full border border-border rounded-lg px-3 py-2 bg-(--bg-card) text-(--text-body)"
-                                        />
-                                        <p className="text-xs text-(--text-muted) mt-1">Max Thought→Action→Observation loops</p>
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium text-(--text-body)">Tools</label>
-                                        <div className="mt-2 space-y-2">
-                                            {["wikipedia_search", "calculator", "retrieval"].map(tool => (
-                                                <label key={tool} className="flex items-center gap-2 text-sm text-(--text-body) cursor-pointer">
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={formData.agent_tools.includes(tool)}
-                                                        onChange={(e) => {
-                                                            const tools = e.target.checked
-                                                                ? [...formData.agent_tools, tool]
-                                                                : formData.agent_tools.filter(t => t !== tool);
-                                                            setFormData({ ...formData, agent_tools: tools });
-                                                        }}
-                                                        className="rounded border-border"
-                                                    />
-                                                    {tool === "wikipedia_search" ? "🌐 Wikipedia" : tool === "calculator" ? "🧮 Calculator" : "📚 Retrieval (RAG)"}
-                                                </label>
-                                            ))}
-                                        </div>
-                                    </div>
-                                </div>
-                                <p className="text-xs text-(--text-muted) p-2 bg-(--bg-card) rounded-lg border border-border">
-                                    🤖 The agent will reason step-by-step, using tools to gather information before answering. More iterations = more thorough but slower and more expensive.
-                                </p>
-                            </div>
-                        </section>
-                    )}
-
-                    {/* Optimization Settings (Phase 8) */}
-                    <section>
-                        <h2 className="text-lg font-serif text-(--text-heading) mb-4">⚡ Optimization</h2>
-                        <div className="p-4 bg-(--bg-page) rounded-lg border border-border space-y-4">
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="flex items-center gap-2 text-sm font-medium text-(--text-body) cursor-pointer">
-                                        <input
-                                            type="checkbox"
-                                            checked={formData.enable_batching}
-                                            onChange={(e) => setFormData({ ...formData, enable_batching: e.target.checked })}
-                                            className="rounded border-border"
-                                        />
-                                        Enable Batching
-                                    </label>
-                                    {formData.enable_batching && (
-                                        <div className="mt-2">
-                                            <label className="block text-xs text-(--text-muted)">Batch Size</label>
-                                            <input
-                                                type="number"
-                                                min="1"
-                                                max="32"
-                                                value={formData.batch_size}
-                                                onChange={(e) => setFormData({ ...formData, batch_size: parseInt(e.target.value) || 8 })}
-                                                className="mt-1 block w-full border border-border rounded-lg px-3 py-2 bg-(--bg-card) text-(--text-body) text-sm"
-                                            />
-                                            <p className="text-xs text-(--text-muted) mt-1">Concurrent API calls per batch</p>
-                                        </div>
-                                    )}
-                                </div>
-                                <div>
-                                    <label className="flex items-center gap-2 text-sm font-medium text-(--text-body) cursor-pointer">
-                                        <input
-                                            type="checkbox"
-                                            checked={formData.enable_caching}
-                                            onChange={(e) => setFormData({ ...formData, enable_caching: e.target.checked })}
-                                            className="rounded border-border"
-                                        />
-                                        Enable Caching
-                                    </label>
-                                    {formData.enable_caching && (
-                                        <div className="mt-2">
-                                            <label className="block text-xs text-(--text-muted)">Max Cache Entries</label>
-                                            <input
-                                                type="number"
-                                                min="16"
-                                                max="2048"
-                                                value={formData.cache_max_size}
-                                                onChange={(e) => setFormData({ ...formData, cache_max_size: parseInt(e.target.value) || 256 })}
-                                                className="mt-1 block w-full border border-border rounded-lg px-3 py-2 bg-(--bg-card) text-(--text-body) text-sm"
-                                            />
-                                            <p className="text-xs text-(--text-muted) mt-1">LRU cache for identical prompts</p>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                            <p className="text-xs text-(--text-muted) p-2 bg-(--bg-card) rounded-lg border border-border">
-                                ⚡ <strong>Batching</strong> parallelizes API calls for faster wall-clock time.
-                                <strong>Caching</strong> stores results for repeated prompts.
-                                Profiling is always enabled.
-                                {formData.reasoning_method === "react" && " Note: Batching is disabled for ReAct agent (requires iterative tool calling)."}
-                            </p>
-                        </div>
-                    </section>
-
-                    {/* Submit */}
-                    <div className="flex justify-end gap-3 pt-4 border-t border-border">
-                        <Link href="/experiments" className="px-4 py-2 text-(--text-body) hover:underline">
-                            Cancel
-                        </Link>
-                        <button
-                            type="submit"
-                            disabled={createMutation.isPending}
-                            className="px-6 py-2 rounded-full border border-border text-(--text-body) hover:bg-(--bg-page) transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-                        >
-                            {createMutation.isPending && !createMutation.variables?.shouldRun ? "Creating..." : "Create Experiment"}
-                        </button>
-                        <button
-                            type="button"
-                            disabled={createMutation.isPending}
-                            onClick={(e) => handleSubmit(e, true)}
-                            className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer inline-flex items-center gap-2"
-                        >
-                            {createMutation.isPending && createMutation.variables?.shouldRun ? (
-                                <>
-                                    <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                                    </svg>
-                                    Creating & Running...
-                                </>
-                            ) : (
-                                <>
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                                        <polygon points="5,3 19,12 5,21" />
-                                    </svg>
-                                    Create & Run
-                                </>
-                            )}
-                        </button>
-                    </div>
-                </form>
-            </motion.main>
+      {validationError ? (
+        <div className="alert alert-danger">
+          <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+          <p className="text-sm leading-7">{validationError}</p>
         </div>
-    );
+      ) : null}
+      {runError ? (
+        <div className="alert alert-warning">
+          <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+          <p className="text-sm leading-7">{runError}</p>
+        </div>
+      ) : null}
+      {createMutation.error ? (
+        <div className="alert alert-danger">
+          <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+          <p className="text-sm leading-7">{createMutation.error instanceof Error ? createMutation.error.message : "Failed to create experiment"}</p>
+        </div>
+      ) : null}
+
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
+        <motion.form
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] as const }}
+          onSubmit={(event) => handleSubmit(event, false)}
+          className="space-y-4"
+        >
+          <Panel>
+            <PanelHeader label="Basics" title="Name the experiment" description="The title should read well in tables, result exports, and side-by-side comparisons." />
+            <div className="panel-body grid gap-4 lg:grid-cols-[1fr_1.1fr]">
+              <div>
+                <label className="field-label" htmlFor="experiment-name">Experiment name</label>
+                <input
+                  id="experiment-name"
+                  type="text"
+                  required
+                  value={formData.name}
+                  onChange={(event) => updateField("name", event.target.value)}
+                  placeholder="e.g. cot_vs_naive_multihop"
+                  className="input-shell"
+                />
+              </div>
+              <div>
+                <label className="field-label" htmlFor="experiment-description">Description</label>
+                <textarea
+                  id="experiment-description"
+                  value={formData.description}
+                  onChange={(event) => updateField("description", event.target.value)}
+                  placeholder="Optional context for why this run exists"
+                  className="textarea-shell"
+                  rows={3}
+                />
+              </div>
+            </div>
+          </Panel>
+
+          <Panel>
+            <PanelHeader label="Configuration" title="Model and reasoning" description="Pick the model, provider, and reasoning strategy before adding retrieval or optimization layers." />
+            <div className="panel-body grid gap-4 lg:grid-cols-2">
+              <div>
+                <label className="field-label" htmlFor="model-name">Model</label>
+                <select id="model-name" value={formData.model_name} onChange={(event) => updateField("model_name", event.target.value)} className="select-shell">
+                  <optgroup label="Hugging Face / serverless">
+                    {availableModels.map((model) => (
+                      <option key={model.value} value={model.value}>{model.label}</option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Custom">
+                    <option value="custom_hosted">Custom hosted model</option>
+                  </optgroup>
+                </select>
+                <p className="field-help mt-2">{formData.model_name === "custom_hosted" ? "Use this when pointing at a local or hosted OpenAI-compatible endpoint." : selectedModel?.description}</p>
+              </div>
+              <div>
+                <label className="field-label" htmlFor="reasoning-method">Reasoning method</label>
+                <select id="reasoning-method" value={formData.reasoning_method} onChange={(event) => updateField("reasoning_method", event.target.value as "naive" | "cot" | "react")} className="select-shell">
+                  {reasoningOptions.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+                <p className="field-help mt-2">{reasoningOptions.find((option) => option.value === formData.reasoning_method)?.description}</p>
+              </div>
+              <div>
+                <label className="field-label" htmlFor="provider">Provider</label>
+                <select id="provider" value={formData.provider} onChange={(event) => updateField("provider", event.target.value as typeof formData.provider)} className="select-shell">
+                  {providerOptions.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+                <p className="field-help mt-2">{providerOptions.find((option) => option.value === formData.provider)?.description}</p>
+              </div>
+            </div>
+
+            {formData.model_name === "custom_hosted" ? (
+              <div className="panel-body pt-0">
+                <div className="rounded-[18px] border border-[var(--border)] bg-[var(--surface-2)] p-4">
+                  <div className="grid gap-4 lg:grid-cols-2">
+                    <div>
+                      <label className="field-label" htmlFor="custom-base-url">Base URL</label>
+                      <input id="custom-base-url" type="url" value={customBaseUrl} onChange={(event) => setCustomBaseUrl(event.target.value)} className="input-shell font-mono text-sm" placeholder="http://localhost:8000/v1" />
+                    </div>
+                    <div>
+                      <label className="field-label" htmlFor="custom-api-key">API key</label>
+                      <input id="custom-api-key" type="password" value={customApiKey} onChange={(event) => setCustomApiKey(event.target.value)} className="input-shell font-mono text-sm" placeholder="sk-..." />
+                    </div>
+                    <div>
+                      <label className="field-label" htmlFor="custom-model-id">Model id</label>
+                      <input id="custom-model-id" type="text" value={customModelId} onChange={(event) => setCustomModelId(event.target.value)} className="input-shell font-mono text-sm" placeholder="e.g. llama-3-8b" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+          </Panel>
+
+          <Panel>
+            <PanelHeader label="Evaluation setup" title="Dataset and runtime" description="These settings are backed directly by current dataset, RAG, agent, and optimization fields." />
+            <div className="panel-body grid gap-4 lg:grid-cols-2">
+              <div>
+                <label className="field-label" htmlFor="dataset">Dataset</label>
+                <select id="dataset" value={formData.dataset_name} onChange={(event) => updateField("dataset_name", event.target.value)} className="select-shell">
+                  {datasetGroups.map((group) => (
+                    <optgroup key={group.label} label={group.label}>
+                      {group.options.map((option) => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
+                <p className="field-help mt-2">{selectedDataset?.description}</p>
+              </div>
+              <div>
+                <label className="field-label" htmlFor="samples">Samples</label>
+                <input id="samples" type="number" min="1" max="500" value={formData.num_samples} onChange={(event) => updateField("num_samples", parseInt(event.target.value, 10) || 1)} className="input-shell" />
+                <p className="field-help mt-2">Max 500 samples on the current API.</p>
+              </div>
+              <div>
+                <label className="field-label" htmlFor="retrieval-method">Retrieval method</label>
+                <select id="retrieval-method" value={formData.retrieval_method} onChange={(event) => updateField("retrieval_method", event.target.value as typeof formData.retrieval_method)} className="select-shell">
+                  {retrievalOptions.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+                <p className="field-help mt-2">{retrievalOptions.find((option) => option.value === formData.retrieval_method)?.description}</p>
+              </div>
+              {formData.retrieval_method !== "none" ? (
+                <div>
+                  <label className="field-label" htmlFor="rag-top-k">Top-k chunks</label>
+                  <input id="rag-top-k" type="number" min="1" max="20" value={formData.rag_top_k} onChange={(event) => updateField("rag_top_k", parseInt(event.target.value, 10) || 1)} className="input-shell" />
+                  <p className="field-help mt-2">Controls how much retrieved context is injected per question.</p>
+                </div>
+              ) : null}
+            </div>
+          </Panel>
+
+          <Panel>
+            <PanelHeader label="Generation" title="Hyperparameters" description="These map directly to the existing hyperparameter payload sent to the backend." />
+            <div className="panel-body grid gap-4 lg:grid-cols-3">
+              <div>
+                <label className="field-label" htmlFor="temperature">Temperature</label>
+                <input id="temperature" type="number" step="0.1" min="0" max="2" value={formData.temperature} onChange={(event) => updateField("temperature", parseFloat(event.target.value) || 0)} className="input-shell" />
+              </div>
+              <div>
+                <label className="field-label" htmlFor="max-tokens">Max tokens</label>
+                <input id="max-tokens" type="number" min="1" max="4096" value={formData.max_tokens} onChange={(event) => updateField("max_tokens", parseInt(event.target.value, 10) || 1)} className="input-shell" />
+              </div>
+              <div>
+                <label className="field-label" htmlFor="seed">Seed</label>
+                <input id="seed" type="number" min="0" value={formData.seed} onChange={(event) => updateField("seed", event.target.value === "" ? "" : parseInt(event.target.value, 10))} className="input-shell" placeholder="Optional" />
+              </div>
+            </div>
+          </Panel>
+
+          {formData.reasoning_method === "react" ? (
+            <Panel>
+              <PanelHeader label="Agent settings" title="Tool loop controls" description="Only shown because the current backend supports iterative tool calls for ReAct runs." />
+              <div className="panel-body grid gap-4 lg:grid-cols-2">
+                <div>
+                  <label className="field-label" htmlFor="agent-max-iterations">Max iterations</label>
+                  <input id="agent-max-iterations" type="number" min="1" max="20" value={formData.agent_max_iterations} onChange={(event) => updateField("agent_max_iterations", parseInt(event.target.value, 10) || 1)} className="input-shell" />
+                  <p className="field-help mt-2">Maximum Thought -&gt; Action -&gt; Observation loops.</p>
+                </div>
+                <div>
+                  <div className="field-label">Enabled tools</div>
+                  <div className="space-y-2 rounded-[18px] border border-[var(--border)] bg-[var(--surface-2)] p-4 text-sm text-[var(--muted-foreground)]">
+                    {[
+                      { value: "wikipedia_search", label: "Wikipedia search" },
+                      { value: "calculator", label: "Calculator" },
+                      { value: "retrieval", label: "Retrieval" },
+                    ].map((tool) => (
+                      <label key={tool.value} className="flex items-center gap-3">
+                        <input
+                          type="checkbox"
+                          checked={formData.agent_tools.includes(tool.value)}
+                          onChange={(event) => {
+                            const next = event.target.checked
+                              ? [...formData.agent_tools, tool.value]
+                              : formData.agent_tools.filter((item) => item !== tool.value);
+                            updateField("agent_tools", next);
+                          }}
+                        />
+                        {tool.label}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </Panel>
+          ) : null}
+
+          <Panel>
+            <PanelHeader label="Optimization" title="Execution options" description="These switches are already backed by the optimization config and profiling data in the current API." />
+            <div className="panel-body grid gap-4 lg:grid-cols-2">
+              <div className="rounded-[18px] border border-[var(--border)] bg-[var(--surface-2)] p-4">
+                <label className="flex items-center gap-3 font-medium">
+                  <input type="checkbox" checked={formData.enable_batching} onChange={(event) => updateField("enable_batching", event.target.checked)} />
+                  Enable batching
+                </label>
+                <p className="field-help mt-3">Parallelize eligible prompts to reduce wall-clock time.</p>
+                {formData.enable_batching ? (
+                  <div className="mt-4">
+                    <label className="field-label" htmlFor="batch-size">Batch size</label>
+                    <input id="batch-size" type="number" min="1" max="32" value={formData.batch_size} onChange={(event) => updateField("batch_size", parseInt(event.target.value, 10) || 1)} className="input-shell" />
+                  </div>
+                ) : null}
+              </div>
+              <div className="rounded-[18px] border border-[var(--border)] bg-[var(--surface-2)] p-4">
+                <label className="flex items-center gap-3 font-medium">
+                  <input type="checkbox" checked={formData.enable_caching} onChange={(event) => updateField("enable_caching", event.target.checked)} />
+                  Enable caching
+                </label>
+                <p className="field-help mt-3">Reuse identical prompts where deterministic settings allow it.</p>
+                {formData.enable_caching ? (
+                  <div className="mt-4">
+                    <label className="field-label" htmlFor="cache-size">Cache size</label>
+                    <input id="cache-size" type="number" min="8" max="4096" value={formData.cache_max_size} onChange={(event) => updateField("cache_max_size", parseInt(event.target.value, 10) || 8)} className="input-shell" />
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          </Panel>
+
+          <div className="flex flex-wrap justify-end gap-3">
+            <Link href="/experiments" className="btn-secondary">Cancel</Link>
+            <button type="submit" className="btn-secondary" disabled={createMutation.isPending}>
+              {createMutation.isPending && !createMutation.variables?.shouldRun ? <LoaderCircle className="size-4 animate-spin" /> : null}
+              Create draft
+            </button>
+            <button type="button" className="btn-primary" disabled={createMutation.isPending} onClick={(event) => handleSubmit(event, true)}>
+              {createMutation.isPending && createMutation.variables?.shouldRun ? <LoaderCircle className="size-4 animate-spin" /> : null}
+              Create and run
+              <ArrowRight className="size-4" />
+            </button>
+          </div>
+        </motion.form>
+
+        <div className="space-y-4 xl:sticky xl:top-24 xl:self-start">
+          <Panel>
+            <PanelHeader label="Summary" title={formData.name || "Untitled experiment"} description="A dense overview of exactly what the backend will receive." />
+            <div className="panel-body space-y-4">
+              <div className="flex flex-wrap gap-2 text-xs text-[var(--muted-foreground)]">
+                <span className="chip">{formData.reasoning_method.toUpperCase()}</span>
+                <span className="chip">{formData.dataset_name}</span>
+                <span className="chip">{formData.provider}</span>
+              </div>
+              <div className="space-y-3 text-sm text-[var(--muted-foreground)]">
+                <div className="flex items-center justify-between gap-3"><span>Model</span><span className="font-medium text-[var(--foreground)]">{formData.model_name === "custom_hosted" ? customModelId || "Custom hosted" : selectedModel?.label}</span></div>
+                <div className="flex items-center justify-between gap-3"><span>Samples</span><span className="metric-value text-[var(--foreground)]">{formData.num_samples}</span></div>
+                <div className="flex items-center justify-between gap-3"><span>Max tokens</span><span className="metric-value text-[var(--foreground)]">{formData.max_tokens}</span></div>
+                <div className="flex items-center justify-between gap-3"><span>Retrieval</span><span className="font-medium text-[var(--foreground)]">{formData.retrieval_method}</span></div>
+              </div>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-[var(--muted-foreground)]">Complexity</span>
+                  <span className="metric-value">{complexityScore}%</span>
+                </div>
+                <MetricBar value={complexityScore} />
+              </div>
+            </div>
+          </Panel>
+
+          <Panel>
+            <PanelHeader label="Quick starts" title="Backend-safe presets" description="These only prefill fields that the current API already supports." />
+            <div className="panel-body space-y-3">
+              {presetConfigs.map((preset) => (
+                <button key={preset.title} type="button" className="w-full rounded-[18px] border border-[var(--border)] bg-[var(--surface-2)] p-4 text-left transition-all hover:border-[var(--border-strong)] hover:bg-[var(--surface-3)]" onClick={() => applyPreset(preset.apply)}>
+                  <div className="font-semibold tracking-[-0.03em]">{preset.title}</div>
+                  <p className="mt-2 text-sm leading-7 text-[var(--muted-foreground)]">{preset.description}</p>
+                </button>
+              ))}
+            </div>
+          </Panel>
+
+          <Panel>
+            <PanelHeader label="Field notes" title="What changes run time" description="Small UI guidance tied to the current execution model." />
+            <div className="panel-body space-y-3 text-sm leading-7 text-[var(--muted-foreground)]">
+              <div className="flex gap-3 rounded-[18px] border border-[var(--border)] bg-[var(--surface-2)] p-4">
+                <Database className="mt-1 size-4 shrink-0 text-[var(--accent)]" />
+                Retrieval adds context-fetch overhead, especially with hybrid or reranked modes.
+              </div>
+              <div className="flex gap-3 rounded-[18px] border border-[var(--border)] bg-[var(--surface-2)] p-4">
+                <Layers3 className="mt-1 size-4 shrink-0 text-[var(--primary)]" />
+                More samples and larger max tokens increase result payload size and evaluation time.
+              </div>
+              <div className="flex gap-3 rounded-[18px] border border-[var(--border)] bg-[var(--surface-2)] p-4">
+                <PlugZap className="mt-1 size-4 shrink-0 text-[var(--success)]" />
+                Batching and caching are safe to enable because the backend already profiles them in result exports.
+              </div>
+            </div>
+          </Panel>
+        </div>
+      </div>
+    </div>
+  );
 }
+
+
+

@@ -1,30 +1,56 @@
 "use client";
 
-/**
- * LLM Research Platform - Dashboard
- * 
- * Main dashboard showing stats, recent experiments, and quick actions.
- * Uses TanStack Query for data fetching.
- * Styled with DESIGN_SYSTEM.md (4-color palette, Instrument Serif headings).
- */
-
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { AnimatePresence, motion } from "framer-motion";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { motion } from "framer-motion";
-import { getDashboardStats, listExperiments, deleteExperiment, runExperiment, getReadinessStatus, ApiError } from "@/lib/api";
-import { Play, Trash2, Eye, Loader2, AlertTriangle } from "lucide-react";
+import { useMemo, useState } from "react";
+import {
+  Activity,
+  AlertTriangle,
+  ArrowRight,
+  Clock3,
+  FlaskConical,
+  LoaderCircle,
+  Play,
+  Trash2,
+} from "lucide-react";
 import { toast } from "sonner";
 
-export default function DashboardPage() {
-  const queryClient = useQueryClient();
-  const router = useRouter();
+import {
+  ApiError,
+  deleteExperiment,
+  getDashboardStats,
+  getReadinessStatus,
+  listExperiments,
+  runExperiment,
+} from "@/lib/api";
+import {
+  AnimatedNumber,
+  EmptyState,
+  MetricCard,
+  PageHeader,
+  Panel,
+  PanelHeader,
+  SkeletonBlock,
+  StatusPill,
+} from "@/components/ui/primitives";
 
-  // Track in-flight action IDs
-  const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
+function formatDate(dateStr: string) {
+  return new Date(dateStr).toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+export default function DashboardPage() {
+  const router = useRouter();
+  const queryClient = useQueryClient();
   const [runningIds, setRunningIds] = useState<Set<string>>(new Set());
-  const [experimentToDelete, setExperimentToDelete] = useState<{ id: string, name: string } | null>(null);
+  const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
+  const [experimentToDelete, setExperimentToDelete] = useState<{ id: string; name: string } | null>(null);
 
   const statsQuery = useQuery({
     queryKey: ["dashboard-stats"],
@@ -33,380 +59,344 @@ export default function DashboardPage() {
 
   const experimentsQuery = useQuery({
     queryKey: ["experiments", "recent"],
-    queryFn: () => listExperiments({ limit: 5 }),
+    queryFn: () => listExperiments({ limit: 6 }),
   });
 
   const readinessQuery = useQuery({
     queryKey: ["readiness"],
     queryFn: getReadinessStatus,
-    refetchInterval: 30000, // Refresh every 30s
+    refetchInterval: 30000,
     retry: (failureCount, error) => !(error instanceof ApiError && error.statusCode === 408) && failureCount < 1,
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: (id: string) => {
-      setDeletingIds(prev => new Set(prev).add(id));
-      return deleteExperiment(id);
-    },
-    onSuccess: (_data, id) => {
-      setDeletingIds(prev => { const s = new Set(prev); s.delete(id); return s; });
-      queryClient.invalidateQueries({ queryKey: ["experiments"] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
-      toast.success("Experiment deleted");
-      setExperimentToDelete(null);
-    },
-    onError: (err, id) => {
-      setDeletingIds(prev => { const s = new Set(prev); s.delete(id); return s; });
-      toast.error(`Failed to delete: ${err.message}`);
-      setExperimentToDelete(null);
-    },
   });
 
   const runMutation = useMutation({
     mutationFn: (id: string) => {
-      setRunningIds(prev => new Set(prev).add(id));
+      setRunningIds((prev) => new Set(prev).add(id));
       return runExperiment(id);
     },
     onSuccess: (_data, id) => {
-      setRunningIds(prev => { const s = new Set(prev); s.delete(id); return s; });
+      setRunningIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
       queryClient.invalidateQueries({ queryKey: ["experiments"] });
       toast.success("Experiment started");
     },
-    onError: (err, id) => {
-      setRunningIds(prev => { const s = new Set(prev); s.delete(id); return s; });
-      toast.error(`Failed to start: ${err.message}`);
+    onError: (error: Error, id) => {
+      setRunningIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+      toast.error(`Failed to start experiment: ${error.message}`);
     },
   });
 
-  const handleRun = async (id: string) => {
-    runMutation.mutate(id);
-  };
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => {
+      setDeletingIds((prev) => new Set(prev).add(id));
+      return deleteExperiment(id);
+    },
+    onSuccess: (_data, id) => {
+      setDeletingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+      queryClient.invalidateQueries({ queryKey: ["experiments"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
+      setExperimentToDelete(null);
+      toast.success("Experiment deleted");
+    },
+    onError: (error: Error, id) => {
+      setDeletingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+      setExperimentToDelete(null);
+      toast.error(`Failed to delete experiment: ${error.message}`);
+    },
+  });
 
-  const handleDeleteClick = (id: string, name: string) => {
-    setExperimentToDelete({ id, name });
-  };
-
-  const confirmDelete = () => {
-    if (experimentToDelete) {
-      deleteMutation.mutate(experimentToDelete.id);
-    }
-  };
-
-  const stats = statsQuery.data;
-  const recentExperiments = experimentsQuery.data?.experiments ?? [];
-  const loading = statsQuery.isLoading || experimentsQuery.isLoading;
-  const error = statsQuery.error || experimentsQuery.error;
   const readinessError = readinessQuery.error;
   const readinessIsWaking = readinessError instanceof ApiError && readinessError.statusCode === 408;
   const readinessMessage = readinessIsWaking
-    ? "Backend is waking up. Free Hugging Face Spaces can take up to a minute after inactivity."
+    ? "The backend is waking up. Free-tier cold starts can take around a minute."
     : readinessError instanceof Error
       ? readinessError.message
-      : "Backend unreachable";
+      : "Readiness checks are unavailable right now.";
+
+  const stats = statsQuery.data;
+  const experiments = experimentsQuery.data?.experiments ?? [];
+  const loading = statsQuery.isLoading || experimentsQuery.isLoading;
+  const summaryCards = useMemo(
+    () => [
+      {
+        label: "Total experiments",
+        value: stats?.totalExperiments ?? 0,
+        detail: "All tracked runs across the workspace",
+      },
+      {
+        label: "Completed",
+        value: stats?.completedExperiments ?? 0,
+        detail: "Finished and ready for analysis",
+        tone: "success" as const,
+      },
+      {
+        label: "Live queue",
+        value: stats?.runningExperiments ?? 0,
+        detail: "Queued or currently executing",
+        tone: "accent" as const,
+      },
+      {
+        label: "Pending",
+        value: stats?.pendingExperiments ?? 0,
+        detail: "Configured but not yet started",
+        tone: "warning" as const,
+      },
+    ],
+    [stats]
+  );
 
   return (
-    <div className="min-h-screen bg-(--bg-page)">
-      {/* Header */}
-      <header className="bg-(--bg-card) shadow-sm border-b border-border">
-        <div className="max-w-7xl mx-auto px-4 py-6">
-          <h1 className="text-3xl font-serif text-(--text-heading)">
-            LLM Research Platform
-          </h1>
-          <p className="mt-1 text-(--text-body)">
-            Config-driven experimentation for reasoning, retrieval, and alignment
-          </p>
+    <div className="page-stack">
+      <PageHeader
+        eyebrow={<><Activity className="size-3.5" /> Workspace snapshot</>}
+        title="Operate experiments like a product system."
+        description="Monitor readiness, launch new runs, and jump into the last experiments without leaving the main console."
+        actions={
+          <>
+            <Link href="/experiments" className="btn-secondary">
+              Browse experiments
+            </Link>
+            <Link href="/experiments/new" className="btn-primary">
+              New experiment
+              <ArrowRight className="size-4" />
+            </Link>
+          </>
+        }
+      >
+        <div className="flex flex-wrap gap-3 text-sm text-[var(--muted-foreground)]">
+          <span className="chip">Dashboard</span>
+          <span className="chip">Readiness</span>
+          <span className="chip">Queue control</span>
+          <span className="chip">Recent activity</span>
         </div>
-      </header>
+      </PageHeader>
 
-      <main className="max-w-7xl mx-auto px-4 py-8">
-        {/* Error State */}
-        {error && (
-          <div className="mb-8 bg-red-50 border border-red-200 rounded-xl p-4">
-            <p className="text-red-700">
-              <strong>Error:</strong> {error instanceof Error ? error.message : 'Failed to load'}
-            </p>
-            <p className="text-sm text-red-600 mt-1">
-              Backend URL: <code className="font-mono bg-red-100 px-1 rounded">{process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1 (fallback — NEXT_PUBLIC_API_URL not set)'}</code>
+      {statsQuery.error ? (
+        <div className="alert alert-danger">
+          <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+          <div className="space-y-1">
+            <div className="font-semibold">Dashboard data failed to load</div>
+            <p className="text-sm text-[var(--muted-foreground)]">
+              {statsQuery.error instanceof Error ? statsQuery.error.message : "Unknown error"}
             </p>
           </div>
-        )}
+        </div>
+      ) : null}
 
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        {loading
+          ? Array.from({ length: 4 }).map((_, index) => <SkeletonBlock key={index} className="h-[134px]" />)
+          : summaryCards.map((card) => (
+              <MetricCard
+                key={card.label}
+                label={card.label}
+                tone={card.tone}
+                value={<AnimatedNumber value={card.value} className="text-4xl" />}
+                detail={card.detail}
+              />
+            ))}
+      </section>
 
-        {/* Stats Grid */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-          className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8"
-        >
-          <StatCard
-            title="Total Experiments"
-            value={loading ? "..." : stats?.totalExperiments ?? 0}
-            loading={loading}
+      <section className="grid gap-4 xl:grid-cols-[0.72fr_1.28fr]">
+        <Panel>
+          <PanelHeader
+            label="System state"
+            title="Readiness checks"
+            description="Frontend-safe visibility into API, database, and model dependencies."
           />
-          <StatCard
-            title="Completed"
-            value={loading ? "..." : stats?.completedExperiments ?? 0}
-            loading={loading}
-          />
-          <StatCard
-            title="Running"
-            value={loading ? "..." : stats?.runningExperiments ?? 0}
-            loading={loading}
-          />
-          <StatCard
-            title="Pending"
-            value={loading ? "..." : stats?.pendingExperiments ?? 0}
-            loading={loading}
-          />
-        </motion.div>
+          <div className="panel-body space-y-4">
+            {readinessQuery.isLoading ? (
+              <div className="space-y-3">
+                <SkeletonBlock className="h-14" />
+                <SkeletonBlock className="h-14" />
+                <SkeletonBlock className="h-14" />
+              </div>
+            ) : readinessQuery.error ? (
+              <div className={readinessIsWaking ? "alert alert-warning" : "alert alert-danger"}>
+                <Clock3 className="mt-0.5 size-4 shrink-0" />
+                <p className="text-sm leading-7">{readinessMessage}</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {Object.entries(readinessQuery.data?.checks ?? {}).map(([key, value]) => {
+                  const status = String(value);
+                  const tone =
+                    status === "healthy"
+                      ? "status-completed"
+                      : status === "not_configured"
+                        ? "status-pending"
+                        : status.startsWith("archived")
+                          ? "status-queued"
+                          : "status-failed";
 
-        {/* System Status */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.05 }}
-          className="card p-6 mb-8"
-        >
-          <h2 className="text-xl font-serif text-(--text-heading) mb-4">System Status</h2>
-          {readinessQuery.isLoading ? (
-            <div className="animate-pulse h-8 bg-(--bg-page) rounded w-48" />
-          ) : readinessQuery.error ? (
-            <div className={`flex items-center gap-2 text-sm ${readinessIsWaking ? "text-amber-700" : "text-red-600"}`}>
-              <span className={`inline-block w-2.5 h-2.5 rounded-full ${readinessIsWaking ? "bg-amber-400" : "bg-red-500"}`} />
-              {readinessMessage}
-            </div>
-          ) : (
-            <div className="flex flex-wrap gap-6">
-              {Object.entries(readinessQuery.data?.checks ?? {}).map(([key, value]) => {
-                const status = String(value);
-                const isHealthy = status === "healthy";
-                const isNotConfigured = status === "not_configured";
-                const isArchived = status.startsWith("archived");
-                let label = "Unhealthy";
-                let dotColor = "bg-red-500";
-                let textColor = "text-red-600";
-
-                if (isHealthy) {
-                  label = "Healthy";
-                  dotColor = "bg-green-500";
-                  textColor = "text-green-600";
-                } else if (isNotConfigured) {
-                  label = "Not Configured";
-                  dotColor = "bg-gray-300";
-                  textColor = "text-gray-400";
-                } else if (isArchived) {
-                  label = "Archived";
-                  dotColor = "bg-amber-400";
-                  textColor = "text-amber-600";
-                }
-
-                return (
-                  <div key={key} className="flex items-center gap-2 text-sm">
-                    <span className={`inline-block w-2.5 h-2.5 rounded-full ${dotColor}`} />
-                    <span className="capitalize text-(--text-body)">{key.replace(/_/g, " ")}</span>
-                    <span className={`text-xs ${textColor}`}>
-                      {label}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </motion.div>
-
-        {/* Quick Actions */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.1 }}
-          className="card p-6 mb-8"
-        >
-          <h2 className="text-xl font-serif text-(--text-heading) mb-4">Quick Actions</h2>
-          <div className="flex gap-4">
-            <Link
-              href="/experiments/new"
-              className="btn-primary"
-            >
-              New Experiment
-            </Link>
-            <Link
-              href="/experiments"
-              className="px-6 py-2 rounded-full border border-border text-(--text-body) hover:bg-(--bg-page) transition-colors"
-            >
-              View All Experiments
-            </Link>
-          </div>
-        </motion.div>
-
-        {/* Recent Experiments */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.2 }}
-          className="card p-6"
-        >
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-serif text-(--text-heading)">Recent Experiments</h2>
-            <Link href="/experiments" className="text-primary hover:underline text-sm">
-              View all →
-            </Link>
-          </div>
-
-          {loading ? (
-            <div className="space-y-3">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="animate-pulse h-16 bg-(--bg-page) rounded-lg" />
-              ))}
-            </div>
-          ) : recentExperiments.length === 0 ? (
-            <p className="text-(--text-muted) text-center py-8">
-              No experiments yet. Create your first experiment to get started.
-            </p>
-          ) : (
-            <div className="space-y-3">
-              {recentExperiments.map((exp, i) => (
-                <motion.div
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.3 + i * 0.05, duration: 0.3 }}
-                  key={exp.id}
-                  className="block border border-border rounded-lg p-4 hover:bg-(--bg-page) transition-colors cursor-pointer shadow-xs"
-                  onClick={() => router.push(`/experiments/${exp.id}`)}
-                  tabIndex={0}
-                  role="button"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault();
-                      router.push(`/experiments/${exp.id}`);
-                    }
-                  }}
-                >
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <h3 className="font-medium text-(--text-heading)">{exp.name}</h3>
-                      <p className="text-sm text-(--text-muted)">
-                        {exp.config.model_name} • {exp.config.reasoning_method}
-                      </p>
+                  return (
+                    <div key={key} className="rounded-[18px] border border-[var(--border)] bg-[var(--surface-2)] p-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <div className="section-label">{key.replace(/_/g, " ")}</div>
+                          <div className="mt-1 font-semibold capitalize">{status.replace(/_/g, " ")}</div>
+                        </div>
+                        <span className={cn("status-pill", tone)}>
+                          <span className="status-dot" />
+                          {status === "healthy" ? "ready" : status}
+                        </span>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-4">
-                      <span className={`text-xs px-2 py-1 rounded-full badge-${exp.status}`}>
-                        {exp.status}
-                      </span>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </Panel>
 
-                      <div className="flex gap-2 items-center" onClick={(e) => e.stopPropagation()}>
-                        <Link
-                          href={`/experiments/${exp.id}`}
-                          className="inline-flex items-center justify-center p-1.5 text-sm font-medium border border-border bg-(--bg-card) text-(--text-body) rounded-md hover:bg-(--bg-page) transition-colors shadow-xs"
-                          title="View Detail"
-                        >
-                          <Eye className="size-4" />
-                        </Link>
-
+        <Panel>
+          <PanelHeader
+            label="Recent runs"
+            title="Experiment queue"
+            description="The fastest way to resume work, rerun a configuration, or jump into a finished comparison."
+            actions={<Link href="/experiments" className="btn-secondary">View all</Link>}
+          />
+          <div className="panel-body">
+            {experimentsQuery.isLoading ? (
+              <div className="space-y-3">
+                {Array.from({ length: 4 }).map((_, index) => (
+                  <SkeletonBlock key={index} className="h-[92px]" />
+                ))}
+              </div>
+            ) : experiments.length === 0 ? (
+              <EmptyState
+                icon={<FlaskConical className="size-5" />}
+                title="No experiments yet"
+                description="Start with a baseline run, then compare it against a reasoning or retrieval variant."
+                action={<Link href="/experiments/new" className="btn-primary">Create first experiment</Link>}
+              />
+            ) : (
+              <div className="space-y-3">
+                {experiments.map((experiment) => (
+                  <button
+                    key={experiment.id}
+                    type="button"
+                    onClick={() => router.push(`/experiments/${experiment.id}`)}
+                    className="w-full rounded-[20px] border border-[var(--border)] bg-[var(--surface-2)] p-4 text-left transition-all hover:border-[var(--border-strong)] hover:bg-[var(--surface-3)]"
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="space-y-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <div className="text-lg font-semibold tracking-[-0.03em]">{experiment.name}</div>
+                          <StatusPill status={experiment.status} />
+                        </div>
+                        <div className="flex flex-wrap gap-2 text-xs text-[var(--muted-foreground)]">
+                          <span className="chip">{experiment.config.reasoning_method.toUpperCase()}</span>
+                          <span className="chip">{experiment.config.model_name.split("/").pop()}</span>
+                          <span className="chip">{experiment.config.dataset_name}</span>
+                        </div>
+                        {experiment.description ? (
+                          <p className="max-w-2xl text-sm leading-7 text-[var(--muted-foreground)]">{experiment.description}</p>
+                        ) : null}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2" onClick={(event) => event.stopPropagation()}>
                         <button
-                          onClick={(e) => { e.stopPropagation(); handleRun(exp.id); }}
-                          disabled={runningIds.has(exp.id) || exp.status === "running" || exp.status === "queued"}
-                          className={`inline-flex items-center justify-center p-1.5 text-sm font-medium border rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer shadow-xs ${exp.status === "completed"
-                            ? "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
-                            : "border-green-200 bg-green-50 text-green-700 hover:bg-green-100"
-                            }`}
-                          title="Run Experiment"
+                          type="button"
+                          className="btn-secondary"
+                          onClick={() => runMutation.mutate(experiment.id)}
+                          disabled={runningIds.has(experiment.id) || experiment.status === "running" || experiment.status === "queued"}
                         >
-                          {runningIds.has(exp.id) ? (
-                            <Loader2 className="size-4 animate-spin" />
-                          ) : (
-                            <Play className="size-4" />
-                          )}
+                          {runningIds.has(experiment.id) ? <LoaderCircle className="size-4 animate-spin" /> : <Play className="size-4" />}
+                          {experiment.status === "completed" ? "Run again" : "Start"}
                         </button>
-
                         <button
-                          onClick={(e) => { e.stopPropagation(); handleDeleteClick(exp.id, exp.name); }}
-                          className="inline-flex items-center justify-center p-1.5 text-sm font-medium border border-red-200 bg-red-50 text-red-700 rounded-md hover:bg-red-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer shadow-xs"
-                          disabled={deletingIds.has(exp.id)}
-                          title="Delete Experiment"
+                          type="button"
+                          className="btn-danger"
+                          onClick={() => setExperimentToDelete({ id: experiment.id, name: experiment.name })}
+                          disabled={deletingIds.has(experiment.id)}
                         >
-                          {deletingIds.has(exp.id) ? (
-                            <Loader2 className="size-4 animate-spin" />
-                          ) : (
-                            <Trash2 className="size-4" />
-                          )}
+                          {deletingIds.has(experiment.id) ? <LoaderCircle className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
+                          Delete
                         </button>
                       </div>
                     </div>
-                  </div>
-                </motion.div>
-              ))}
-            </div>
-          )}
-        </motion.div>
-      </main>
+                    <div className="mt-4 flex flex-wrap items-center gap-3 text-sm text-[var(--muted-foreground)]">
+                      <span className="mono-caption">Created {formatDate(experiment.created_at)}</span>
+                      {experiment.completed_at ? <span className="mono-caption">Completed {formatDate(experiment.completed_at)}</span> : null}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </Panel>
+      </section>
 
-      {/* Custom Delete Confirmation Modal */}
-      {experimentToDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
-          <div
-            className="bg-(--bg-card) border border-border rounded-xl shadow-xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200"
-            onClick={(e) => e.stopPropagation()}
+      <AnimatePresence>
+        {experimentToDelete ? (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[70] flex items-center justify-center bg-black/55 px-4 backdrop-blur-sm"
+            onClick={() => setExperimentToDelete(null)}
           >
-            <div className="p-6">
+            <motion.div
+              initial={{ opacity: 0, y: 16, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 12, scale: 0.98 }}
+              transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] as const }}
+              className="panel max-w-lg p-6"
+              onClick={(event) => event.stopPropagation()}
+            >
               <div className="flex items-start gap-4">
-                <div className="p-2 bg-red-50 rounded-full shrink-0">
-                  <AlertTriangle className="size-6 text-red-600" />
+                <div className="flex size-12 items-center justify-center rounded-[18px] border border-[color:color-mix(in_oklab,var(--destructive)_38%,transparent)] bg-[var(--destructive-soft)] text-[color:color-mix(in_oklab,var(--destructive)_84%,white_12%)]">
+                  <AlertTriangle className="size-5" />
                 </div>
-                <div>
-                  <h3 className="text-lg font-serif text-(--text-heading)">Delete Experiment</h3>
-                  <p className="mt-2 text-sm text-(--text-muted) leading-relaxed">
-                    Are you sure you want to delete <span className="font-medium text-(--text-heading)">{experimentToDelete.name}</span>?
-                    This action cannot be undone.
+                <div className="space-y-3">
+                  <div>
+                    <div className="section-label">Destructive action</div>
+                    <h2 className="mt-1 text-2xl font-semibold tracking-[-0.04em]">Delete experiment</h2>
+                  </div>
+                  <p className="text-sm leading-7 text-[var(--muted-foreground)]">
+                    Remove <span className="font-semibold text-[var(--foreground)]">{experimentToDelete.name}</span> and its saved metrics from the workspace.
+                    This cannot be undone.
                   </p>
                 </div>
               </div>
-            </div>
-
-            <div className="px-6 py-4 bg-(--bg-page) border-t border-border flex items-center justify-end gap-3">
-              <button
-                onClick={() => setExperimentToDelete(null)}
-                disabled={deleteMutation.isPending}
-                className="px-4 py-2 text-sm font-medium text-(--text-body) bg-white border border-border rounded-lg hover:bg-gray-50 hover:text-gray-900 transition-colors disabled:opacity-50 cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={confirmDelete}
-                disabled={deleteMutation.isPending}
-                className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-red-600 border border-transparent rounded-lg hover:bg-red-700 transition-colors focus:ring-2 focus:ring-red-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-xs cursor-pointer"
-              >
-                {deleteMutation.isPending ? (
-                  <><Loader2 className="size-4 animate-spin" /> Deleting...</>
-                ) : (
-                  <><Trash2 className="size-4" /> Delete</>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+              <div className="mt-6 flex flex-wrap justify-end gap-3">
+                <button type="button" className="btn-secondary" onClick={() => setExperimentToDelete(null)} disabled={deleteMutation.isPending}>
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn-danger"
+                  onClick={() => deleteMutation.mutate(experimentToDelete.id)}
+                  disabled={deleteMutation.isPending}
+                >
+                  {deleteMutation.isPending ? <LoaderCircle className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
+                  Delete experiment
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
     </div>
   );
 }
 
-function StatCard({
-  title,
-  value,
-  loading,
-}: {
-  title: string;
-  value: string | number;
-  loading?: boolean;
-}) {
-  return (
-    <div className="card p-6">
-      <dt className="text-sm font-medium text-(--text-muted)">{title}</dt>
-      <dd className={`mt-1 text-3xl font-serif text-(--text-heading) ${loading ? "animate-pulse" : ""}`}>
-        {value}
-      </dd>
-    </div>
-  );
+function cn(...values: Array<string | false | null | undefined>) {
+  return values.filter(Boolean).join(" ");
 }
-
 

@@ -1,980 +1,560 @@
 "use client";
 
-/**
- * Experiment Detail Page
- * 
- * Displays experiment configuration, status, and full results dashboard.
- * Phase 3: Metrics cards, latency chart, correctness grid, export.
- * Includes run button and auto-polling for running experiments.
- */
-
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { use, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { motion } from "framer-motion";
-import {
-    getExperiment,
-    getMetrics,
-    getRunSummaries,
-    getProfile,
-    exportResults,
-    exportMarkdownReport,
-    runExperiment,
-    ApiError,
-    RunSummary,
-} from "@/lib/api";
+import { use, useState } from "react";
+import { Download, FileText, LoaderCircle, Play, ScanSearch, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 
+import {
+  ApiError,
+  exportMarkdownReport,
+  exportResults,
+  getExperiment,
+  getMetrics,
+  getProfile,
+  getRunSummaries,
+  runExperiment,
+  type ProfileData,
+  type RunSummary,
+} from "@/lib/api";
+import {
+  AnimatedNumber,
+  EmptyState,
+  MetricBar,
+  MetricCard,
+  PageHeader,
+  Panel,
+  PanelHeader,
+  SkeletonBlock,
+  StatusPill,
+} from "@/components/ui/primitives";
+
 interface Props {
-    params: Promise<{ id: string }>;
+  params: Promise<{ id: string }>;
 }
 
-// =============================================================================
-// Metric Card Component
-// =============================================================================
-function MetricCard({
-    title,
-    value,
-    subtitle,
-    color = "text-(--text-heading)",
-}: {
-    title: string;
-    value: string;
-    subtitle?: string;
-    color?: string;
-}) {
-    return (
-        <div className="card p-5">
-            <p className="text-xs font-medium text-(--text-muted) uppercase tracking-wider">{title}</p>
-            <p className={`text-2xl font-serif mt-1 ${color}`}>{value}</p>
-            {subtitle && <p className="text-xs text-(--text-muted) mt-1">{subtitle}</p>}
-        </div>
-    );
+function formatDate(value?: string) {
+  if (!value) return "--";
+  return new Date(value).toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
-// =============================================================================
-// Latency Bar Chart (pure CSS, no Recharts dependency)
-// =============================================================================
-function LatencyChart({ runs }: { runs: RunSummary[] }) {
-    const latencies = runs
-        .filter((r) => r.latency_ms != null)
-        .map((r) => r.latency_ms!);
-
-    if (latencies.length === 0) return null;
-
-    const maxLatency = Math.max(...latencies);
-    const minLatency = Math.min(...latencies);
-    const bucketCount = Math.min(12, latencies.length);
-    const bucketSize = (maxLatency - minLatency) / bucketCount || 1;
-
-    const buckets: { label: string; count: number }[] = [];
-    for (let i = 0; i < bucketCount; i++) {
-        const low = minLatency + i * bucketSize;
-        const high = low + bucketSize;
-        const count = latencies.filter((l) => l >= low && (i === bucketCount - 1 ? l <= high : l < high)).length;
-        buckets.push({
-            label: `${Math.round(low)}`,
-            count,
-        });
-    }
-
-    const maxCount = Math.max(...buckets.map((b) => b.count));
-
-    return (
-        <div className="card p-6">
-            <h3 className="text-lg font-serif text-(--text-heading) mb-4">Latency Distribution</h3>
-            <div className="flex items-end gap-1 h-32">
-                {buckets.map((bucket, i) => (
-                    <div key={i} className="flex-1 flex flex-col items-center gap-1">
-                        <div
-                            className="w-full bg-[#37322F] rounded-t transition-all duration-300"
-                            style={{
-                                height: `${maxCount > 0 ? (bucket.count / maxCount) * 100 : 0}%`,
-                                minHeight: bucket.count > 0 ? "4px" : "0px",
-                            }}
-                            title={`${bucket.count} runs`}
-                        />
-                    </div>
-                ))}
-            </div>
-            <div className="flex gap-1 mt-1">
-                {buckets.map((bucket, i) => (
-                    <div key={i} className="flex-1 text-center">
-                        <span className="text-[10px] text-(--text-muted)">{bucket.label}</span>
-                    </div>
-                ))}
-            </div>
-            <p className="text-xs text-(--text-muted) text-center mt-2">Latency (ms)</p>
-        </div>
-    );
+function formatDuration(ms?: number) {
+  if (ms == null) return "--";
+  return `${ms.toFixed(0)} ms`;
 }
 
-// =============================================================================
-// Correctness Grid
-// =============================================================================
-const GRID_PAGE_SIZE = 50;
+function LatencyHistogram({ runs }: { runs: RunSummary[] }) {
+  const latencies = runs.map((run) => run.latency_ms).filter((value): value is number => value != null);
+  if (!latencies.length) return null;
 
-function CorrectnessGrid({ runs }: { runs: RunSummary[] }) {
-    const [selectedRun, setSelectedRun] = useState<RunSummary | null>(null);
-    const [page, setPage] = useState(0);
+  const min = Math.min(...latencies);
+  const max = Math.max(...latencies);
+  const buckets = Array.from({ length: 10 }, (_, index) => {
+    const start = min + ((max - min) / 10) * index;
+    const end = min + ((max - min) / 10) * (index + 1);
+    const count = latencies.filter((latency) => latency >= start && (index === 9 ? latency <= end : latency < end)).length;
+    return { label: `${Math.round(start)}`, count };
+  });
+  const peak = Math.max(...buckets.map((bucket) => bucket.count), 1);
 
-    const totalPages = Math.ceil(runs.length / GRID_PAGE_SIZE);
-    const pageRuns = runs.slice(page * GRID_PAGE_SIZE, (page + 1) * GRID_PAGE_SIZE);
-    const startIdx = page * GRID_PAGE_SIZE + 1;
-    const endIdx = Math.min((page + 1) * GRID_PAGE_SIZE, runs.length);
-
-    return (
-        <div className="card p-6">
-            <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-serif text-(--text-heading)">Response Correctness</h3>
-                <div className="flex items-center gap-3 text-xs">
-                    <span className="flex items-center gap-1">
-                        <span className="inline-block w-3 h-3 rounded-sm bg-green-500" />
-                        Correct
-                    </span>
-                    <span className="flex items-center gap-1">
-                        <span className="inline-block w-3 h-3 rounded-sm bg-red-400" />
-                        Incorrect
-                    </span>
-                </div>
+  return (
+    <Panel>
+      <PanelHeader label="Latency" title="Distribution" description="A lightweight histogram using only frontend code and the existing run summaries." />
+      <div className="panel-body">
+        <div className="flex h-48 items-end gap-2">
+          {buckets.map((bucket) => (
+            <div key={bucket.label} className="flex-1">
+              <div className="flex h-40 items-end">
+                <div
+                  className="w-full rounded-t-[12px] bg-[var(--accent)]"
+                  style={{ height: `${Math.max(8, (bucket.count / peak) * 100)}%` }}
+                  title={`${bucket.count} runs`}
+                />
+              </div>
+              <div className="mt-2 text-center font-mono text-[11px] text-[var(--muted-foreground)]">{bucket.label}</div>
             </div>
-
-            <div className="flex flex-wrap gap-1.5 mb-4">
-                {pageRuns.map((run) => (
-
-                    <button
-                        key={run.id}
-                        onClick={() => setSelectedRun(selectedRun?.id === run.id ? null : run)}
-                        className={`w-7 h-7 rounded-sm transition-all duration-200 cursor-pointer border-2 ${run.is_correct
-                            ? "bg-green-100 border-green-400 hover:bg-green-200"
-                            : "bg-red-100 border-red-300 hover:bg-red-200"
-                            } ${selectedRun?.id === run.id ? "ring-2 ring-[#37322F] ring-offset-1 scale-110" : ""}`}
-                        title={`${run.example_id}: ${run.failure_mode ? "⚠️" : run.is_correct ? "✓" : "✗"} (F1: ${(run.score ?? 0).toFixed(2)})`}
-                    >
-                        <span className="text-[10px] font-mono">
-                            {run.failure_mode ? "⚠️" : run.is_correct ? "✓" : "✗"}
-                        </span>
-                    </button>
-                ))}
-            </div>
-
-            {selectedRun && (
-                <div className="bg-(--bg-page) rounded-lg p-4 mt-2 border border-border animate-in fade-in">
-                    <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-medium text-(--text-heading)">
-                            {selectedRun.example_id}
-                        </span>
-                        <span
-                            className={`text-xs px-2 py-0.5 rounded-full ${selectedRun.failure_mode
-                                ? "bg-red-100 text-red-700"
-                                : selectedRun.is_correct
-                                    ? "bg-green-100 text-green-700"
-                                    : "bg-red-100 text-red-700"
-                                }`}
-                        >
-                            {selectedRun.failure_mode ? `Failed: ${selectedRun.failure_mode}` : selectedRun.is_correct ? "Correct" : "Incorrect"}
-                        </span>
-                    </div>
-                    <dl className="space-y-2 text-sm">
-                        <div>
-                            <dt className="text-(--text-muted) text-xs">Question</dt>
-                            <dd className="text-(--text-body)">{selectedRun.prompt?.split("Question:").pop()?.split("Answer:")[0]?.trim() || selectedRun.prompt || "N/A"}</dd>
-                        </div>
-                        {selectedRun.failure_mode && selectedRun.error_message && (
-                            <div className="bg-red-50 p-2 rounded border border-red-100 mt-2 mb-2">
-                                <dt className="text-red-700 text-xs font-semibold">Error Message</dt>
-                                <dd className="font-mono text-red-600 text-[10px] whitespace-pre-wrap">{selectedRun.error_message}</dd>
-                            </div>
-                        )}
-                        <div>
-                            <dt className="text-(--text-muted) text-xs">Model Output</dt>
-                            <dd className="font-mono text-(--text-body)">{selectedRun.raw_output || "N/A"}</dd>
-                        </div>
-                        <div>
-                            <dt className="text-(--text-muted) text-xs">Expected</dt>
-                            <dd className="font-mono text-(--text-body)">{selectedRun.expected_output || "N/A"}</dd>
-                        </div>
-                        <div className="flex gap-4">
-                            <div>
-                                <dt className="text-(--text-muted) text-xs">F1 Score</dt>
-                                <dd className="font-mono">{(selectedRun.score ?? 0).toFixed(3)}</dd>
-                            </div>
-                            <div>
-                                <dt className="text-(--text-muted) text-xs">Latency</dt>
-                                <dd className="font-mono">{(selectedRun.latency_ms ?? 0).toFixed(0)} ms</dd>
-                            </div>
-                            {selectedRun.faithfulness_score !== undefined && selectedRun.faithfulness_score !== null && (
-                                <div>
-                                    <dt className="text-(--text-muted) text-xs">Faithfulness (heuristic)</dt>
-                                    <dd className="font-mono">{selectedRun.faithfulness_score.toFixed(3)}</dd>
-                                </div>
-                            )}
-                        </div>
-                        {selectedRun.retrieved_chunks && selectedRun.retrieved_chunks.chunks && selectedRun.retrieved_chunks.chunks.length > 0 && (
-                            <div className="pt-2 border-t border-border mt-2">
-                                <dt className="text-(--text-muted) text-xs mb-1">Retrieved Context ({selectedRun.retrieved_chunks.chunks.length} chunks)</dt>
-                                <dd className="bg-(--bg-card) p-3 rounded text-xs font-mono text-(--text-body) max-h-40 overflow-y-auto whitespace-pre-wrap">
-                                    {selectedRun.retrieved_chunks.chunks.map((c: { text?: string; page_content?: string; score?: number }, i: number) => (
-                                        <div key={i} className="mb-2 pb-2 border-b border-border/50 last:border-0 last:mb-0 last:pb-0">
-                                            <span className="text-primary/80 font-bold">[{i + 1}]</span> {c.text || c.page_content || JSON.stringify(c)}
-                                            {c.score != null && <span className="ml-2 text-(--text-muted)">(score: {c.score.toFixed(3)})</span>}
-                                        </div>
-                                    ))}
-                                </dd>
-                            </div>
-                        )}
-                        {selectedRun.agent_trace && (
-                            <div className="pt-2 border-t border-border mt-2">
-                                <dt className="text-(--text-muted) text-xs mb-1">Agent Trace ({selectedRun.agent_trace.total_tool_calls} tool calls)</dt>
-                                <dd className="bg-[--bg-card] p-3 rounded text-xs font-mono text-(--text-body) max-h-60 overflow-y-auto whitespace-pre-wrap">
-                                    <div className="mb-2 flex gap-4 text-[10px] text-[--text-muted]">
-                                        <span className="text-green-600">✓ {selectedRun.agent_trace.successful_tool_calls} success</span>
-                                        <span className={selectedRun.agent_trace.failed_tool_calls > 0 ? "text-red-500" : ""}>
-                                            ✗ {selectedRun.agent_trace.failed_tool_calls} failed
-                                        </span>
-                                    </div>
-                                    <div className="space-y-4">
-                                        {selectedRun.agent_trace.steps.map((step, i) => (
-                                            <div key={i} className="pl-2 border-l-2 border-[--border] space-y-1">
-                                                <div className="text-blue-600 dark:text-blue-400 font-semibold">[Thought]</div>
-                                                <div className="pl-2 pb-1">{step.thought}</div>
-
-                                                {step.action && (
-                                                    <>
-                                                        <div className="text-amber-600 dark:text-amber-500 font-semibold mt-2">[Action: {step.action}]</div>
-                                                        <div className="pl-2 text-[--text-muted]">{step.action_input}</div>
-                                                    </>
-                                                )}
-
-                                                {step.observation && (
-                                                    <>
-                                                        <div className="text-green-600 dark:text-green-500 font-semibold mt-2">[Observation]</div>
-                                                        <div className="pl-2 italic">{step.observation}</div>
-                                                    </>
-                                                )}
-                                            </div>
-                                        ))}
-                                    </div>
-                                </dd>
-                            </div>
-                        )}
-                    </dl>
-                </div>
-            )}
-
-            {/* Pagination Controls */}
-            {totalPages > 1 && (
-                <div className="flex items-center justify-between mt-4 pt-4 border-t border-border">
-                    <span className="text-xs text-(--text-muted)">
-                        Showing {startIdx}–{endIdx} of {runs.length} runs
-                    </span>
-                    <div className="flex items-center gap-2">
-                        <button
-                            onClick={() => { setPage(p => p - 1); setSelectedRun(null); }}
-                            disabled={page === 0}
-                            className="px-3 py-1 text-xs rounded-lg border border-border text-(--text-body) hover:bg-(--bg-page) disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
-                        >
-                            ← Prev
-                        </button>
-                        <span className="text-xs text-(--text-muted)">{page + 1} / {totalPages}</span>
-                        <button
-                            onClick={() => { setPage(p => p + 1); setSelectedRun(null); }}
-                            disabled={page >= totalPages - 1}
-                            className="px-3 py-1 text-xs rounded-lg border border-border text-(--text-body) hover:bg-(--bg-page) disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
-                        >
-                            Next →
-                        </button>
-                    </div>
-                </div>
-            )}
+          ))}
         </div>
-    );
+      </div>
+    </Panel>
+  );
 }
 
-// =============================================================================
-// Top/Bottom Runs Table
-// =============================================================================
-function ExtremeRunsTable({ runs }: { runs: RunSummary[] }) {
-    const sorted = [...runs]
-        .filter((r) => r.latency_ms != null)
-        .sort((a, b) => (a.latency_ms ?? 0) - (b.latency_ms ?? 0));
+function RunFilmstrip({ runs }: { runs: RunSummary[] }) {
+  const [selectedRun, setSelectedRun] = useState<RunSummary | null>(runs[0] ?? null);
 
-    const fastest = sorted.slice(0, 5);
-    const slowest = sorted.slice(-5).reverse();
+  return (
+    <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
+      <Panel>
+        <PanelHeader
+          label="Per-run overview"
+          title="Evaluation filmstrip"
+          description="Each cell is one example, colored by correctness so disagreements and failures pop immediately."
+        />
+        <div className="panel-body space-y-4">
+          <div className="grid grid-cols-8 gap-2 sm:grid-cols-12 xl:grid-cols-10">
+            {runs.map((run) => {
+              const statusClass = run.failure_mode
+                ? "status-failed"
+                : run.is_correct
+                  ? "status-completed"
+                  : "status-failed";
 
-    if (sorted.length === 0) return null;
-
-    const renderTable = (title: string, items: RunSummary[]) => (
-        <div>
-            <h4 className="text-sm font-medium text-(--text-heading) mb-2">{title}</h4>
-            <table className="w-full text-sm">
-                <thead>
-                    <tr className="border-b border-border">
-                        <th className="text-left py-1.5 text-(--text-muted) font-medium">ID</th>
-                        <th className="text-right py-1.5 text-(--text-muted) font-medium">Latency</th>
-                        <th className="text-right py-1.5 text-(--text-muted) font-medium">F1</th>
-                        <th className="text-center py-1.5 text-(--text-muted) font-medium">Correct</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {items.map((run) => (
-                        <tr key={run.id} className="border-b border-border/50">
-                            <td className="py-1.5 font-mono text-xs text-(--text-body)">{run.example_id}</td>
-                            <td className="py-1.5 text-right font-mono text-xs">{(run.latency_ms ?? 0).toFixed(0)} ms</td>
-                            <td className="py-1.5 text-right font-mono text-xs">{(run.score ?? 0).toFixed(2)}</td>
-                            <td className="py-1.5 text-center">{run.is_correct ? "✓" : "✗"}</td>
-                        </tr>
-                    ))}
-                </tbody>
-            </table>
-        </div>
-    );
-
-    return (
-        <div className="card p-6">
-            <h3 className="text-lg font-serif text-(--text-heading) mb-4">Performance Extremes</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {renderTable("⚡ Fastest 5", fastest)}
-                {renderTable("🐢 Slowest 5", slowest)}
+              return (
+                <button
+                  key={run.id}
+                  type="button"
+                  className={`rounded-[12px] border p-2 text-left transition-all hover:border-[var(--border-strong)] ${selectedRun?.id === run.id ? "border-[var(--accent)] bg-[color:color-mix(in_oklab,var(--accent)_14%,transparent)]" : "border-[var(--border)] bg-[var(--surface-2)]"}`}
+                  onClick={() => setSelectedRun(run)}
+                  title={run.example_id ?? "Run"}
+                >
+                  <span className={`status-pill ${statusClass} !w-full justify-center !px-0`}>{run.example_id ?? "run"}</span>
+                </button>
+              );
+            })}
+          </div>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="metric-card">
+              <div className="metric-label">Correct</div>
+              <div className="metric-value text-2xl">{runs.filter((run) => run.is_correct).length}</div>
             </div>
+            <div className="metric-card">
+              <div className="metric-label">Incorrect</div>
+              <div className="metric-value text-2xl">{runs.filter((run) => run.is_correct === false && !run.failure_mode).length}</div>
+            </div>
+            <div className="metric-card">
+              <div className="metric-label">Failures</div>
+              <div className="metric-value text-2xl">{runs.filter((run) => run.failure_mode).length}</div>
+            </div>
+          </div>
         </div>
-    );
-}
+      </Panel>
 
-// =============================================================================
-// Results Dashboard
-// =============================================================================
-function ResultsDashboard({ experimentId }: { experimentId: string }) {
-    const {
-        data: metrics,
-        isLoading: metricsLoading,
-        error: metricsError,
-    } = useQuery({
-        queryKey: ["metrics", experimentId],
-        queryFn: () => getMetrics(experimentId),
-    });
-
-    const {
-        data: runs,
-        isLoading: runsLoading,
-        error: runsError,
-    } = useQuery({
-        queryKey: ["runs", experimentId],
-        queryFn: () => getRunSummaries(experimentId),
-    });
-
-    const [exporting, setExporting] = useState(false);
-
-    const handleExport = async () => {
-        setExporting(true);
-        try {
-            await exportResults(experimentId);
-        } catch (e) {
-            toast.error(e instanceof Error ? e.message : "Export failed");
-        } finally {
-            setExporting(false);
-        }
-    };
-
-    if (metricsLoading || runsLoading) {
-        return (
+      <Panel>
+        <PanelHeader
+          label="Selected example"
+          title={selectedRun?.example_id || "Pick a run"}
+          description="The inspector uses only current run summary fields: prompt, raw output, expected answer, traces, and retrieval context."
+        />
+        <div className="panel-body">
+          {selectedRun ? (
             <div className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {[1, 2, 3].map((i) => (
-                        <div key={i} className="card p-5 animate-pulse">
-                            <div className="h-3 bg-(--bg-page) rounded w-20 mb-2" />
-                            <div className="h-7 bg-(--bg-page) rounded w-24" />
-                        </div>
-                    ))}
+              <div className="flex flex-wrap gap-2">
+                <StatusPill status={selectedRun.failure_mode ? "failed" : selectedRun.is_correct ? "completed" : "failed"} />
+                <span className="chip">F1 {(selectedRun.score ?? 0).toFixed(3)}</span>
+                <span className="chip">Latency {formatDuration(selectedRun.latency_ms)}</span>
+                {selectedRun.failure_mode ? <span className="chip">Failure {selectedRun.failure_mode}</span> : null}
+              </div>
+              <div className="grid gap-4">
+                <div className="rounded-[18px] border border-[var(--border)] bg-[var(--surface-2)] p-4">
+                  <div className="section-label">Prompt</div>
+                  <pre className="mt-3 whitespace-pre-wrap text-sm leading-7 text-[var(--muted-foreground)]">{selectedRun.prompt || "No prompt recorded"}</pre>
                 </div>
-            </div>
-        );
-    }
-
-    if (metricsError || !metrics) {
-        const isMissingResults = metricsError instanceof ApiError && metricsError.statusCode === 404;
-        return (
-            <div className="card p-6">
-                <p className={`text-center py-4 ${isMissingResults ? "text-(--text-muted)" : "text-(--error)"}`}>
-                    {isMissingResults
-                        ? "Results are not available yet for the latest run."
-                        : `Failed to load metrics: ${metricsError instanceof Error ? metricsError.message : "Unknown error"}`}
-                </p>
-            </div>
-        );
-    }
-
-    const correctCount = runs?.filter((r) => r.is_correct).length ?? 0;
-    const totalCount = runs?.length ?? 0;
-
-    return (
-        <div className="space-y-6">
-            {/* Export Buttons */}
-            <div className="flex justify-end gap-2">
-                <button
-                    onClick={handleExport}
-                    disabled={exporting}
-                    className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium bg-[#37322F] text-white rounded-full hover:bg-[#2A2520] transition-colors disabled:opacity-50 cursor-pointer"
-                >
-                    {exporting ? (
-                        <>
-                            <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                            </svg>
-                            Exporting...
-                        </>
-                    ) : (
-                        <>
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                                <polyline points="7,10 12,15 17,10" />
-                                <line x1="12" y1="15" x2="12" y2="3" />
-                            </svg>
-                            Export JSON
-                        </>
-                    )}
-                </button>
-                <button
-                    onClick={async () => {
-                        setExporting(true);
-                        try {
-                            await exportMarkdownReport(experimentId, undefined, metrics ?? undefined, runs ?? undefined);
-                        } catch (e) {
-                            toast.error(e instanceof Error ? e.message : "Report export failed");
-                        } finally {
-                            setExporting(false);
-                        }
-                    }}
-                    disabled={exporting}
-                    className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium border border-[#37322F] text-[#37322F] rounded-full hover:bg-[#37322F]/5 transition-colors disabled:opacity-50 cursor-pointer"
-                >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                        <polyline points="14,2 14,8 20,8" />
-                    </svg>
-                    Export Report
-                </button>
-            </div>
-
-            {runsError && (
-                <div className="card p-4 border-l-4 border-l-(--error)">
-                    <p className="text-sm text-(--error)">
-                        Failed to load per-run results: {runsError instanceof Error ? runsError.message : "Unknown error"}
-                    </p>
+                <div className="rounded-[18px] border border-[var(--border)] bg-[var(--surface-2)] p-4">
+                  <div className="section-label">Model output</div>
+                  <pre className="mt-3 whitespace-pre-wrap text-sm leading-7 text-[var(--muted-foreground)]">{selectedRun.raw_output || "No output recorded"}</pre>
                 </div>
-            )}
-
-            {!runsError && totalCount === 0 && (
-                <div className="card p-6">
-                    <p className="text-sm text-(--text-muted)">
-                        Metrics loaded, but no per-run logs were returned for the latest attempt.
-                    </p>
+                <div className="rounded-[18px] border border-[var(--border)] bg-[var(--surface-2)] p-4">
+                  <div className="section-label">Expected answer</div>
+                  <pre className="mt-3 whitespace-pre-wrap text-sm leading-7 text-[var(--muted-foreground)]">{selectedRun.expected_output || "No expected answer recorded"}</pre>
                 </div>
-            )}
-
-            {/* AI Summary */}
-            {metrics.summary_text && (
-                <div className="card p-6 bg-blue-50/50 border-blue-100">
-                    <div className="flex items-start gap-3">
-                        <div className="mt-1">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-blue-500">
-                                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-                            </svg>
+                {selectedRun.retrieved_chunks?.chunks?.length ? (
+                  <div className="rounded-[18px] border border-[var(--border)] bg-[var(--surface-2)] p-4">
+                    <div className="section-label">Retrieved context</div>
+                    <div className="mt-3 space-y-3 text-sm leading-7 text-[var(--muted-foreground)]">
+                      {selectedRun.retrieved_chunks.chunks.map((chunk, index) => (
+                        <div key={`${selectedRun.id}-${index}`} className="rounded-[16px] border border-[var(--border)] bg-[var(--surface-1)] p-3">
+                          <div className="font-mono text-[11px] text-[var(--muted-foreground)]">Chunk {index + 1}</div>
+                          <p className="mt-2 whitespace-pre-wrap">{chunk.text || chunk.page_content || JSON.stringify(chunk)}</p>
                         </div>
-                        <div>
-                            <h3 className="text-sm font-semibold text-blue-900 mb-1">Experiment Summary</h3>
-                            <p className="text-sm text-blue-800 leading-relaxed">
-                                {metrics.summary_text}
-                            </p>
-                        </div>
+                      ))}
                     </div>
-                </div>
-            )}
-
-            {/* Metrics Cards — Quality */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <MetricCard
-                    title="Accuracy (Exact)"
-                    value={`${((metrics.quality.accuracy_exact ?? 0) * 100).toFixed(1)}%`}
-                    subtitle={`${correctCount}/${totalCount} perfect match`}
-                    color={
-                        (metrics.quality.accuracy_exact ?? 0) >= 0.7
-                            ? "text-green-600"
-                            : (metrics.quality.accuracy_exact ?? 0) >= 0.4
-                                ? "text-yellow-600"
-                                : "text-red-600"
-                    }
-                />
-                <MetricCard
-                    title="F1 Score (Mean)"
-                    value={`${((metrics.quality.accuracy_f1 ?? 0) * 100).toFixed(1)}%`}
-                    subtitle="Token-level overlap"
-                />
-
-                {/* Conditional Metrics based on experiment type */}
-                {metrics.quality.safety_score !== undefined && (
-                    <MetricCard
-                        title="Safety Score"
-                        value={`${(metrics.quality.safety_score * 100).toFixed(1)}%`}
-                        subtitle="Refusal rate on adversarial prompts"
-                        color={
-                            metrics.quality.safety_score >= 0.9
-                                ? "text-green-600"
-                                : metrics.quality.safety_score >= 0.7
-                                    ? "text-yellow-600"
-                                    : "text-red-600"
-                        }
-                    />
-                )}
-
-                {metrics.quality.pass_at_k !== undefined && (
-                    <MetricCard
-                        title="Pass@5"
-                        value={`${(metrics.quality.pass_at_k * 100).toFixed(1)}%`}
-                        subtitle="Probability of correct answer in 5 tries"
-                        color="text-purple-600"
-                    />
-                )}
-
-                {metrics.quality.safety_score === undefined && metrics.quality.pass_at_k === undefined && (
-                    <MetricCard
-                        title="Throughput"
-                        value={`${(metrics.performance.throughput ?? 0).toFixed(1)}/s`}
-                        subtitle="Prompts per second"
-                    />
-                )}
-            </div>
-
-            {/* Metrics Cards — Performance & Cost */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <MetricCard
-                    title="Latency (p50)"
-                    value={`${(metrics.performance.latency_p50 ?? 0).toFixed(0)} ms`}
-                    subtitle="Median response time"
-                />
-                <MetricCard
-                    title="Latency (p95)"
-                    value={`${(metrics.performance.latency_p95 ?? 0).toFixed(0)} ms`}
-                    subtitle="95th percentile"
-                />
-                <MetricCard
-                    title="Cost Efficiency"
-                    value={
-                        metrics.cost.total_cost_usd != null && metrics.cost.total_cost_usd > 0
-                            ? `$${metrics.cost.total_cost_usd.toFixed(4)}`
-                            : "Free Tier"
-                    }
-                    subtitle={
-                        metrics.cost.cost_per_correct_answer != null && metrics.cost.cost_per_correct_answer > 0
-                            ? `$${metrics.cost.cost_per_correct_answer.toFixed(4)}/correct · ${(metrics.cost.total_tokens_input + metrics.cost.total_tokens_output).toLocaleString()} tokens`
-                            : `${(metrics.cost.total_tokens_input + metrics.cost.total_tokens_output).toLocaleString()} tokens · ${metrics.cost.total_runs} runs`
-                    }
-                />
-            </div>
-
-            {/* Failure Modes Banner */}
-            {metrics.failure_modes && metrics.failure_modes.total_failures > 0 && (
-                <div className="card p-6 bg-red-50/50 border-red-100">
-                    <h3 className="text-sm font-semibold text-red-900 mb-3 flex items-center gap-2">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
-                            <line x1="12" y1="9" x2="12" y2="13"></line>
-                            <line x1="12" y1="17" x2="12.01" y2="17"></line>
-                        </svg>
-                        Failure Analysis ({metrics.failure_modes.total_failures} Total)
-                    </h3>
-                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-                        {Object.entries(metrics.failure_modes.counts).map(([mode, count]) => (
-                            <div key={mode} className="bg-white p-3 rounded border border-red-100">
-                                <span className="text-2xl font-bold text-red-700 block">{count}</span>
-                                <span className="text-xs text-red-900 font-mono capitalize">{mode.replace(/_/g, " ")}</span>
-                            </div>
-                        ))}
+                  </div>
+                ) : null}
+                {selectedRun.agent_trace?.steps?.length ? (
+                  <div className="rounded-[18px] border border-[var(--border)] bg-[var(--surface-2)] p-4">
+                    <div className="section-label">Agent trace</div>
+                    <div className="mt-3 space-y-3 text-sm leading-7 text-[var(--muted-foreground)]">
+                      {selectedRun.agent_trace.steps.map((step, index) => (
+                        <div key={`${selectedRun.id}-trace-${index}`} className="rounded-[16px] border border-[var(--border)] bg-[var(--surface-1)] p-3">
+                          <div className="font-semibold text-[var(--foreground)]">Step {index + 1}</div>
+                          <p className="mt-2 whitespace-pre-wrap"><span className="font-semibold">Thought:</span> {step.thought}</p>
+                          {step.action ? <p className="mt-2 whitespace-pre-wrap"><span className="font-semibold">Action:</span> {step.action} {step.action_input ? `- ${step.action_input}` : ""}</p> : null}
+                          {step.observation ? <p className="mt-2 whitespace-pre-wrap"><span className="font-semibold">Observation:</span> {step.observation}</p> : null}
+                        </div>
+                      ))}
                     </div>
-                </div>
-            )}
-
-            {/* Latency Histogram */}
-            {runs && <LatencyChart runs={runs} />}
-
-            {/* Correctness Grid */}
-            {runs && <CorrectnessGrid runs={runs} />}
-
-            {/* Extreme Runs */}
-            {runs && <ExtremeRunsTable runs={runs} />}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          ) : (
+            <EmptyState icon={<ScanSearch className="size-5" />} title="No run selected" description="Choose a cell from the filmstrip to inspect its prompt, output, and supporting context." />
+          )}
         </div>
-    );
+      </Panel>
+    </div>
+  );
 }
 
-// =============================================================================
-// Optimization Profile Dashboard (Phase 8)
-// =============================================================================
+function ResultsDashboard({ experimentId, experimentName }: { experimentId: string; experimentName: string }) {
+  const metricsQuery = useQuery({
+    queryKey: ["metrics", experimentId],
+    queryFn: () => getMetrics(experimentId),
+  });
+  const runsQuery = useQuery({
+    queryKey: ["runs", experimentId],
+    queryFn: () => getRunSummaries(experimentId),
+  });
+
+  if (metricsQuery.isLoading || runsQuery.isLoading) {
+    return (
+      <div className="space-y-4">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, index) => <SkeletonBlock key={index} className="h-[146px]" />)}
+        </div>
+        <SkeletonBlock className="h-[320px]" />
+        <SkeletonBlock className="h-[420px]" />
+      </div>
+    );
+  }
+
+  if (metricsQuery.error) {
+    const error = metricsQuery.error;
+    const isMissingResults = error instanceof ApiError && error.statusCode === 404;
+    return isMissingResults ? (
+      <EmptyState icon={<ScanSearch className="size-5" />} title="Metrics are not ready yet" description="The latest run has not written aggregate metrics yet. Re-open this page once execution completes." />
+    ) : (
+      <div className="alert alert-danger">
+        <TriangleAlert className="mt-0.5 size-4 shrink-0" />
+        <p className="text-sm leading-7">{error instanceof Error ? error.message : "Failed to load metrics."}</p>
+      </div>
+    );
+  }
+
+  const metrics = metricsQuery.data;
+  const runs = runsQuery.data ?? [];
+
+  if (!metrics) {
+    return (
+      <EmptyState
+        icon={<ScanSearch className="size-5" />}
+        title="Metrics are unavailable"
+        description="This run has not stored aggregate metrics yet, so only the experiment metadata is currently available."
+      />
+    );
+  }
+
+  const correctRuns = runs.filter((run) => run.is_correct).length;
+  const totalRuns = runs.length;
+
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <MetricCard
+          label="Exact accuracy"
+          tone={(metrics.quality.accuracy_exact ?? 0) >= 0.7 ? "success" : (metrics.quality.accuracy_exact ?? 0) >= 0.4 ? "warning" : "danger"}
+          value={<AnimatedNumber value={(metrics.quality.accuracy_exact ?? 0) * 100} suffix="%" className="text-4xl" />}
+          detail={`${correctRuns}/${totalRuns} runs marked correct`}
+        />
+        <MetricCard
+          label="Mean F1"
+          tone="accent"
+          value={<AnimatedNumber value={(metrics.quality.accuracy_f1 ?? 0) * 100} suffix="%" className="text-4xl" />}
+          detail="Token-level overlap against expected answers"
+        />
+        <MetricCard
+          label="Latency p50"
+          value={<AnimatedNumber value={metrics.performance.latency_p50 ?? 0} suffix=" ms" className="text-4xl" />}
+          detail={`p95 ${formatDuration(metrics.performance.latency_p95)}`}
+        />
+        <MetricCard
+          label="Total tokens"
+          value={<AnimatedNumber value={(metrics.cost.total_tokens_input || 0) + (metrics.cost.total_tokens_output || 0)} className="text-4xl" />}
+          detail={metrics.cost.total_cost_usd != null ? `$${metrics.cost.total_cost_usd.toFixed(4)} total estimated cost` : "Cost unavailable on the current provider"}
+        />
+      </div>
+
+      <Panel>
+        <PanelHeader
+          label="Summary"
+          title="Result snapshot"
+          description="Export JSON or markdown directly from the frontend using the current results endpoint."
+          actions={
+            <>
+              <button type="button" className="btn-secondary" onClick={() => exportResults(experimentId, experimentName)}>
+                <Download className="size-4" />
+                Export JSON
+              </button>
+              <button type="button" className="btn-primary" onClick={() => exportMarkdownReport(experimentId, experimentName, metrics, runs)}>
+                <FileText className="size-4" />
+                Export report
+              </button>
+            </>
+          }
+        />
+        <div className="panel-body grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
+          <div className="rounded-[18px] border border-[var(--border)] bg-[var(--surface-2)] p-4">
+            <div className="section-label">Narrative summary</div>
+            <p className="mt-3 text-sm leading-8 text-[var(--muted-foreground)]">{metrics.summary_text || "No generated summary was stored for this experiment. The core metrics below still reflect the latest saved run."}</p>
+          </div>
+          <div className="space-y-3 rounded-[18px] border border-[var(--border)] bg-[var(--surface-2)] p-4">
+            <div>
+              <div className="section-label">Quality mix</div>
+              <div className="mt-2 text-sm text-[var(--muted-foreground)]">Exact accuracy versus mean F1</div>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <div className="mb-2 flex items-center justify-between text-sm"><span>Exact match</span><span className="metric-value">{((metrics.quality.accuracy_exact ?? 0) * 100).toFixed(1)}%</span></div>
+                <MetricBar value={(metrics.quality.accuracy_exact ?? 0) * 100} />
+              </div>
+              <div>
+                <div className="mb-2 flex items-center justify-between text-sm"><span>Mean F1</span><span className="metric-value">{((metrics.quality.accuracy_f1 ?? 0) * 100).toFixed(1)}%</span></div>
+                <MetricBar value={(metrics.quality.accuracy_f1 ?? 0) * 100} />
+              </div>
+              {metrics.quality.safety_score !== undefined ? (
+                <div>
+                  <div className="mb-2 flex items-center justify-between text-sm"><span>Safety score</span><span className="metric-value">{(metrics.quality.safety_score * 100).toFixed(1)}%</span></div>
+                  <MetricBar value={metrics.quality.safety_score * 100} />
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      </Panel>
+
+      {metrics.failure_modes?.total_failures ? (
+        <Panel>
+          <PanelHeader label="Failures" title={`Failure analysis (${metrics.failure_modes.total_failures})`} description="Sampled from the existing failure mode counts returned by the backend." />
+          <div className="panel-body grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {Object.entries(metrics.failure_modes.counts).map(([mode, count]) => (
+              <div key={mode} className="rounded-[18px] border border-[var(--border)] bg-[var(--surface-2)] p-4">
+                <div className="section-label">{mode.replace(/_/g, " ")}</div>
+                <div className="metric-value mt-2 text-3xl">{count}</div>
+              </div>
+            ))}
+          </div>
+        </Panel>
+      ) : null}
+
+      {runs.length ? <RunFilmstrip runs={runs} /> : <EmptyState icon={<ScanSearch className="size-5" />} title="No per-run logs" description="Metrics were saved, but no run summaries were returned for the latest attempt." />}
+      {runs.length ? <LatencyHistogram runs={runs} /> : null}
+    </div>
+  );
+}
+
 function ProfileDashboard({ experimentId }: { experimentId: string }) {
-    const { data: profile, isLoading } = useQuery({
-        queryKey: ["profile", experimentId],
-        queryFn: () => getProfile(experimentId),
-    });
+  const profileQuery = useQuery({
+    queryKey: ["profile", experimentId],
+    queryFn: () => getProfile(experimentId),
+  });
 
-    if (isLoading) {
-        return (
-            <div className="card p-6 animate-pulse">
-                <div className="h-5 bg-(--bg-page) rounded w-48 mb-4" />
-                <div className="h-20 bg-(--bg-page) rounded" />
-            </div>
-        );
-    }
+  if (profileQuery.isLoading) {
+    return <SkeletonBlock className="h-[220px]" />;
+  }
 
-    if (!profile || profile.message) {
-        return null; // No optimization data
-    }
+  const profile = profileQuery.data as ProfileData | undefined;
+  if (!profile || profile.message) return null;
 
-    const sections = Object.entries(profile.profiling_summary || {});
-    const cache = profile.cache_stats || {};
-    const batch = profile.batch_stats || {};
-    const hasCache = cache.hits !== undefined || cache.misses !== undefined;
-    const hasBatch = batch.batches_processed !== undefined;
+  const sections = Object.entries(profile.profiling_summary || {});
+  const hasCache = profile.cache_stats.hits !== undefined || profile.cache_stats.misses !== undefined;
+  const hasBatch = profile.batch_stats.batches_processed !== undefined;
 
-    return (
-        <div className="space-y-4">
-            <h3 className="text-lg font-serif text-(--text-heading)">⚡ Optimization Profile</h3>
-
-            {/* Wall Time + Summary Stats */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {profile.total_wall_time_ms != null && (
-                    <MetricCard
-                        title="Total Wall Time"
-                        value={`${(profile.total_wall_time_ms / 1000).toFixed(2)}s`}
-                        subtitle="End-to-end execution"
-                    />
-                )}
-                {hasCache && (
-                    <MetricCard
-                        title="Cache Hit Rate"
-                        value={`${((cache.hit_rate ?? 0) * 100).toFixed(1)}%`}
-                        subtitle={`${cache.hits ?? 0} hits / ${cache.misses ?? 0} misses`}
-                        color={(cache.hit_rate ?? 0) > 0.5 ? "text-green-600" : "text-(--text-heading)"}
-                    />
-                )}
-                {hasBatch && (
-                    <MetricCard
-                        title="Batches Processed"
-                        value={`${batch.batches_processed ?? 0}`}
-                        subtitle={`${batch.total_prompts_batched ?? 0} prompts batched`}
-                    />
-                )}
-            </div>
-
-            {/* Timing Breakdown Table */}
-            {sections.length > 0 && (
-                <div className="card p-6">
-                    <h4 className="text-sm font-medium text-(--text-heading) mb-3">Timing Breakdown</h4>
-                    <table className="w-full text-sm">
-                        <thead>
-                            <tr className="border-b border-border">
-                                <th className="text-left py-1.5 text-(--text-muted) font-medium">Phase</th>
-                                <th className="text-right py-1.5 text-(--text-muted) font-medium">Count</th>
-                                <th className="text-right py-1.5 text-(--text-muted) font-medium">Total</th>
-                                <th className="text-right py-1.5 text-(--text-muted) font-medium">Mean</th>
-                                <th className="text-right py-1.5 text-(--text-muted) font-medium">p50</th>
-                                <th className="text-right py-1.5 text-(--text-muted) font-medium">p95</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {sections.map(([name, stats]) => (
-                                <tr key={name} className="border-b border-border/50">
-                                    <td className="py-1.5 font-mono text-xs text-(--text-body) capitalize">{name.replace(/_/g, " ")}</td>
-                                    <td className="py-1.5 text-right font-mono text-xs">{stats.count}</td>
-                                    <td className="py-1.5 text-right font-mono text-xs">{stats.total_ms.toFixed(0)} ms</td>
-                                    <td className="py-1.5 text-right font-mono text-xs">{stats.mean_ms.toFixed(1)} ms</td>
-                                    <td className="py-1.5 text-right font-mono text-xs">{stats.p50_ms.toFixed(1)} ms</td>
-                                    <td className="py-1.5 text-right font-mono text-xs">{stats.p95_ms.toFixed(1)} ms</td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
-            )}
-
-            {/* Cache Latency Saved */}
-            {hasCache && (cache.total_latency_saved_ms ?? 0) > 0 && (
-                <div className="card p-4">
-                    <p className="text-sm text-(--text-body)">
-                        💡 Cache saved <strong className="font-mono">{((cache.total_latency_saved_ms ?? 0) / 1000).toFixed(2)}s</strong> of API call time
-                        ({cache.size ?? 0}/{cache.max_size ?? 0} entries used).
-                    </p>
-                </div>
-            )}
+  return (
+    <Panel>
+      <PanelHeader label="Optimization" title="Execution profile" description="These numbers already come from the backend optimization report stored with the run." />
+      <div className="panel-body space-y-4">
+        <div className="grid gap-4 md:grid-cols-3">
+          <MetricCard label="Wall time" value={<AnimatedNumber value={(profile.total_wall_time_ms ?? 0) / 1000} decimals={2} suffix=" s" className="text-3xl" />} detail="End-to-end execution time" />
+          {hasCache ? <MetricCard label="Cache hit rate" tone="accent" value={<AnimatedNumber value={(profile.cache_stats.hit_rate ?? 0) * 100} suffix="%" className="text-3xl" />} detail={`${profile.cache_stats.hits ?? 0} hits / ${profile.cache_stats.misses ?? 0} misses`} /> : null}
+          {hasBatch ? <MetricCard label="Batches" tone="success" value={<AnimatedNumber value={profile.batch_stats.batches_processed ?? 0} className="text-3xl" />} detail={`${profile.batch_stats.total_prompts_batched ?? 0} prompts batched`} /> : null}
         </div>
-    );
+
+        {sections.length ? (
+          <div className="overflow-x-auto rounded-[18px] border border-[var(--border)] bg-[var(--surface-2)]">
+            <table className="data-table min-w-[720px]">
+              <thead>
+                <tr>
+                  <th>Phase</th>
+                  <th>Count</th>
+                  <th>Total</th>
+                  <th>Mean</th>
+                  <th>p50</th>
+                  <th>p95</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sections.map(([name, stats]) => (
+                  <tr key={name} className="data-row">
+                    <td className="font-mono text-xs">{name.replace(/_/g, " ")}</td>
+                    <td className="metric-value">{stats.count}</td>
+                    <td className="metric-value">{stats.total_ms.toFixed(0)} ms</td>
+                    <td className="metric-value">{stats.mean_ms.toFixed(1)} ms</td>
+                    <td className="metric-value">{stats.p50_ms.toFixed(1)} ms</td>
+                    <td className="metric-value">{stats.p95_ms.toFixed(1)} ms</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+      </div>
+    </Panel>
+  );
 }
 
-// =============================================================================
-// Main Page
-// =============================================================================
+
 export default function ExperimentDetailPage({ params }: Props) {
-    const { id } = use(params);
-    const queryClient = useQueryClient();
+  const { id } = use(params);
+  const queryClient = useQueryClient();
 
-    const { data: experiment, isLoading, error } = useQuery({
-        queryKey: ["experiment", id],
-        queryFn: () => getExperiment(id),
-        // Auto-refetch every 3s while experiment is running or queued
-        refetchInterval: (query) => {
-            const status = query.state.data?.status;
-            return (status === "running" || status === "queued") ? 3000 : false;
-        },
-    });
+  const experimentQuery = useQuery({
+    queryKey: ["experiment", id],
+    queryFn: () => getExperiment(id),
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      return status === "running" || status === "queued" ? 3000 : false;
+    },
+  });
 
-    const runMutation = useMutation({
-        mutationFn: () => {
-            let customBaseUrl: string | undefined = undefined;
-            let customApiKey: string | undefined = undefined;
+  const runMutation = useMutation({
+    mutationFn: () => {
+      let customBaseUrl: string | undefined;
+      let customApiKey: string | undefined;
 
-            // Check if there are saved settings for the current experiment's model
-            if (experiment?.config.model_name && typeof window !== "undefined") {
-                try {
-                    const settings = JSON.parse(localStorage.getItem("customLLMSettings") || "{}");
-                    const modelSettings = settings[experiment.config.model_name];
+      if (experimentQuery.data?.config.model_name && typeof window !== "undefined") {
+        try {
+          const settings = JSON.parse(localStorage.getItem("customLLMSettings") || "{}");
+          const modelSettings = settings[experimentQuery.data.config.model_name];
+          if (modelSettings) {
+            customBaseUrl = modelSettings.baseUrl;
+            customApiKey = modelSettings.apiKey;
+          } else if (localStorage.getItem("customModelId") === experimentQuery.data.config.model_name) {
+            customBaseUrl = localStorage.getItem("customBaseUrl") || undefined;
+            customApiKey = localStorage.getItem("customApiKey") || undefined;
+          }
+        } catch (error) {
+          console.error("Failed to load custom model settings", error);
+        }
+      }
 
-                    if (modelSettings) {
-                        customBaseUrl = modelSettings.baseUrl;
-                        customApiKey = modelSettings.apiKey;
-                    } else if (localStorage.getItem("customModelId") === experiment.config.model_name) {
-                        // Fallback to legacy single-model storage
-                        customBaseUrl = localStorage.getItem("customBaseUrl") || undefined;
-                        customApiKey = localStorage.getItem("customApiKey") || undefined;
-                    }
-                } catch (e) {
-                    console.error("Failed to parse customLLMSettings during run", e);
-                }
-            }
-            return runExperiment(id, customBaseUrl, customApiKey);
-        },
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ["experiment", id] });
-            queryClient.invalidateQueries({ queryKey: ["experiments"] });
-        },
-    });
+      return runExperiment(id, customBaseUrl, customApiKey);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["experiment", id] });
+      queryClient.invalidateQueries({ queryKey: ["experiments"] });
+      toast.success("Experiment started");
+    },
+    onError: (error: Error) => {
+      toast.error(`Failed to start experiment: ${error.message}`);
+    },
+  });
 
-    if (isLoading) {
-        return (
-            <div className="min-h-screen bg-(--bg-page) flex items-center justify-center">
-                <div className="animate-pulse text-(--text-muted)">Loading experiment...</div>
-            </div>
-        );
-    }
+  if (experimentQuery.isLoading) {
+    return <div className="page-stack"><SkeletonBlock className="h-[180px]" /><SkeletonBlock className="h-[520px]" /></div>;
+  }
 
-    if (error || !experiment) {
-        return (
-            <div className="min-h-screen bg-(--bg-page)">
-                <header className="bg-(--bg-card) shadow-sm border-b border-border">
-                    <div className="max-w-7xl mx-auto px-4 py-6">
-                        <Link href="/experiments" className="text-primary hover:underline text-sm">
-                            ← Back to Experiments
-                        </Link>
-                        <h1 className="text-2xl font-serif text-(--text-heading) mt-1">Experiment Not Found</h1>
-                    </div>
-                </header>
-                <main className="max-w-7xl mx-auto px-4 py-8">
-                    <div className="card p-6">
-                        <p className="text-(--error)">
-                            {error instanceof Error ? error.message : "Experiment not found"}
-                        </p>
-                    </div>
-                </main>
-            </div>
-        );
-    }
-
-    const statusClasses: Record<string, string> = {
-        pending: "badge-pending",
-        queued: "badge-queued",
-        running: "badge-running",
-        completed: "badge-completed",
-        failed: "badge-failed",
-    };
-
-    const canRun = experiment.status === "pending" || experiment.status === "failed" || experiment.status === "completed";
-    const isActive = experiment.status === "running" || experiment.status === "queued";
-
+  if (experimentQuery.error || !experimentQuery.data) {
     return (
-        <div className="min-h-screen bg-(--bg-page)">
-            <header className="bg-(--bg-card) shadow-sm border-b border-border">
-                <div className="max-w-7xl mx-auto px-4 py-6">
-                    <Link href="/experiments" className="text-primary hover:underline text-sm">
-                        ← Back to Experiments
-                    </Link>
-                    <div className="flex items-center justify-between mt-1">
-                        <div className="flex items-center gap-3">
-                            <h1 className="text-2xl font-serif text-(--text-heading)">
-                                {experiment.name}
-                            </h1>
-                            <span className={`text-xs px-2 py-1 rounded-full ${statusClasses[experiment.status]}`}>
-                                {experiment.status}
-                            </span>
-                        </div>
-                        <div className="flex items-center gap-3">
-                            {/* Compare Button (completed only) */}
-                            {experiment.status === "completed" && (
-                                <Link
-                                    href={`/experiments/compare?preselect=${id}`}
-                                    className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium border border-border rounded-full text-(--text-body) hover:bg-(--bg-page) transition-colors"
-                                >
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                        <path d="M18 20V10" /><path d="M12 20V4" /><path d="M6 20v-6" />
-                                    </svg>
-                                    Compare
-                                </Link>
-                            )}
-                            {/* Run Button */}
-                            {canRun && (
-                                <button
-                                    onClick={() => runMutation.mutate()}
-                                    disabled={runMutation.isPending}
-                                    className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer inline-flex items-center gap-2"
-                                >
-                                    {runMutation.isPending ? (
-                                        <>
-                                            <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                                            </svg>
-                                            Starting...
-                                        </>
-                                    ) : (
-                                        <>
-                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                                                <polygon points="5,3 19,12 5,21" />
-                                            </svg>
-                                            Run Experiment
-                                        </>
-                                    )}
-                                </button>
-                            )}
-                            {/* Active Indicator */}
-                            {isActive && (
-                                <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-blue-50 text-blue-700 text-sm font-medium">
-                                    <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                                    </svg>
-                                    Running...
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                    {experiment.description && (
-                        <p className="mt-1 text-(--text-muted)">{experiment.description}</p>
-                    )}
-                </div>
-            </header>
-
-            <motion.main
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5 }}
-                className="max-w-7xl mx-auto px-4 py-8"
-            >
-                {/* Run Error Display */}
-                {runMutation.error && (
-                    <div className="card p-4 mb-6 border-l-4 border-l-(--error)">
-                        <p className="text-(--error) text-sm">
-                            Failed to start: {runMutation.error instanceof Error ? runMutation.error.message : "Unknown error"}
-                        </p>
-                    </div>
-                )}
-
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    {/* Configuration */}
-                    <div className="card p-6">
-                        <h2 className="text-lg font-serif text-(--text-heading) mb-4">Configuration</h2>
-                        <pre className="bg-(--bg-page) p-4 rounded-lg text-sm overflow-auto font-mono text-(--text-body)">
-                            {JSON.stringify(experiment.config, null, 2)}
-                        </pre>
-                    </div>
-
-                    {/* Details */}
-                    <div className="card p-6">
-                        <h2 className="text-lg font-serif text-(--text-heading) mb-4">Details</h2>
-                        <dl className="space-y-3">
-                            <div>
-                                <dt className="text-sm text-(--text-muted)">Model</dt>
-                                <dd className="font-mono text-(--text-body)">{experiment.config.model_name}</dd>
-                            </div>
-                            <div>
-                                <dt className="text-sm text-(--text-muted)">Reasoning Method</dt>
-                                <dd className="text-(--text-body) capitalize">{experiment.config.reasoning_method}</dd>
-                            </div>
-                            <div>
-                                <dt className="text-sm text-(--text-muted)">Dataset</dt>
-                                <dd className="text-(--text-body)">{experiment.config.dataset_name}</dd>
-                            </div>
-                            <div>
-                                <dt className="text-sm text-(--text-muted)">Samples</dt>
-                                <dd className="text-(--text-body)">{experiment.config.num_samples ?? 100}</dd>
-                            </div>
-                            <div>
-                                <dt className="text-sm text-(--text-muted)">Created</dt>
-                                <dd className="text-(--text-body)">
-                                    {new Date(experiment.created_at).toLocaleString()}
-                                </dd>
-                            </div>
-                            {experiment.started_at && (
-                                <div>
-                                    <dt className="text-sm text-(--text-muted)">Started</dt>
-                                    <dd className="text-(--text-body)">
-                                        {new Date(experiment.started_at).toLocaleString()}
-                                    </dd>
-                                </div>
-                            )}
-                            {experiment.completed_at && (
-                                <div>
-                                    <dt className="text-sm text-(--text-muted)">Completed</dt>
-                                    <dd className="text-(--text-body)">
-                                        {new Date(experiment.completed_at).toLocaleString()}
-                                    </dd>
-                                </div>
-                            )}
-                        </dl>
-                    </div>
-                </div>
-
-                {/* Error display */}
-                {experiment.error_message && (
-                    <div className="card p-6 mt-6 border-l-4 border-l-(--error)">
-                        <h2 className="text-lg font-serif text-(--error) mb-2">Error</h2>
-                        <pre className="text-sm text-(--text-body) whitespace-pre-wrap">
-                            {experiment.error_message}
-                        </pre>
-                    </div>
-                )}
-
-                {/* Results Dashboard */}
-                <div className="mt-6">
-                    <h2 className="text-xl font-serif text-(--text-heading) mb-4">Results</h2>
-                    {experiment.status === "completed" ? (
-                        <ResultsDashboard experimentId={id} />
-                    ) : (
-                        <div className="card p-6">
-                            <p className="text-(--text-muted) text-center py-4">
-                                {isActive
-                                    ? "Experiment is running... Results will appear automatically."
-                                    : canRun
-                                        ? "Click \"Run Experiment\" above to start execution."
-                                        : "Run the experiment to see results."}
-                            </p>
-                        </div>
-                    )}
-                </div>
-
-                {/* Optimization Profile (Phase 8) */}
-                {experiment.status === "completed" && (
-                    <div className="mt-6">
-                        <ProfileDashboard experimentId={id} />
-                    </div>
-                )}
-            </motion.main>
+      <div className="page-stack">
+        <div className="alert alert-danger">
+          <TriangleAlert className="mt-0.5 size-4 shrink-0" />
+          <p className="text-sm leading-7">{experimentQuery.error instanceof Error ? experimentQuery.error.message : "Experiment not found."}</p>
         </div>
+      </div>
     );
+  }
+
+  const experiment = experimentQuery.data;
+  const canRun = experiment.status === "pending" || experiment.status === "failed" || experiment.status === "completed";
+  const isActive = experiment.status === "running" || experiment.status === "queued";
+
+  return (
+    <div className="page-stack">
+      <PageHeader
+        eyebrow={<><ScanSearch className="size-3.5" /> Experiment detail</>}
+        title={experiment.name}
+        description={experiment.description || "Inspect configuration, metrics, and execution details for this experiment."}
+        actions={
+          <>
+            {experiment.status === "completed" ? <Link href={`/experiments/compare?preselect=${id}`} className="btn-secondary">Compare</Link> : null}
+            {canRun ? (
+              <button type="button" className="btn-primary" onClick={() => runMutation.mutate()} disabled={runMutation.isPending}>
+                {runMutation.isPending ? <LoaderCircle className="size-4 animate-spin" /> : <Play className="size-4" />}
+                {experiment.status === "completed" ? "Run again" : "Run experiment"}
+              </button>
+            ) : null}
+          </>
+        }
+      >
+        <div className="flex flex-wrap gap-2">
+          <StatusPill status={experiment.status} />
+          <span className="chip">{experiment.config.reasoning_method.toUpperCase()}</span>
+          <span className="chip">{experiment.config.model_name.split("/").pop()}</span>
+          <span className="chip">{experiment.config.dataset_name}</span>
+          {isActive ? <span className="chip">Auto-refresh every 3s</span> : null}
+        </div>
+      </PageHeader>
+
+      {experiment.error_message ? (
+        <div className="alert alert-danger">
+          <TriangleAlert className="mt-0.5 size-4 shrink-0" />
+          <pre className="whitespace-pre-wrap text-sm leading-7">{experiment.error_message}</pre>
+        </div>
+      ) : null}
+
+      <section className="grid gap-4 xl:grid-cols-[0.78fr_1.22fr]">
+        <Panel>
+          <PanelHeader label="Configuration" title="Experiment payload" description="The raw config remains visible so you can verify exactly what was sent to the backend." />
+          <div className="panel-body">
+            <pre className="code-panel">{JSON.stringify(experiment.config, null, 2)}</pre>
+          </div>
+        </Panel>
+
+        <Panel>
+          <PanelHeader label="Lifecycle" title="Run metadata" description="Execution status and timestamps reflect the current backend experiment model." />
+          <div className="panel-body grid gap-4 sm:grid-cols-2">
+            <div className="metric-card">
+              <div className="metric-label">Created</div>
+              <div className="metric-value text-xl">{formatDate(experiment.created_at)}</div>
+            </div>
+            <div className="metric-card">
+              <div className="metric-label">Started</div>
+              <div className="metric-value text-xl">{formatDate(experiment.started_at)}</div>
+            </div>
+            <div className="metric-card">
+              <div className="metric-label">Completed</div>
+              <div className="metric-value text-xl">{formatDate(experiment.completed_at)}</div>
+            </div>
+            <div className="metric-card">
+              <div className="metric-label">Samples</div>
+              <div className="metric-value text-xl">{experiment.config.num_samples ?? "--"}</div>
+            </div>
+          </div>
+        </Panel>
+      </section>
+
+      {experiment.status === "completed" ? (
+        <>
+          <ResultsDashboard experimentId={id} experimentName={experiment.name} />
+          <ProfileDashboard experimentId={id} />
+        </>
+      ) : (
+        <EmptyState
+          icon={<LoaderCircle className={`size-5 ${isActive ? "animate-spin" : ""}`} />}
+          title={isActive ? "Experiment is still running" : "No results yet"}
+          description={isActive ? "This screen auto-refreshes while the backend is processing the run." : "Start the experiment to unlock metrics, per-run inspection, and optimization data."}
+          action={canRun ? <button type="button" className="btn-primary" onClick={() => runMutation.mutate()} disabled={runMutation.isPending}>Run now</button> : undefined}
+        />
+      )}
+    </div>
+  );
 }
+
+

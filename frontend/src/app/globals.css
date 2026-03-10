@@ -1,94 +1,615 @@
 @import "tailwindcss";
 
-/* LlmForge Design System - Based on DESIGN_SYSTEM.md */
-
 :root {
-  /* 4-Color Palette */
-  --primary: #37322F;          /* Dark Brown - headings, buttons, primary text */
-  --background: #F7F5F3;       /* Off-White - page background */
-  --muted-foreground: #605A57; /* Taupe Gray - body text, descriptions */
-  --border: #E0DEDB;           /* Light Gray - borders, dividers */
-  
-  /* Semantic Colors */
-  --foreground: #37322F;
-  --text-heading: #37322F;
-  --text-body: #605A57;
-  --text-muted: rgba(55, 50, 47, 0.80);
-  --text-on-dark: #FBFAF9;
-  
-  --bg-page: #F7F5F3;
-  --bg-card: #FFFFFF;
-  --bg-primary: #37322F;
-  
-  --border-standard: rgba(55, 50, 47, 0.12);
-  --border-subtle: rgba(55, 50, 47, 0.06);
-  
-  /* Status Colors */
-  --success: #22c55e;
-  --warning: #eab308;
-  --error: #ef4444;
-  --info: #3b82f6;
-  
-  /* Fonts */
-  --font-serif: 'Instrument Serif', Georgia, serif;
-  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --background: oklch(0.145 0.008 255);
+  --foreground: oklch(0.94 0.004 255);
+  --surface-1: oklch(0.18 0.01 255);
+  --surface-2: oklch(0.22 0.012 255);
+  --surface-3: oklch(0.26 0.012 255);
+  --primary: oklch(0.79 0.09 84);
+  --primary-foreground: oklch(0.16 0.01 255);
+  --accent: oklch(0.74 0.08 182);
+  --accent-foreground: oklch(0.16 0.02 182);
+  --muted: oklch(0.27 0.008 255);
+  --muted-foreground: oklch(0.71 0.01 255);
+  --destructive: oklch(0.67 0.18 28);
+  --destructive-soft: oklch(0.27 0.05 28);
+  --success: oklch(0.75 0.11 156);
+  --warning: oklch(0.82 0.09 84);
+  --info: oklch(0.74 0.08 182);
+  --border: oklch(0.31 0.01 255 / 0.9);
+  --border-strong: oklch(0.44 0.012 255 / 0.95);
+  --ring: var(--accent);
+  --shadow-panel: 0 24px 64px -40px rgba(0, 0, 0, 0.72), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  --shadow-overlay: 0 40px 100px -40px rgba(0, 0, 0, 0.8);
+  --font-display: "Aptos Display", "Segoe UI Variable Display", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  --font-body: "Aptos", "Segoe UI Variable Text", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "Cascadia Mono", "Cascadia Code", "Consolas", "SFMono-Regular", "Liberation Mono", monospace;
+  --sidebar-width: 264px;
+  --text-heading: var(--foreground);
+  --text-body: var(--foreground);
+  --text-muted: var(--muted-foreground);
+  --text-on-dark: var(--primary-foreground);
+  --bg-page: var(--background);
+  --bg-card: var(--surface-1);
+  --bg-primary: var(--primary);
+  --error: var(--destructive);
+}
+
+:root[data-theme="light"] {
+  --background: oklch(0.985 0.002 255);
+  --foreground: oklch(0.23 0.01 255);
+  --surface-1: oklch(0.965 0.004 255);
+  --surface-2: oklch(0.94 0.006 255);
+  --surface-3: oklch(0.91 0.008 255);
+  --muted: oklch(0.93 0.004 255);
+  --muted-foreground: oklch(0.49 0.01 255);
+  --border: oklch(0.86 0.007 255 / 0.95);
+  --border-strong: oklch(0.74 0.01 255 / 0.98);
+  --destructive-soft: oklch(0.93 0.03 28);
+  --shadow-panel: 0 18px 50px -42px rgba(15, 23, 42, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  --shadow-overlay: 0 40px 80px -48px rgba(15, 23, 42, 0.32);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --color-primary: var(--primary);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-border: var(--border);
-  --font-sans: var(--font-sans);
-  --font-serif: var(--font-serif);
+  --font-sans: var(--font-body);
+  --font-mono: var(--font-mono);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-height: 100%;
+  background: var(--background);
 }
 
 body {
-  background: var(--bg-page);
-  color: var(--text-body);
-  font-family: var(--font-sans);
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at top left, color-mix(in oklab, var(--primary) 14%, transparent) 0%, transparent 28%),
+    radial-gradient(circle at top right, color-mix(in oklab, var(--accent) 10%, transparent) 0%, transparent 24%),
+    linear-gradient(180deg, color-mix(in oklab, var(--surface-1) 45%, transparent) 0%, transparent 35%),
+    var(--background);
+  color: var(--foreground);
+  font-family: var(--font-body);
+  text-rendering: optimizeLegibility;
 }
 
-/* Typography */
-h1, h2, h3 {
-  color: var(--text-heading);
-  font-family: var(--font-serif);
+body::before {
+  content: "";
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(to right, color-mix(in oklab, var(--border) 40%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in oklab, var(--border) 40%, transparent) 1px, transparent 1px);
+  background-size: 24px 24px;
+  opacity: 0.1;
+  mask-image: radial-gradient(circle at top, black, transparent 72%);
 }
 
-/* Utility classes for design system */
-.text-heading { color: var(--text-heading); }
-.text-body { color: var(--text-body); }
-.text-muted { color: var(--text-muted); }
-.bg-page { background: var(--bg-page); }
-.bg-card { background: var(--bg-card); }
-.border-standard { border-color: var(--border-standard); }
+::selection {
+  background: color-mix(in oklab, var(--primary) 85%, white 15%);
+  color: var(--primary-foreground);
+}
 
-/* Button primary style */
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--font-display);
+  letter-spacing: -0.03em;
+  color: var(--foreground);
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button,
+[role="button"] {
+  -webkit-tap-highlight-color: transparent;
+}
+
+.app-shell {
+  min-height: 100vh;
+}
+
+.page-width {
+  width: min(100%, 1180px);
+  margin-inline: auto;
+}
+
+.page-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.page-header {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1.5rem;
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  background: color-mix(in oklab, var(--surface-1) 86%, transparent);
+  box-shadow: var(--shadow-panel);
+}
+
+.page-header-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.page-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: color-mix(in oklab, var(--surface-2) 82%, transparent);
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.page-title {
+  font-size: clamp(2rem, 4vw, 3.5rem);
+  line-height: 1;
+}
+
+.page-description {
+  max-width: 46rem;
+  color: var(--muted-foreground);
+  font-size: 0.98rem;
+  line-height: 1.7;
+}
+
+.panel {
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  background: color-mix(in oklab, var(--surface-1) 90%, transparent);
+  box-shadow: var(--shadow-panel);
+}
+
+.panel-muted {
+  background: color-mix(in oklab, var(--surface-2) 88%, transparent);
+}
+
+.panel-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 1.25rem 1.25rem 0;
+}
+
+.panel-body {
+  padding: 1.25rem;
+}
+
+.section-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+.section-title {
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+
+.section-description {
+  font-size: 0.95rem;
+  line-height: 1.65;
+  color: var(--muted-foreground);
+}
+
+.btn-primary,
+.btn-secondary,
+.btn-ghost,
+.btn-danger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  min-height: 2.8rem;
+  padding-inline: 1rem;
+  border-radius: 14px;
+  border: 1px solid transparent;
+  font-size: 0.92rem;
+  font-weight: 600;
+  transition:
+    transform 160ms cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 160ms cubic-bezier(0.16, 1, 0.3, 1),
+    background-color 160ms cubic-bezier(0.16, 1, 0.3, 1),
+    color 160ms cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
 .btn-primary {
-  background: var(--bg-primary);
-  color: var(--text-on-dark);
-  border-radius: 9999px;
-  padding: 0.5rem 1.5rem;
-  font-weight: 500;
-  transition: opacity 0.2s ease;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  box-shadow: 0 18px 36px -24px color-mix(in oklab, var(--primary) 55%, black 45%);
 }
 
 .btn-primary:hover {
-  opacity: 0.9;
+  transform: translateY(-1px);
+  filter: brightness(1.03);
 }
 
-/* Card style */
-.card {
-  background: var(--bg-card);
+.btn-secondary {
+  border-color: var(--border);
+  background: color-mix(in oklab, var(--surface-2) 88%, transparent);
+  color: var(--foreground);
+}
+
+.btn-secondary:hover,
+.btn-ghost:hover {
+  transform: translateY(-1px);
+  border-color: var(--border-strong);
+  background: color-mix(in oklab, var(--surface-3) 86%, transparent);
+}
+
+.btn-ghost {
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted-foreground);
+}
+
+.btn-danger {
+  border-color: color-mix(in oklab, var(--destructive) 60%, transparent);
+  background: color-mix(in oklab, var(--destructive) 16%, transparent);
+  color: color-mix(in oklab, var(--destructive) 78%, white 12%);
+}
+
+.btn-danger:hover {
+  transform: translateY(-1px);
+  background: color-mix(in oklab, var(--destructive) 22%, transparent);
+}
+
+.btn-primary:disabled,
+.btn-secondary:disabled,
+.btn-ghost:disabled,
+.btn-danger:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+  transform: none;
+}
+
+.input-shell,
+.select-shell,
+.textarea-shell {
+  width: 100%;
   border: 1px solid var(--border);
-  border-radius: 0.75rem;
-  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  border-radius: 14px;
+  background: color-mix(in oklab, var(--surface-2) 88%, transparent);
+  color: var(--foreground);
+  transition:
+    border-color 160ms cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 160ms cubic-bezier(0.16, 1, 0.3, 1),
+    background-color 160ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-/* Status badges */
-.badge-pending { background: #fef3c7; color: #92400e; }
-.badge-running { background: #dbeafe; color: #1e40af; }
-.badge-queued { background: #ede9fe; color: #5b21b6; }
-.badge-completed { background: #dcfce7; color: #166534; }
-.badge-failed { background: #fee2e2; color: #991b1b; }
+.input-shell,
+.select-shell {
+  min-height: 2.9rem;
+  padding: 0.7rem 0.9rem;
+}
+
+.textarea-shell {
+  min-height: 7rem;
+  padding: 0.9rem;
+  resize: vertical;
+}
+
+.input-shell:focus-visible,
+.select-shell:focus-visible,
+.textarea-shell:focus-visible {
+  outline: none;
+  border-color: color-mix(in oklab, var(--accent) 65%, white 10%);
+  box-shadow:
+    0 0 0 1px color-mix(in oklab, var(--accent) 75%, transparent),
+    0 0 0 6px color-mix(in oklab, var(--accent) 16%, transparent);
+}
+
+.field-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+
+.field-help {
+  font-size: 0.8rem;
+  line-height: 1.55;
+  color: var(--muted-foreground);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.45rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: color-mix(in oklab, var(--surface-2) 88%, transparent);
+  color: var(--muted-foreground);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: 0.76rem;
+  font-weight: 700;
+  text-transform: capitalize;
+  letter-spacing: 0.03em;
+}
+
+.status-dot {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.status-pending {
+  color: oklch(0.7 0.03 250);
+  background: color-mix(in oklab, var(--muted) 70%, transparent);
+  border-color: color-mix(in oklab, var(--muted-foreground) 16%, transparent);
+}
+
+.status-queued {
+  color: var(--warning);
+  background: color-mix(in oklab, var(--warning) 18%, transparent);
+  border-color: color-mix(in oklab, var(--warning) 35%, transparent);
+}
+
+.status-running {
+  color: var(--accent);
+  background: color-mix(in oklab, var(--accent) 16%, transparent);
+  border-color: color-mix(in oklab, var(--accent) 32%, transparent);
+}
+
+.status-completed {
+  color: var(--success);
+  background: color-mix(in oklab, var(--success) 16%, transparent);
+  border-color: color-mix(in oklab, var(--success) 34%, transparent);
+}
+
+.status-failed {
+  color: color-mix(in oklab, var(--destructive) 85%, white 10%);
+  background: var(--destructive-soft);
+  border-color: color-mix(in oklab, var(--destructive) 34%, transparent);
+}
+
+.metric-value {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.04em;
+}
+
+.metric-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: color-mix(in oklab, var(--surface-2) 90%, transparent);
+}
+
+.metric-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+.metric-caption {
+  font-size: 0.82rem;
+  line-height: 1.55;
+  color: var(--muted-foreground);
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.data-table thead th {
+  padding: 0.8rem 1rem;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted-foreground);
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-align: left;
+}
+
+.data-table tbody td {
+  padding: 0.95rem 1rem;
+  border-bottom: 1px solid color-mix(in oklab, var(--border) 75%, transparent);
+  vertical-align: top;
+}
+
+.data-row {
+  transition:
+    background-color 160ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.data-row:hover {
+  background: color-mix(in oklab, var(--surface-2) 92%, transparent);
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.9rem;
+  padding: 1.25rem;
+  border: 1px dashed var(--border-strong);
+  border-radius: 20px;
+  background: color-mix(in oklab, var(--surface-2) 74%, transparent);
+}
+
+.empty-state-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 3rem;
+  height: 3rem;
+  border-radius: 18px;
+  background: color-mix(in oklab, var(--accent) 16%, transparent);
+  color: var(--accent);
+}
+
+.alert {
+  display: flex;
+  gap: 0.9rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: color-mix(in oklab, var(--surface-2) 90%, transparent);
+}
+
+.alert-danger {
+  border-color: color-mix(in oklab, var(--destructive) 34%, transparent);
+  background: var(--destructive-soft);
+}
+
+.alert-warning {
+  border-color: color-mix(in oklab, var(--warning) 34%, transparent);
+  background: color-mix(in oklab, var(--warning) 16%, transparent);
+}
+
+.alert-info {
+  border-color: color-mix(in oklab, var(--accent) 34%, transparent);
+  background: color-mix(in oklab, var(--accent) 14%, transparent);
+}
+
+.code-panel {
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: color-mix(in oklab, var(--surface-2) 92%, transparent);
+  padding: 1rem;
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  line-height: 1.75;
+  overflow: auto;
+}
+
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: color-mix(in oklab, var(--surface-3) 72%, transparent);
+}
+
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.08) 50%, transparent 100%);
+  animation: shimmer 1.4s linear infinite;
+}
+
+.mono-caption {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--muted-foreground);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+@keyframes shimmer {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+.card {
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  background: color-mix(in oklab, var(--surface-1) 90%, transparent);
+  box-shadow: var(--shadow-panel);
+}
+
+.badge-pending {
+  color: oklch(0.7 0.03 250);
+  background: color-mix(in oklab, var(--muted) 70%, transparent);
+}
+
+.badge-queued {
+  color: var(--warning);
+  background: color-mix(in oklab, var(--warning) 18%, transparent);
+}
+
+.badge-running {
+  color: var(--accent);
+  background: color-mix(in oklab, var(--accent) 16%, transparent);
+}
+
+.badge-completed {
+  color: var(--success);
+  background: color-mix(in oklab, var(--success) 16%, transparent);
+}
+
+.badge-failed {
+  color: color-mix(in oklab, var(--destructive) 85%, white 10%);
+  background: var(--destructive-soft);
+}
+@media (max-width: 1024px) {
+  .page-header {
+    padding: 1.15rem;
+  }
+}
+
+
+

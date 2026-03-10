@@ -1,18 +1,15 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
 import { Toaster } from "sonner";
-import { Navbar } from "@/components/navbar";
-
-const inter = Inter({
-  variable: "--font-inter",
-  subsets: ["latin"],
-});
+import { AppShell } from "@/components/app-shell";
 
 export const metadata: Metadata = {
-  title: "LLM Research Platform",
-  description: "Config-driven experimentation for reasoning, retrieval, and alignment",
+  title: {
+    default: "LLMForge",
+    template: "%s | LLMForge",
+  },
+  description: "A precision console for systematic LLM evaluation, comparison, and optimization.",
 };
 
 export default function RootLayout({
@@ -21,21 +18,22 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <head>
-        {/* Instrument Serif from Google Fonts */}
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link
-          href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&display=swap"
-          rel="stylesheet"
-        />
-      </head>
-      <body className={`${inter.variable} antialiased`}>
+    <html lang="en" suppressHydrationWarning data-theme="dark">
+      <body className="antialiased">
         <Providers>
-          <Navbar />
-          {children}
-          <Toaster position="bottom-right" richColors theme="light" />
+          <AppShell>{children}</AppShell>
+          <Toaster
+            position="bottom-right"
+            richColors
+            theme="dark"
+            toastOptions={{
+              style: {
+                background: "var(--surface-1)",
+                border: "1px solid var(--border)",
+                color: "var(--foreground)",
+              },
+            }}
+          />
         </Providers>
       </body>
     </html>
