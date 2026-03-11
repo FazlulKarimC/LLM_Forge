@@ -54,17 +54,17 @@ export default function DashboardPage() {
 
   const statsQuery = useQuery({
     queryKey: ["dashboard-stats"],
-    queryFn: getDashboardStats,
+    queryFn: ({ signal }) => getDashboardStats({ signal }),
   });
 
   const experimentsQuery = useQuery({
     queryKey: ["experiments", "recent"],
-    queryFn: () => listExperiments({ limit: 6 }),
+    queryFn: ({ signal }) => listExperiments({ limit: 6 }, { signal }),
   });
 
   const readinessQuery = useQuery({
     queryKey: ["readiness"],
-    queryFn: getReadinessStatus,
+    queryFn: ({ signal }) => getReadinessStatus({ signal }),
     refetchInterval: 30000,
     retry: (failureCount, error) => !(error instanceof ApiError && error.statusCode === 408) && failureCount < 1,
   });

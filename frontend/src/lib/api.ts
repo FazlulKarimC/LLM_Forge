@@ -41,8 +41,74 @@ type FetchWithHandlingOptions = {
     maxRetries?: number;
 };
 
-function sleep(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
+const SAFE_METHOD_TIMEOUT_MS = 30000;
+const UNSAFE_METHOD_TIMEOUT_MS = 15000;
+const SAFE_METHOD_MAX_RETRIES = 2;
+const UNSAFE_METHOD_MAX_RETRIES = 0;
+const RETRY_BACKOFF_BASE_MS = 2000;
+const BACKGROUND_JOB_POLL_INTERVAL_MS = 2500;
+const BACKGROUND_JOB_TIMEOUT_MS = 5 * 60_000;
+
+function isSafeRetryMethod(method?: string): boolean {
+    const normalizedMethod = (method || 'GET').toUpperCase();
+    return normalizedMethod === 'GET' || normalizedMethod === 'HEAD';
+}
+
+function getAbortError(): DOMException {
+    return new DOMException('The operation was aborted.', 'AbortError');
+}
+
+function sleep(ms: number, signal?: AbortSignal | null): Promise<void> {
+    return new Promise((resolve, reject) => {
+        const abortSignal = signal ?? undefined;
+
+        if (abortSignal?.aborted) {
+            reject(abortSignal.reason ?? getAbortError());
+            return;
+        }
+
+        const onAbort = () => {
+            clearTimeout(timeout);
+            abortSignal?.removeEventListener('abort', onAbort);
+            reject(abortSignal?.reason ?? getAbortError());
+        };
+
+        const timeout = setTimeout(() => {
+            abortSignal?.removeEventListener('abort', onAbort);
+            resolve();
+        }, ms);
+
+        abortSignal?.addEventListener('abort', onAbort, { once: true });
+    });
+}
+
+function combineAbortSignals(timeoutSignal: AbortSignal, externalSignal?: AbortSignal | null): AbortSignal {
+    if (!externalSignal) {
+        return timeoutSignal;
+    }
+
+    const abortSignalWithAny = AbortSignal as typeof AbortSignal & {
+        any?: (signals: AbortSignal[]) => AbortSignal;
+    };
+
+    if (typeof abortSignalWithAny.any === 'function') {
+        return abortSignalWithAny.any([timeoutSignal, externalSignal]);
+    }
+
+    const controller = new AbortController();
+    const abortFrom = (signal: AbortSignal) => {
+        if (!controller.signal.aborted) {
+            controller.abort(signal.reason);
+        }
+    };
+
+    if (timeoutSignal.aborted) abortFrom(timeoutSignal);
+    if (externalSignal.aborted) abortFrom(externalSignal);
+
+    timeoutSignal.addEventListener('abort', () => abortFrom(timeoutSignal), { once: true });
+    externalSignal.addEventListener('abort', () => abortFrom(externalSignal), { once: true });
+
+    return controller.signal;
 }
 
 async function buildApiError(response: Response): Promise<ApiError> {
@@ -87,13 +153,23 @@ async function fetchWithHandling(
     options: RequestInit = {},
     config: FetchWithHandlingOptions = {}
 ): Promise<Response> {
-    const { timeoutMs = 15000, maxRetries = 1 } = config;
+    const safeMethod = isSafeRetryMethod(options.method);
+    const {
+        timeoutMs = safeMethod ? SAFE_METHOD_TIMEOUT_MS : UNSAFE_METHOD_TIMEOUT_MS,
+        maxRetries = safeMethod ? SAFE_METHOD_MAX_RETRIES : UNSAFE_METHOD_MAX_RETRIES,
+    } = config;
+    const externalSignal = options.signal;
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), timeoutMs);
+        const combinedSignal = combineAbortSignals(controller.signal, externalSignal);
 
         try {
+            if (externalSignal?.aborted) {
+                throw externalSignal.reason ?? getAbortError();
+            }
+
             const headers = new Headers(options.headers);
             const hasBody = options.body !== undefined && options.body !== null;
             if (hasBody && !headers.has('Content-Type') && !(options.body instanceof FormData)) {
@@ -102,7 +178,7 @@ async function fetchWithHandling(
 
             const response = await fetch(url, {
                 ...options,
-                signal: controller.signal,
+                signal: combinedSignal,
                 headers,
             });
 
@@ -110,8 +186,8 @@ async function fetchWithHandling(
 
             if (!response.ok) {
                 const apiError = await buildApiError(response);
-                if (response.status >= 500 && attempt < maxRetries) {
-                    await sleep(2000);
+                if (safeMethod && response.status >= 500 && attempt < maxRetries) {
+                    await sleep(RETRY_BACKOFF_BASE_MS * Math.pow(2, attempt), externalSignal);
                     continue;
                 }
                 throw apiError;
@@ -125,13 +201,20 @@ async function fetchWithHandling(
                 throw err;
             }
 
-            if (attempt < maxRetries) {
-                await sleep(2000);
+            if (externalSignal?.aborted && !controller.signal.aborted) {
+                throw err;
+            }
+
+            if (safeMethod && attempt < maxRetries) {
+                await sleep(RETRY_BACKOFF_BASE_MS * Math.pow(2, attempt), externalSignal);
                 continue;
             }
 
             if (err instanceof DOMException && err.name === 'AbortError') {
-                throw new ApiError('Request timed out. The backend may still be waking up on Hugging Face Spaces.', 408);
+                if (controller.signal.aborted && !externalSignal?.aborted) {
+                    throw new ApiError('Request timed out. The backend may still be waking up on Hugging Face Spaces.', 408);
+                }
+                throw err;
             }
 
             throw new ApiError(err instanceof Error ? err.message : 'Network error', 0);
@@ -146,9 +229,10 @@ async function fetchWithHandling(
  */
 async function fetchAPI<T>(
     endpoint: string,
-    options: RequestInit = {}
+    options: RequestInit = {},
+    config: FetchWithHandlingOptions = {}
 ): Promise<T> {
-    const response = await fetchWithHandling(`${API_BASE_URL}${endpoint}`, options);
+    const response = await fetchWithHandling(`${API_BASE_URL}${endpoint}`, options, config);
 
     if (response.status === 204) {
         return undefined as unknown as T;
@@ -353,6 +437,19 @@ export interface ProfileData {
     total_wall_time_ms?: number;
 }
 
+type BackgroundJobStatus = 'queued' | 'running' | 'completed' | 'failed';
+
+interface BackgroundJob<T> {
+    job_id: string;
+    kind: string;
+    status: BackgroundJobStatus;
+    created_at: string;
+    updated_at: string;
+    metadata?: Record<string, unknown>;
+    result?: T;
+    error?: string;
+}
+
 // =============================================================================
 // API FUNCTIONS
 // =============================================================================
@@ -370,7 +467,7 @@ export async function createExperiment(data: CreateExperimentRequest): Promise<E
 /**
  * List experiments with optional filters.
  */
-export async function listExperiments(params?: ListExperimentsParams): Promise<ExperimentList> {
+export async function listExperiments(params?: ListExperimentsParams, options: RequestInit = {}): Promise<ExperimentList> {
     const searchParams = new URLSearchParams();
 
     if (params?.status) searchParams.set('status', params.status);
@@ -380,14 +477,14 @@ export async function listExperiments(params?: ListExperimentsParams): Promise<E
     if (params?.limit !== undefined) searchParams.set('limit', String(params.limit));
 
     const query = searchParams.toString();
-    return fetchAPI<ExperimentList>(`/experiments${query ? `?${query}` : ''}`);
+    return fetchAPI<ExperimentList>(`/experiments${query ? `?${query}` : ''}`, options);
 }
 
 /**
  * Get experiment by ID.
  */
-export async function getExperiment(id: string): Promise<Experiment> {
-    return fetchAPI<Experiment>(`/experiments/${id}`);
+export async function getExperiment(id: string, options: RequestInit = {}): Promise<Experiment> {
+    return fetchAPI<Experiment>(`/experiments/${id}`, options);
 }
 
 /**
@@ -418,22 +515,22 @@ export async function deleteExperiment(id: string): Promise<void> {
 /**
  * Get metrics for an experiment.
  */
-export async function getMetrics(experimentId: string): Promise<Metrics> {
-    return fetchAPI<Metrics>(`/results/${experimentId}/metrics`);
+export async function getMetrics(experimentId: string, options: RequestInit = {}): Promise<Metrics> {
+    return fetchAPI<Metrics>(`/results/${experimentId}/metrics`, options);
 }
 
 /**
  * Get run summaries for an experiment (for correctness grid).
  */
-export async function getRunSummaries(experimentId: string): Promise<RunSummary[]> {
-    return fetchAPI<RunSummary[]>(`/results/${experimentId}/runs`);
+export async function getRunSummaries(experimentId: string, options: RequestInit = {}): Promise<RunSummary[]> {
+    return fetchAPI<RunSummary[]>(`/results/${experimentId}/runs`, options);
 }
 
 /**
  * Get optimization profiling data for an experiment.
  */
-export async function getProfile(experimentId: string): Promise<ProfileData> {
-    return fetchAPI<ProfileData>(`/results/${experimentId}/profile`);
+export async function getProfile(experimentId: string, options: RequestInit = {}): Promise<ProfileData> {
+    return fetchAPI<ProfileData>(`/results/${experimentId}/profile`, options);
 }
 
 /**
@@ -441,7 +538,7 @@ export async function getProfile(experimentId: string): Promise<ProfileData> {
  */
 export async function exportResults(experimentId: string, experimentName?: string): Promise<void> {
     const url = `${API_BASE_URL}/results/${experimentId}/export`;
-    const response = await fetchWithHandling(url, {}, { timeoutMs: 20000, maxRetries: 0 });
+    const response = await fetchWithHandling(url, {}, { timeoutMs: SAFE_METHOD_TIMEOUT_MS, maxRetries: SAFE_METHOD_MAX_RETRIES });
     const data = await response.json();
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const downloadUrl = URL.createObjectURL(blob);
@@ -466,7 +563,7 @@ export async function exportMarkdownReport(
     runs?: RunSummary[],
 ): Promise<void> {
     const url = `${API_BASE_URL}/results/${experimentId}/export`;
-    const response = await fetchWithHandling(url, {}, { timeoutMs: 20000, maxRetries: 0 });
+    const response = await fetchWithHandling(url, {}, { timeoutMs: SAFE_METHOD_TIMEOUT_MS, maxRetries: SAFE_METHOD_MAX_RETRIES });
     const data = await response.json();
 
     const name = experimentName || data.experiment?.name || experimentId;
@@ -525,7 +622,7 @@ export async function exportMarkdownReport(
 /**
  * Get dashboard statistics.
  */
-export async function getDashboardStats(): Promise<DashboardStats> {
+export async function getDashboardStats(options: RequestInit = {}): Promise<DashboardStats> {
     const stats = await fetchAPI<{
         total: number;
         completed: number;
@@ -533,7 +630,7 @@ export async function getDashboardStats(): Promise<DashboardStats> {
         pending: number;
         queued: number;
         failed: number;
-    }>('/experiments/stats');
+    }>('/experiments/stats', options);
 
     return {
         totalExperiments: stats.total,
@@ -546,17 +643,17 @@ export async function getDashboardStats(): Promise<DashboardStats> {
 /**
  * Get available models for experiment creation.
  */
-export async function getAvailableModels(): Promise<{ models: ModelOption[] }> {
-    return fetchAPI<{ models: ModelOption[] }>('/experiments/models');
+export async function getAvailableModels(options: RequestInit = {}): Promise<{ models: ModelOption[] }> {
+    return fetchAPI<{ models: ModelOption[] }>('/experiments/models', options);
 }
 
 /**
  * Health check.
  */
-export async function healthCheck(): Promise<{ status: string }> {
-    const response = await fetchWithHandling(`${getApiRootUrl()}/health`, {}, {
-        timeoutMs: 20000,
-        maxRetries: 0,
+export async function healthCheck(options: RequestInit = {}): Promise<{ status: string }> {
+    const response = await fetchWithHandling(`${getApiRootUrl()}/health`, options, {
+        timeoutMs: SAFE_METHOD_TIMEOUT_MS,
+        maxRetries: SAFE_METHOD_MAX_RETRIES,
     });
     return response.json();
 }
@@ -573,10 +670,10 @@ export interface ReadinessStatus {
 /**
  * Get system readiness status.
  */
-export async function getReadinessStatus(): Promise<ReadinessStatus> {
-    const response = await fetchWithHandling(`${getApiRootUrl()}/ready`, {}, {
-        timeoutMs: 20000,
-        maxRetries: 0,
+export async function getReadinessStatus(options: RequestInit = {}): Promise<ReadinessStatus> {
+    const response = await fetchWithHandling(`${getApiRootUrl()}/ready`, options, {
+        timeoutMs: SAFE_METHOD_TIMEOUT_MS,
+        maxRetries: SAFE_METHOD_MAX_RETRIES,
     });
     return response.json();
 }
@@ -659,9 +756,9 @@ export interface StatisticalComparison {
 /**
  * Compare metrics across multiple experiments.
  */
-export async function compareExperiments(ids: string[]): Promise<ComparisonResponse> {
+export async function compareExperiments(ids: string[], options: RequestInit = {}): Promise<ComparisonResponse> {
     const params = ids.map(id => `experiment_ids=${id}`).join('&');
-    return fetchAPI<ComparisonResponse>(`/results/compare?${params}`);
+    return fetchAPI<ComparisonResponse>(`/results/compare?${params}`, options);
 }
 
 /**
@@ -670,10 +767,37 @@ export async function compareExperiments(ids: string[]): Promise<ComparisonRespo
 export async function getStatisticalComparison(
     experimentA: string,
     experimentB: string,
+    options: RequestInit = {},
 ): Promise<StatisticalComparison> {
     return fetchAPI<StatisticalComparison>(
-        `/results/compare/statistical?experiment_a=${experimentA}&experiment_b=${experimentB}`
+        `/results/compare/statistical?experiment_a=${experimentA}&experiment_b=${experimentB}`,
+        options,
     );
+}
+
+async function waitForBackgroundJob<T>(jobId: string, signal?: AbortSignal | null): Promise<T> {
+    const deadline = Date.now() + BACKGROUND_JOB_TIMEOUT_MS;
+
+    while (Date.now() < deadline) {
+        const response = await fetchWithHandling(
+            `${API_BASE_URL}/results/jobs/${jobId}`,
+            { signal },
+            { timeoutMs: SAFE_METHOD_TIMEOUT_MS, maxRetries: SAFE_METHOD_MAX_RETRIES },
+        );
+        const job = await response.json() as BackgroundJob<T>;
+
+        if (job.status === 'completed' && job.result !== undefined) {
+            return job.result;
+        }
+
+        if (job.status === 'failed') {
+            throw new ApiError(job.error || 'Background job failed', 500);
+        }
+
+        await sleep(BACKGROUND_JOB_POLL_INTERVAL_MS, signal);
+    }
+
+    throw new ApiError('Background job timed out while polling for completion.', 408);
 }
 
 // =============================================================================
@@ -722,29 +846,15 @@ export async function runLLMJudge(
     sampleSize: number = 20,
 ): Promise<LLMJudgeResult> {
     const url = `${API_BASE_URL}/results/${experimentId}/judge?sample_size=${sampleSize}`;
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 120_000); // 2 min timeout
-
-    try {
-        const response = await fetch(url, {
-            method: 'POST',
-            signal: controller.signal,
-            headers: { 'Content-Type': 'application/json' },
-        });
-        clearTimeout(timeout);
-        if (!response.ok) {
-            const err = await response.json().catch(() => ({}));
-            throw new ApiError(err.detail || 'Judge evaluation failed', response.status);
-        }
-        return response.json();
-    } catch (err) {
-        clearTimeout(timeout);
-        if (err instanceof ApiError) throw err;
-        if (err instanceof DOMException && err.name === 'AbortError') {
-            throw new ApiError('LLM Judge evaluation timed out (2 min limit)', 408);
-        }
-        throw new ApiError(err instanceof Error ? err.message : 'Network error', 0);
-    }
+    const response = await fetchWithHandling(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+    }, {
+        timeoutMs: UNSAFE_METHOD_TIMEOUT_MS,
+        maxRetries: 0,
+    });
+    const job = await response.json() as BackgroundJob<LLMJudgeResult>;
+    return waitForBackgroundJob<LLMJudgeResult>(job.job_id);
 }
 
 /**
@@ -763,28 +873,14 @@ export async function generateSyntheticData(
     if (seed !== undefined) params.set('seed', String(seed));
 
     const url = `${API_BASE_URL}/results/synthetic/generate?${params}`;
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 120_000); // 2 min timeout
-
-    try {
-        const response = await fetch(url, {
-            method: 'POST',
-            signal: controller.signal,
-            headers: { 'Content-Type': 'application/json' },
-        });
-        clearTimeout(timeout);
-        if (!response.ok) {
-            const err = await response.json().catch(() => ({}));
-            throw new ApiError(err.detail || 'Synthetic data generation failed', response.status);
-        }
-        return response.json();
-    } catch (err) {
-        clearTimeout(timeout);
-        if (err instanceof ApiError) throw err;
-        if (err instanceof DOMException && err.name === 'AbortError') {
-            throw new ApiError('Synthetic data generation timed out (2 min limit)', 408);
-        }
-        throw new ApiError(err instanceof Error ? err.message : 'Network error', 0);
-    }
+    const response = await fetchWithHandling(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+    }, {
+        timeoutMs: UNSAFE_METHOD_TIMEOUT_MS,
+        maxRetries: 0,
+    });
+    const job = await response.json() as BackgroundJob<SyntheticDataResult>;
+    return waitForBackgroundJob<SyntheticDataResult>(job.job_id);
 }
 

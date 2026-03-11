@@ -16,6 +16,13 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, ConfigDict, field_validator
 
+MAX_TEXT_FIELD_LENGTH = 255
+MAX_DESCRIPTION_LENGTH = 4000
+MAX_TAG_LENGTH = 64
+MAX_TAG_COUNT = 20
+MAX_TOOL_NAME_LENGTH = 64
+MAX_TOOL_COUNT = 10
+
 
 class ExperimentStatus(str, Enum):
     """Experiment execution status."""
@@ -96,6 +103,7 @@ class RAGConfig(BaseModel):
     chunk_size: int = Field(default=256, ge=64, le=1024)
     rerank_model: Optional[str] = Field(
         default="cross-encoder/ms-marco-MiniLM-L-6-v2",
+        max_length=MAX_TEXT_FIELD_LENGTH,
         description="Cross-encoder model for reranking"
     )
 
@@ -111,6 +119,24 @@ class AgentConfig(BaseModel):
         default=["wikipedia_search", "calculator", "retrieval"],
         description="Enabled tool names"
     )
+
+    @field_validator("tools")
+    @classmethod
+    def validate_tools(cls, value: List[str]) -> List[str]:
+        """Bound the number and size of agent tool identifiers."""
+        if len(value) > MAX_TOOL_COUNT:
+            raise ValueError(f"At most {MAX_TOOL_COUNT} tools are allowed")
+
+        cleaned_tools = []
+        for tool in value:
+            cleaned = tool.strip()
+            if not cleaned:
+                raise ValueError("Tool names must not be empty")
+            if len(cleaned) > MAX_TOOL_NAME_LENGTH:
+                raise ValueError(f"Tool names must be at most {MAX_TOOL_NAME_LENGTH} characters")
+            cleaned_tools.append(cleaned)
+
+        return cleaned_tools
 
 
 class OptimizationConfig(BaseModel):
@@ -152,6 +178,7 @@ class ExperimentConfig(BaseModel):
     model_name: str = Field(
         ...,
         min_length=1,
+        max_length=MAX_TEXT_FIELD_LENGTH,
         description="HuggingFace model identifier (e.g., microsoft/phi-2)"
     )
     reasoning_method: ReasoningMethod = Field(
@@ -161,6 +188,7 @@ class ExperimentConfig(BaseModel):
     dataset_name: str = Field(
         ...,
         min_length=1,
+        max_length=MAX_TEXT_FIELD_LENGTH,
         description="Dataset identifier (e.g., trivia_qa, hotpot_qa)"
     )
     
@@ -201,10 +229,30 @@ class ExperimentConfig(BaseModel):
 
 class ExperimentCreate(BaseModel):
     """Request schema for creating an experiment."""
-    name: str = Field(..., min_length=1, max_length=255)
-    description: Optional[str] = None
+    name: str = Field(..., min_length=1, max_length=MAX_TEXT_FIELD_LENGTH)
+    description: Optional[str] = Field(default=None, max_length=MAX_DESCRIPTION_LENGTH)
     config: ExperimentConfig
     tags: Optional[List[str]] = Field(default=None, description="Free-form labels for organization")
+
+    @field_validator("tags")
+    @classmethod
+    def validate_tags(cls, value: Optional[List[str]]) -> Optional[List[str]]:
+        """Bound the number and size of free-form tags."""
+        if value is None:
+            return value
+        if len(value) > MAX_TAG_COUNT:
+            raise ValueError(f"At most {MAX_TAG_COUNT} tags are allowed")
+
+        cleaned_tags = []
+        for tag in value:
+            cleaned = tag.strip()
+            if not cleaned:
+                raise ValueError("Tags must not be empty")
+            if len(cleaned) > MAX_TAG_LENGTH:
+                raise ValueError(f"Tags must be at most {MAX_TAG_LENGTH} characters")
+            cleaned_tags.append(cleaned)
+
+        return cleaned_tags
 
 
 class ExperimentResponse(BaseModel):

@@ -22,15 +22,17 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/prompts", tags=["Prompts"])
 
+MAX_PROMPT_TEMPLATE_LENGTH = 50_000
+MAX_PROMPT_DESCRIPTION_LENGTH = 4000
 
 # ─── Schemas ────────────────────────────────────────────────────────────────
 
 class PromptVersionCreate(BaseModel):
     """Schema for creating a new prompt version."""
     name: str = Field(..., min_length=1, max_length=255, description="Prompt template name")
-    template_text: str = Field(..., min_length=1, description="Prompt template content")
+    template_text: str = Field(..., min_length=1, max_length=MAX_PROMPT_TEMPLATE_LENGTH, description="Prompt template content")
     parent_id: Optional[UUID] = Field(None, description="Parent version ID (for version history)")
-    description: Optional[str] = Field(None, description="What changed in this version")
+    description: Optional[str] = Field(None, max_length=MAX_PROMPT_DESCRIPTION_LENGTH, description="What changed in this version")
 
 
 class PromptVersionResponse(BaseModel):

@@ -53,7 +53,7 @@ export default function ExperimentsPage() {
 
   const experimentsQuery = useQuery({
     queryKey: ["experiments", params],
-    queryFn: () => listExperiments(params),
+    queryFn: ({ signal }) => listExperiments(params, { signal }),
   });
 
   const runMutation = useMutation({

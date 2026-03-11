@@ -206,11 +206,11 @@ function RunFilmstrip({ runs }: { runs: RunSummary[] }) {
 function ResultsDashboard({ experimentId, experimentName }: { experimentId: string; experimentName: string }) {
   const metricsQuery = useQuery({
     queryKey: ["metrics", experimentId],
-    queryFn: () => getMetrics(experimentId),
+    queryFn: ({ signal }) => getMetrics(experimentId, { signal }),
   });
   const runsQuery = useQuery({
     queryKey: ["runs", experimentId],
-    queryFn: () => getRunSummaries(experimentId),
+    queryFn: ({ signal }) => getRunSummaries(experimentId, { signal }),
   });
 
   if (metricsQuery.isLoading || runsQuery.isLoading) {
@@ -288,11 +288,23 @@ function ResultsDashboard({ experimentId, experimentName }: { experimentId: stri
           description="Export JSON or markdown directly from the frontend using the current results endpoint."
           actions={
             <>
-              <button type="button" className="btn-secondary" onClick={() => exportResults(experimentId, experimentName)}>
+              <button type="button" className="btn-secondary" onClick={() => {
+                void toast.promise(exportResults(experimentId, experimentName), {
+                  loading: "Exporting JSON...",
+                  success: "JSON export downloaded",
+                  error: (error) => error instanceof Error ? `Export failed: ${error.message}` : "Export failed",
+                });
+              }}>
                 <Download className="size-4" />
                 Export JSON
               </button>
-              <button type="button" className="btn-primary" onClick={() => exportMarkdownReport(experimentId, experimentName, metrics, runs)}>
+              <button type="button" className="btn-primary" onClick={() => {
+                void toast.promise(exportMarkdownReport(experimentId, experimentName, metrics, runs), {
+                  loading: "Building markdown report...",
+                  success: "Report downloaded",
+                  error: (error) => error instanceof Error ? `Export failed: ${error.message}` : "Export failed",
+                });
+              }}>
                 <FileText className="size-4" />
                 Export report
               </button>
@@ -352,7 +364,7 @@ function ResultsDashboard({ experimentId, experimentName }: { experimentId: stri
 function ProfileDashboard({ experimentId }: { experimentId: string }) {
   const profileQuery = useQuery({
     queryKey: ["profile", experimentId],
-    queryFn: () => getProfile(experimentId),
+    queryFn: ({ signal }) => getProfile(experimentId, { signal }),
   });
 
   if (profileQuery.isLoading) {
@@ -416,7 +428,7 @@ export default function ExperimentDetailPage({ params }: Props) {
 
   const experimentQuery = useQuery({
     queryKey: ["experiment", id],
-    queryFn: () => getExperiment(id),
+    queryFn: ({ signal }) => getExperiment(id, { signal }),
     refetchInterval: (query) => {
       const status = query.state.data?.status;
       return status === "running" || status === "queued" ? 3000 : false;

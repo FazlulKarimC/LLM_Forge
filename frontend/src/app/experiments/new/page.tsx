@@ -105,7 +105,7 @@ export default function NewExperimentPage() {
 
   const modelsQuery = useQuery({
     queryKey: ["available-models"],
-    queryFn: getAvailableModels,
+    queryFn: ({ signal }) => getAvailableModels({ signal }),
     staleTime: 1000 * 60 * 5,
   });
 

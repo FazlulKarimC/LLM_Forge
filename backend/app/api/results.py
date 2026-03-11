@@ -14,12 +14,19 @@ import logging
 from typing import List, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.database import get_db
+from app.core.background_jobs import (
+    create_job,
+    get_job,
+    mark_job_completed,
+    mark_job_failed,
+    mark_job_running,
+)
+from app.core.database import async_session_maker, get_db
 from app.models.result import Result
 from app.models.run import Run
 from app.models.experiment import Experiment
@@ -87,6 +94,87 @@ async def _latest_runs_for_experiment(db: AsyncSession, experiment_id: UUID) -> 
     )
     runs_result = await db.execute(runs_query)
     return runs_result.scalars().all()
+
+
+async def _save_llm_judge_result(db: AsyncSession, experiment_id: UUID, result: dict) -> None:
+    """Persist LLM judge output into Result.raw_metrics when aggregate results exist."""
+    res_query = select(Result).where(Result.experiment_id == experiment_id)
+    res_result = await db.execute(res_query)
+    result_obj = res_result.scalar_one_or_none()
+    if result_obj is None:
+        return
+
+    from sqlalchemy.orm.attributes import flag_modified
+
+    raw = dict(result_obj.raw_metrics or {})
+    raw["llm_judge"] = result
+    result_obj.raw_metrics = raw
+    flag_modified(result_obj, "raw_metrics")
+    await db.flush()
+    await db.commit()
+
+
+def _load_knowledge_base_chunks(max_chunks: int) -> List[str]:
+    """Load a bounded subset of knowledge-base chunks for synthetic generation."""
+    from app.core.config import settings
+    from app.services.rag_service import ChunkingService
+
+    try:
+        articles_path = settings.data_dir / "knowledge_base" / "articles.json"
+        with articles_path.open("r", encoding="utf-8") as f:
+            articles = json.load(f)
+        chunk_objects = ChunkingService.chunk_articles(articles)
+        chunks = [chunk.text for chunk in chunk_objects[: max_chunks * 2]]
+    except Exception as exc:  # pragma: no cover - surfaced through API response
+        raise RuntimeError(f"Failed to load knowledge base: {str(exc)[:200]}") from exc
+
+    if not chunks:
+        raise LookupError("No knowledge base chunks found")
+
+    return chunks
+
+
+async def _run_llm_judge_job(job_id: str, experiment_id: UUID, sample_size: int) -> None:
+    """Execute judge evaluation in the background and persist the result."""
+    from app.services.llm_judge_service import LLMJudgeService
+
+    mark_job_running(job_id)
+
+    try:
+        async with async_session_maker() as session:
+            judge = LLMJudgeService(session, sample_size=sample_size)
+            result = await judge.evaluate_experiment(experiment_id)
+            await _save_llm_judge_result(session, experiment_id, result)
+        mark_job_completed(job_id, result)
+    except Exception as exc:  # pragma: no cover - best-effort background execution
+        logger.exception("Judge background job failed for %s", experiment_id)
+        mark_job_failed(job_id, f"Judge evaluation failed: {str(exc)[:200]}")
+
+
+async def _run_synthetic_generation_job(
+    job_id: str,
+    pairs_per_chunk: int,
+    max_chunks: int,
+    seed: Optional[int],
+) -> None:
+    """Execute synthetic dataset generation in the background."""
+    from app.services.synthetic_data_service import SyntheticDatasetService
+
+    mark_job_running(job_id)
+
+    try:
+        chunks = _load_knowledge_base_chunks(max_chunks)
+        synth = SyntheticDatasetService()
+        result = await synth.generate_from_chunks(
+            chunks=chunks,
+            pairs_per_chunk=pairs_per_chunk,
+            max_chunks=max_chunks,
+            seed=seed,
+        )
+        mark_job_completed(job_id, result)
+    except Exception as exc:  # pragma: no cover - best-effort background execution
+        logger.exception("Synthetic generation background job failed")
+        mark_job_failed(job_id, str(exc)[:200])
 
 
 
@@ -202,6 +290,15 @@ async def statistical_comparison(
         return result
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.get("/jobs/{job_id}")
+async def get_background_job(job_id: str):
+    """Return the current status for an asynchronous background job."""
+    job = get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found or has expired")
+    return JSONResponse(content=job)
 
 
 # =========================================================================
@@ -446,78 +543,53 @@ async def export_results(
 @router.post("/{experiment_id}/judge")
 async def run_llm_judge(
     experiment_id: UUID,
+    background_tasks: BackgroundTasks,
     sample_size: int = Query(20, ge=1, le=50, description="Number of runs to sample"),
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Run LLM-as-judge evaluation on a sampled subset of runs (P2 #13).
-    
-    Evaluates coherence, helpfulness, and factuality using a free HF model.
-    Budget-capped to prevent runaway costs.
+    Queue LLM-as-judge evaluation and return a pollable job id immediately.
     """
-    from app.services.llm_judge_service import LLMJudgeService
-    
-    judge = LLMJudgeService(db, sample_size=sample_size)
-    
-    try:
-        result = await judge.evaluate_experiment(experiment_id)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Judge evaluation failed: {str(e)[:200]}")
-    
-    # Save judge results to Result.raw_metrics
-    res_query = select(Result).where(Result.experiment_id == experiment_id)
-    res_result = await db.execute(res_query)
-    result_obj = res_result.scalar_one_or_none()
-    if result_obj:
-        from sqlalchemy.orm.attributes import flag_modified
-        raw = dict(result_obj.raw_metrics or {})
-        raw["llm_judge"] = result
-        result_obj.raw_metrics = raw
-        flag_modified(result_obj, "raw_metrics")
-        await db.flush()
-        await db.commit()
-    
-    return JSONResponse(content=result)
+    experiment_query = select(Experiment).where(Experiment.id == experiment_id)
+    experiment_result = await db.execute(experiment_query)
+    if experiment_result.scalar_one_or_none() is None:
+        raise HTTPException(status_code=404, detail="Experiment not found")
+
+    job = create_job(
+        "llm_judge",
+        {
+            "experiment_id": str(experiment_id),
+            "sample_size": sample_size,
+        },
+    )
+    background_tasks.add_task(_run_llm_judge_job, job["job_id"], experiment_id, sample_size)
+    return JSONResponse(status_code=202, content=job)
 
 
 @router.post("/synthetic/generate")
 async def generate_synthetic_dataset(
+    background_tasks: BackgroundTasks,
     pairs_per_chunk: int = Query(3, ge=1, le=5, description="QA pairs per chunk"),
     max_chunks: int = Query(10, ge=1, le=20, description="Max chunks to process"),
     seed: Optional[int] = Query(None, description="Random seed for reproducibility"),
 ):
     """
-    Generate synthetic QA pairs from knowledge base chunks (P2 #14).
-    
-    Uses a free HF instruct model to create evaluation datasets.
+    Queue synthetic dataset generation and return a pollable job id immediately.
     """
-    from app.core.config import settings
-    from app.services.synthetic_data_service import SyntheticDatasetService
-    from app.services.rag_service import ChunkingService
-    
-    # Load knowledge base chunks without initializing the full RAG stack.
-    try:
-        articles_path = settings.data_dir / "knowledge_base" / "articles.json"
-        with articles_path.open("r", encoding="utf-8") as f:
-            articles = json.load(f)
-        chunk_objects = ChunkingService.chunk_articles(articles)
-        chunks = [chunk.text for chunk in chunk_objects[:max_chunks * 2]]
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to load knowledge base: {str(e)[:200]}"
-        )
-    
-    if not chunks:
-        raise HTTPException(status_code=404, detail="No knowledge base chunks found")
-    
-    synth = SyntheticDatasetService()
-    result = await synth.generate_from_chunks(
-        chunks=chunks,
-        pairs_per_chunk=pairs_per_chunk,
-        max_chunks=max_chunks,
-        seed=seed,
+    job = create_job(
+        "synthetic_generation",
+        {
+            "pairs_per_chunk": pairs_per_chunk,
+            "max_chunks": max_chunks,
+            "seed": seed,
+        },
     )
-    
-    return JSONResponse(content=result)
+    background_tasks.add_task(
+        _run_synthetic_generation_job,
+        job["job_id"],
+        pairs_per_chunk,
+        max_chunks,
+        seed,
+    )
+    return JSONResponse(status_code=202, content=job)
 

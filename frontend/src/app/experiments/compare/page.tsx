@@ -238,7 +238,7 @@ function ComparePageInner() {
 
   const experimentsQuery = useQuery({
     queryKey: ["experiments", "completed"],
-    queryFn: () => listExperiments({ status: "completed", limit: 50 }),
+    queryFn: ({ signal }) => listExperiments({ status: "completed", limit: 50 }, { signal }),
   });
 
   const experiments = useMemo(() => experimentsQuery.data?.experiments ?? [], [experimentsQuery.data?.experiments]);
@@ -247,13 +247,13 @@ function ComparePageInner() {
 
   const comparisonQuery = useQuery({
     queryKey: ["comparison", effectiveSelectedIds],
-    queryFn: () => compareExperiments(effectiveSelectedIds),
+    queryFn: ({ signal }) => compareExperiments(effectiveSelectedIds, { signal }),
     enabled: effectiveSelectedIds.length === 2,
   });
 
   const statsQuery = useQuery({
     queryKey: ["statistical", effectiveSelectedIds],
-    queryFn: () => getStatisticalComparison(effectiveSelectedIds[0], effectiveSelectedIds[1]),
+    queryFn: ({ signal }) => getStatisticalComparison(effectiveSelectedIds[0], effectiveSelectedIds[1], { signal }),
     enabled: effectiveSelectedIds.length === 2,
   });
 
