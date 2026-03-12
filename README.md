@@ -1,92 +1,183 @@
+<div align="center">
+
 # LlmForge
 
-[![CI](https://github.com/FazlulKarimC/LLM_Forge/actions/workflows/ci.yml/badge.svg)](https://github.com/FazlulKarimC/LLM_Forge/actions/workflows/ci.yml)
+**A full-stack experimentation platform for systematically evaluating LLM reasoning strategies**
 
-> A config-driven experimentation platform for systematically comparing LLM reasoning strategies — Naive Prompting, Chain-of-Thought, RAG, and ReAct Agents — with full metrics tracking, a research-grade dashboard, and support for both HuggingFace and Custom Hosted OpenAI-compatible models.
+[![CI](https://github.com/FazlulKarimC/LLM_Forge/actions/workflows/ci.yml/badge.svg)](https://github.com/FazlulKarimC/LLM_Forge/actions/workflows/ci.yml)
 
 [![Python](https://img.shields.io/badge/Python-3.11+-3776ab?logo=python&logoColor=white)](https://python.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.111-009688?logo=fastapi)](https://fastapi.tiangolo.com)
 [![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=nextdotjs)](https://nextjs.org)
+[![React](https://img.shields.io/badge/React-19-61dafb?logo=react&logoColor=white)](https://react.dev)
+[![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-v4-38bdf8?logo=tailwindcss&logoColor=white)](https://tailwindcss.com)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-NeonDB-336791?logo=postgresql&logoColor=white)](https://neon.tech)
+[![Redis](https://img.shields.io/badge/Redis-Upstash-dc382d?logo=redis&logoColor=white)](https://upstash.com)
+
+*Compare Naive Prompting, Chain-of-Thought, RAG, and ReAct Agents side-by-side with metrics, statistical significance testing, and a research-grade dashboard.*
+
+</div>
 
 ---
 
 ## Overview
 
-LlmForge lets you design, run, and compare LLM experiments through a polished web UI or REST API. Each experiment is a combination of a **reasoning method**, **dataset**, **model**, **target endpoint**, and **hyperparameters** — all version-controlled in a database. After a run completes, the platform computes quality, performance, and cost metrics, surfacing them in an interactive, clickable dashboard.
+LlmForge is a config-driven platform for designing, executing, and comparing LLM experiments. Each experiment combines a **reasoning method**, **dataset**, **model**, **inference provider**, and **hyperparameters** -- all version-controlled in a database. After execution, the platform computes quality, performance, and cost metrics, surfacing them through an interactive dashboard with per-sample inspection, latency distributions, and side-by-side statistical comparison.
 
-Built to deeply understand how different LLM reasoning strategies trade off accuracy, latency, and token cost on real QA benchmarks.
+Built to answer a core question: *How do different LLM reasoning strategies trade off accuracy, latency, and token cost on real QA benchmarks?*
 
 ---
 
-## Features
+## Key Features
 
-- **4 Reasoning Methods** — Naive, Chain-of-Thought, RAG (vector/BM25/hybrid retrieval), and ReAct Agent with dynamic tool calling (Wikipedia / Calculator).
-- **End-to-end Pipeline** — Create, queue, execute, and evaluate experiments entirely from a sleek, glassmorphic UI featuring auto-polling and unified global navigation.
-- **Flexible Inference Engines** — Run experiments against **HuggingFace Inference Providers** (hosted serverless) *or* **Custom Hosted LLMs** (any OpenAI-compatible endpoint like local vLLM, Ollama, or third-party providers).
-- **Inference Optimization** — Built-in support for **Batch Execution** (parallel API calls via thread pools) and **Prompt Caching** (LRU cache for identical runs) to drastically reduce api latency and cost.
-- **Async-Safe Execution** — All blocking inference calls run reliably in thread pools via `asyncio.to_thread()`, keeping the FASTAPI event loop buttery smooth during heavy loads.
-- **Robust Error Handling** — Global exception middleware handles validation errors seamlessly, assigning unique Request IDs and gracefully rendering user-friendly alerts.
-- **Metrics Dashboard** — Compare Accuracy, Token-level F1, Latency (p50/p95), Throughput, and view a per-run correctness grid for granular output analysis.
+### Four Reasoning Strategies
+- **Naive Prompting** -- Direct question-answer with zero-shot or few-shot templates
+- **Chain-of-Thought (CoT)** -- Step-by-step reasoning elicitation before the final answer
+- **RAG** -- Dense, hybrid, or reranked retrieval-augmented generation over indexed knowledge bases
+- **ReAct Agent** -- Dynamic multi-step tool calling (Wikipedia search, Calculator, Retrieval) with observation-action traces
+
+### Multi-Provider Inference
+Route experiments through **HuggingFace Inference API**, **OpenRouter**, **Groq**, or any **OpenAI-compatible endpoint**. An auto-router picks the best available provider and falls back automatically on failure.
+
+### Comprehensive Metrics and Evaluation
+
+| Category | Metrics |
+|----------|---------|
+| **Accuracy** | Exact match, substring match, F1 score |
+| **Latency** | p50, p95, p99, per-sample histogram (10-bucket distribution) |
+| **Cost** | Token usage breakdown, estimated USD, cost-per-correct-answer |
+| **Quality** | LLM-as-Judge scoring (coherence, helpfulness, factuality) -- budget-capped |
+| **Safety** | Robustness score against prompt injection, jailbreak, and edge-case datasets |
+| **Statistical** | Bootstrap 95% CI, McNemar's chi-squared test, pass@k, multi-trial variance |
+
+### Side-by-Side Comparison Workspace
+Compare any two experiments with:
+- McNemar's chi-squared test for paired statistical significance
+- Bootstrap confidence intervals on accuracy deltas
+- Agreement / disagreement distribution bars
+- Per-example output diffs with correctness annotations
+
+### Filmstrip Evaluator
+A colour-coded correctness grid at the per-sample level. Click any cell to inspect the full prompt, model output, expected answer, retrieved context chunks (RAG), and complete agent traces (ReAct).
+
+### Safety and Robustness Testing
+Three adversarial datasets (`prompt_injection`, `jailbreak`, `edge_cases`) with a deterministic rule-based robustness scorer -- no additional API calls required.
+
+### Inference Optimization
+- **Batch Execution** -- Parallelized API calls via thread pools with per-phase profiling
+- **Prompt Caching** -- LRU cache for deterministic runs to avoid redundant API calls
+- **Rate Limiting and Retry** -- Exponential backoff with jitter, global concurrency gating
+
+### Export and Reporting
+Download results as **JSON** or a formatted **Markdown report** directly from the UI. Reports include configuration, metrics summary, and per-run correctness tables.
 
 ---
 
 ## Architecture
 
-```text
-┌──────────────────────────────────────────────────────────┐
-│                    Next.js 16 Frontend                   │
-│  Dashboard │ New Experiment │ Results │ Comparison       │
-└───────────────────────────┬──────────────────────────────┘
-                            │ HTTP
-┌───────────────────────────▼──────────────────────────────┐
-│                    FastAPI Backend                       │
-│  ┌─────────────┐  ┌──────────────┐  ┌─────────────────┐  │
-│  │ Experiment  │  │  Inference   │  │   Evaluation    │  │
-│  │ Service     │  │  Engines     │  │   Pipeline      │  │
-│  │             │  │              │  │                 │  │
-│  │ CRUD + Queue│  │ HFAPIEngine  │  │ Accuracy / F1   │  │
-│  │ Async/Batch │  │ OpenAIEngine │  │ Faithfulness    │  │
-│  │ Cache/Prof  │  │ MockEngine   │  │ Latency p50/p95 │  │
-│  └──────┬──────┘  └──────┬───────┘  └────────┬────────┘  │
-└─────────┼────────────────┼────────────────────┼──────────┘
-          │                │                    │
-          ▼                ▼                    ▼
-   ┌────────────┐   ┌─────────────┐   ┌──────────────────┐
-   │ PostgreSQL │   │   Qdrant    │   │  HuggingFace API │
-   │ (NeonDB)   │   │ (Vector DB) │   │  / Custom Models │
-   └────────────┘   └─────────────┘   └──────────────────┘
+```
+Frontend (Next.js 16)
+  Landing | Dashboard | Experiment Builder | Detail | Comparison
+  Framer Motion, TanStack Query, Sonner, Lucide, Dark Theme
+                        |
+                    REST API
+                        |
+Backend (FastAPI)
+  +----------------+  +---------------+  +----------------------+
+  | Experiment     |  | Inference     |  | Evaluation Pipeline  |
+  | Service        |  | Engines       |  |                      |
+  |                |  |               |  | Metrics, LLM Judge   |
+  | CRUD, Queue    |  | HFAPIEngine   |  | Robustness, Stats    |
+  | Batch/Cache    |  | OpenAIEngine  |  | Safety, Synthetic    |
+  | Profiling      |  | MockEngine    |  | Cost, Failure Modes  |
+  +-------+--------+  +------+--------+  +--------+-------------+
+          |                   |                    |
+  +-------v-------------------v--------------------v-------------+
+  | Rate Limit, Retry, Pricing, Background Jobs, Middleware      |
+  +------+----------+----------+--------------+----------+-------+
+         |          |          |              |           |
+         v          v          v              v           v
+    PostgreSQL  Upstash    Qdrant       HF Inference  OpenRouter/
+     (NeonDB)  Redis+RQ  (Vectors)        API       Groq/Custom
 ```
 
 ---
 
-## Technical Stack
+## Tech Stack
 
 | Layer | Technology |
 |-------|------------|
-| **Backend** | FastAPI, SQLAlchemy (async), Alembic, Pydantic v2 |
-| **Frontend** | Next.js 16, TypeScript, React 19, Tailwind v4, shadcn/ui, TanStack Query |
-| **Database** | PostgreSQL via NeonDB (serverless free tier) |
-| **Vector DB** | Qdrant (for RAG document retrieval) |
-| **Inference** | HuggingFace Inference API (novita) **OR** OpenAI-compatible APIs |
+| **Backend** | Python 3.11+, FastAPI, SQLAlchemy (async), Alembic, Pydantic v2, statsmodels, NumPy |
+| **Frontend** | Next.js 16, TypeScript, React 19, Tailwind CSS v4, Framer Motion, TanStack Query, Sonner, Lucide |
+| **Database** | PostgreSQL via NeonDB (serverless) |
+| **Vector Store** | Qdrant Cloud (RAG document retrieval) |
+| **Task Queue** | Upstash Redis + RQ (production), FastAPI BackgroundTasks (dev fallback) |
+| **Inference** | HuggingFace Inference API, OpenRouter, Groq, OpenAI-compatible endpoints |
 | **Embeddings** | sentence-transformers (CPU-friendly) |
-| **Task Queue** | FastAPI BackgroundTasks + `asyncio` ThreadPoolExecutors |
+| **CI/CD** | GitHub Actions |
 
 ---
 
-## Quick Start
+## Frontend Pages
+
+| Route | Description |
+|-------|-------------|
+| `/` | Landing page -- animated hero, live comparison preview, feature overview |
+| `/dashboard` | Operational dashboard -- KPI cards, system readiness checks, experiment queue with inline actions |
+| `/experiments` | Experiment catalog -- filterable list with status pills, run/delete controls |
+| `/experiments/new` | Experiment builder -- model/dataset/provider selectors, preset templates, complexity indicator |
+| `/experiments/[id]` | Experiment detail -- lifecycle metadata, metrics dashboard, filmstrip evaluator, latency histogram, optimization profiler, export |
+| `/experiments/compare` | Comparison workspace -- metric deltas, statistical significance, agreement bars, per-example diffs |
+
+---
+
+## Design System
+
+The UI follows a custom **dark-first editorial tech** design language:
+
+- **OKLCH colour palette** with semantic tokens for consistent theming
+- **Glass morphism** surfaces with `color-mix` tints and layered depth
+- **Framer Motion** micro-animations on metrics, page transitions, and data renders
+- **Reusable component library** -- `PageHeader`, `Panel`, `MetricCard`, `StatusPill`, `AnimatedNumber`, `MetricBar`, `EmptyState`, `SkeletonBlock`
+- **Collapsible sidebar** with persistent state and theme toggle (dark / light)
+- **Accessible** -- focus rings, keyboard navigation, colour-independent status icons, screen-reader utilities
+
+Full reference: [`DESIGN_SYSTEM.md`](./DESIGN_SYSTEM.md)
+
+---
+
+## Supported Datasets
+
+| Dataset | Category | Description |
+|---------|----------|-------------|
+| `sample` | Smoke Test | Built-in mixed QA for quick validation |
+| `trivia_qa` | Factual QA | Single-hop open-domain factual recall |
+| `commonsense_qa` | Reasoning | Everyday logic and commonsense reasoning |
+| `multi_hop` | Reasoning | Composite multi-fact bridging questions |
+| `math_reasoning` | Math | GSM8K-style word problems |
+| `react_bench` | Agent | Tool-use questions requiring search + calculation |
+| `knowledge_base` | RAG | Grounded QA answerable from indexed articles |
+| `prompt_injection` | Safety | Tests instruction override resistance |
+| `jailbreak` | Safety | Tests DAN-style jailbreak resistance |
+| `edge_cases` | Safety | Tests unusual or malformed inputs |
+
+---
+
+## Getting Started
 
 ### Prerequisites
+
 - Python 3.11+
 - Node.js 18+
-- A [NeonDB](https://neon.tech) PostgreSQL connection string (free tier)
-- An Inference API token (HuggingFace token OR any Custom LLM provider key)
+- [NeonDB](https://neon.tech) PostgreSQL connection string (free tier)
+- [Upstash](https://upstash.com) Redis connection string (free tier -- production task queue)
+- Inference API token (HuggingFace, OpenRouter, Groq, or custom endpoint)
 
-### 1. Backend Setup
+### Backend
 
 ```bash
-git clone https://github.com/yourusername/LlmForge.git
-cd LlmForge/backend
+git clone https://github.com/FazlulKarimC/LLM_Forge.git
+cd LLM_Forge/backend
 
 python -m venv venv
 .\venv\Scripts\activate        # Windows
@@ -95,13 +186,15 @@ python -m venv venv
 pip install -r requirements.txt
 ```
 
-Create a `.env` file in the `/backend` directory:
+Create `.env` in `/backend`:
 
 ```env
 DATABASE_URL=postgresql+asyncpg://<user>:<pass>@<host>/neondb
 HF_TOKEN=hf_...
-INFERENCE_ENGINE=hf_api       # OR "mock" for offline frontend dev
-HF_PROVIDER=novita            # HF Inference Provider
+INFERENCE_ENGINE=hf_api
+HF_PROVIDER=novita
+REDIS_URL=redis://...         # Upstash Redis URL
+ENVIRONMENT=production        # "development" to skip Redis
 ```
 
 Run migrations and start the server:
@@ -111,7 +204,7 @@ alembic upgrade head
 uvicorn app.main:app --reload --port 8000
 ```
 
-### 2. Frontend Setup
+### Frontend
 
 ```bash
 cd ../frontend
@@ -119,66 +212,74 @@ npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000)
+Open **http://localhost:3000**
 
 ---
 
 ## Running an Experiment
 
-### Via the User Interface
+### Via the UI
 
-1. Navigate to **Experiments → New Experiment** via the global navbar.
-2. Select your reasoning strategy: **Naive, CoT, RAG, or ReAct**.
-3. *[Optional]* Provide a **Custom Base URL & API Key** if you are benchmarking an external LLM (e.g., local Ollama, vLLM instance).
-4. *[Optional]* Enable **Batching** or **Caching** in the Optimization section for rapid datasets.
-5. Click **Create & Run**. The UI will auto-poll backend background tasks.
-6. Once complete, click the row to dive into the Results grid and Optimization timings.
+1. Navigate to **Experiments > New Experiment**
+2. Select a reasoning strategy (Naive / CoT / ReAct), dataset, model, and inference provider
+3. Optionally choose a **preset configuration** or provide a custom LLM endpoint
+4. Enable **Batching** or **Caching** under the optimization section
+5. Click **Create and Run** -- the detail page auto-polls until execution completes
+6. Inspect results via the **filmstrip evaluator**, **metrics cards**, and **latency histogram**
+7. Navigate to the **Comparison workspace** to run a statistical A/B test against another experiment
+8. **Export** results as JSON or Markdown
 
-### Via REST API
+### Via the API
 
 ```bash
-# Create Custom Endpoint Experiment
+# Create
 curl -X POST http://localhost:8000/api/v1/experiments \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "custom_llm_benchmark",
+    "name": "cot_vs_naive_multihop",
     "config": {
-      "model_name": "llama-3-8b",
-      "reasoning_method": "naive",
-      "dataset_name": "trivia_qa",
-      "num_samples": 10,
+      "model_name": "meta-llama/Llama-3.2-1B-Instruct",
+      "reasoning_method": "cot",
+      "dataset_name": "multi_hop",
+      "provider": "auto",
+      "num_samples": 20,
       "hyperparameters": { "temperature": 0.1, "max_tokens": 512 }
     }
   }'
 
-# Run directly pointing to a custom URL
-curl -X POST "http://localhost:8000/api/v1/experiments/{id}/run?custom_base_url=http://localhost:11434/v1&custom_api_key=sk-123"
+# Run
+curl -X POST "http://localhost:8000/api/v1/experiments/{id}/run"
 
-# Fetch Computed Results & Optimization Profile
+# Metrics
 curl http://localhost:8000/api/v1/results/{id}/metrics
+
+# Statistical comparison
+curl "http://localhost:8000/api/v1/results/compare/statistical?experiment_a={id_a}&experiment_b={id_b}"
+
+# Export
+curl http://localhost:8000/api/v1/results/{id}/export
 ```
 
 ---
 
-## Supported Datasets
+## Testing
 
-| Dataset | Task Category | Samples |
-|---------|---------------|---------|
-| `sample` | Mixed QA (Smoke Testing) | 5 |
-| `trivia_qa` | Open-domain Factual QA | 100 |
-| `commonsense_qa` | Everyday Logic & Reasoning | 30 |
-| `multi_hop` | Composite/Bridged Reasoning | 40 |
-| `math_reasoning` | GSM8K-style Word Problems | 40 |
-| `react_bench` | Tool-use and Iterative Evaluation | 20 |
-| `knowledge_base` | RAG-focused Grounded QA | 50 |
+```bash
+cd backend
+pip install -r requirements-dev.txt
+pytest
+```
+
+Test coverage spans: API routes, experiment lifecycle, metrics computation, prompting strategies, RAG retrieval, agent execution, optimization profiling, statistical comparison, and integration tests.
 
 ---
 
 ## License
 
-MIT — See [LICENSE](./LICENSE)
+MIT -- See [LICENSE](./LICENSE)
 
 ---
+
 <p align="center">
-  <i>Config-driven experiments. Built for scale. Deep insights.</i>
+  <b>Config-driven experiments. Multi-provider inference. Statistical rigor.</b>
 </p>

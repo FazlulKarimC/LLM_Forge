@@ -29,8 +29,7 @@ def mask_redis_url(url: str) -> str:
         URL with password masked
     """
     parsed = urlparse(url)
-    if parsed.password:
-        # Mask the password
+    if parsed.password is not None:
         masked = url.replace(parsed.password, "***")
         return masked
     return url
