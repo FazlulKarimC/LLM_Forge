@@ -41,7 +41,11 @@ const navItems: NavItem[] = [
     href: "/experiments",
     label: "Experiments",
     icon: FlaskConical,
-    match: (pathname) => pathname === "/experiments" || pathname.startsWith("/experiments/"),
+    match: (pathname) =>
+      pathname === "/experiments" ||
+      (pathname.startsWith("/experiments/") &&
+        !pathname.startsWith("/experiments/compare") &&
+        !pathname.startsWith("/experiments/new")),
   },
   {
     href: "/experiments/compare",
@@ -146,7 +150,7 @@ function CommandPalette({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[70] flex items-start justify-center bg-black/55 px-4 pt-[12vh] backdrop-blur-sm"
+          className="fixed inset-0 z-70 flex items-start justify-center bg-black/55 px-4 pt-[12vh] backdrop-blur-sm"
           onClick={onClose}
         >
           <motion.div
@@ -154,17 +158,17 @@ function CommandPalette({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 8, scale: 0.98 }}
             transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] as const }}
-            className="w-full max-w-2xl overflow-hidden rounded-[26px] border border-[var(--border)] bg-[var(--surface-1)] shadow-[var(--shadow-overlay)]"
+            className="w-full max-w-2xl overflow-hidden rounded-[26px] border border-(--border) bg-(--surface-1) shadow-(--shadow-overlay)"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="flex items-center gap-3 border-b border-[var(--border)] px-5 py-4">
-              <Search className="size-4 text-[var(--muted-foreground)]" />
+            <div className="flex items-center gap-3 border-b border-(--border) px-5 py-4">
+              <Search className="size-4 text-(--muted-foreground)" />
               <input
                 autoFocus
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder="Jump to a route or action"
-                className="w-full bg-transparent text-sm outline-none placeholder:text-[var(--muted-foreground)]"
+                className="w-full bg-transparent text-sm outline-none placeholder:text-(--muted-foreground)"
               />
               <Keycap>Esc</Keycap>
             </div>
@@ -176,14 +180,14 @@ function CommandPalette({
                     item.action();
                     onClose();
                   }}
-                  className="flex w-full items-center justify-between rounded-[16px] px-4 py-3 text-left transition-colors hover:bg-[var(--surface-2)]"
+                  className="flex w-full items-center justify-between rounded-[16px] px-4 py-3 text-left transition-colors hover:bg-(--surface-2)"
                 >
                   <span className="font-medium">{item.label}</span>
                   <span className="mono-caption">{item.shortcut}</span>
                 </button>
               ))}
               {!filtered.length ? (
-                <div className="rounded-[16px] border border-dashed border-[var(--border-strong)] px-4 py-8 text-center text-sm text-[var(--muted-foreground)]">
+                <div className="rounded-[16px] border border-dashed border-(--border-strong) px-4 py-8 text-center text-sm text-(--muted-foreground)">
                   No matching routes.
                 </div>
               ) : null}
@@ -236,18 +240,18 @@ export function AppShell({ children }: { children: ReactNode }) {
   const sidebar = (
     <aside
       className={cn(
-        "flex h-full flex-col border-r border-[var(--border)] bg-[color:color-mix(in_oklab,var(--surface-1)_92%,transparent)] backdrop-blur",
-        collapsed ? "w-[88px]" : "w-[var(--sidebar-width)]"
+        "flex h-screen flex-col border-r border-(--border) bg-[color-mix(in_oklab,var(--surface-1)_92%,transparent)] backdrop-blur",
+        collapsed ? "w-[88px]" : "w-(--sidebar-width)"
       )}
     >
-      <div className="flex items-center justify-between gap-3 border-b border-[var(--border)] px-4 py-4">
+      <div className="flex items-center justify-between gap-3 border-b border-(--border) px-4 py-4">
         <Link href="/" className="flex min-w-0 items-center gap-3" onClick={() => setMobileNavOpen(false)}>
-          <div className="flex size-11 items-center justify-center rounded-[18px] border border-[var(--border)] bg-[var(--surface-2)] text-[var(--primary)]">
+          <div className="flex size-11 items-center justify-center rounded-[18px] border border-(--border) bg-(--surface-2) text-(--primary)">
             <FlaskConical className="size-5" />
           </div>
           {!collapsed ? (
             <div className="min-w-0">
-              <div className="truncate text-sm font-semibold uppercase tracking-[0.18em] text-[var(--muted-foreground)]">
+              <div className="truncate text-sm font-semibold uppercase tracking-[0.18em] text-(--muted-foreground)">
                 LLMForge
               </div>
               <div className="truncate text-lg font-semibold tracking-[-0.04em]">Evaluation Console</div>
@@ -256,7 +260,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </Link>
         <button
           type="button"
-          className="hidden lg:inline-flex btn-ghost size-10 !rounded-[14px] !px-0"
+          className="hidden lg:inline-flex btn-ghost size-10 rounded-[14px]! px-0!"
           onClick={() => setCollapsed((value) => !value)}
           aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
         >
@@ -264,9 +268,9 @@ export function AppShell({ children }: { children: ReactNode }) {
         </button>
       </div>
 
-      <div className="flex-1 space-y-6 px-3 py-4">
+      <div className="flex-1 overflow-y-auto space-y-6 px-3 py-4">
         <div className="space-y-2">
-          {!collapsed ? <div className="px-3 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted-foreground)]">Workspace</div> : null}
+          {!collapsed ? <div className="px-3 text-xs font-semibold uppercase tracking-[0.18em] text-(--muted-foreground)">Workspace</div> : null}
           {navItems.map((item) => {
             const Icon = item.icon;
             const active = item.match(pathname);
@@ -278,8 +282,8 @@ export function AppShell({ children }: { children: ReactNode }) {
                 className={cn(
                   "flex items-center gap-3 rounded-[18px] border px-3 py-3 transition-all",
                   active
-                    ? "border-[color:color-mix(in_oklab,var(--primary)_38%,transparent)] bg-[color:color-mix(in_oklab,var(--primary)_14%,transparent)] text-[var(--foreground)]"
-                    : "border-transparent text-[var(--muted-foreground)] hover:border-[var(--border)] hover:bg-[var(--surface-2)] hover:text-[var(--foreground)]",
+                    ? "border-[color-mix(in_oklab,var(--primary)_38%,transparent)] bg-[color-mix(in_oklab,var(--primary)_14%,transparent)] text-foreground"
+                    : "border-transparent text-(--muted-foreground) hover:border-(--border) hover:bg-(--surface-2) hover:text-foreground",
                   collapsed ? "justify-center" : ""
                 )}
               >
@@ -291,10 +295,10 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
 
         {!collapsed ? (
-          <div className="rounded-[20px] border border-[var(--border)] bg-[var(--surface-2)] p-4">
+          <div className="rounded-[20px] border border-(--border) bg-(--surface-2) p-4">
             <div className="section-label">Shortcut</div>
             <div className="mt-2 text-sm font-medium">Command palette</div>
-            <p className="mt-1 text-sm text-[var(--muted-foreground)]">
+            <p className="mt-1 text-sm text-(--muted-foreground)">
               Jump between experiment flows without leaving the keyboard.
             </p>
             <button type="button" className="btn-secondary mt-4 w-full justify-between" onClick={() => setPaletteOpen(true)}>
@@ -311,7 +315,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         ) : null}
       </div>
 
-      <div className="space-y-2 border-t border-[var(--border)] px-3 py-4">
+      <div className="space-y-2 border-t border-(--border) px-3 py-4">
         <button
           type="button"
           className={cn("btn-secondary w-full justify-start", collapsed ? "px-0 justify-center" : "")}
@@ -336,14 +340,14 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <>
       <div className="app-shell min-h-screen lg:grid lg:grid-cols-[auto_minmax(0,1fr)]">
-        <div className="hidden lg:block">{sidebar}</div>
-        <div className="min-w-0">
-          <header className="sticky top-0 z-40 border-b border-[var(--border)] bg-[color:color-mix(in_oklab,var(--background)_78%,transparent)] backdrop-blur-xl">
+        <div className="hidden lg:sticky lg:top-0 lg:h-screen lg:block">{sidebar}</div>
+        <div className="min-w-0 overflow-y-auto">
+          <header className="sticky top-0 z-40 border-b border-(--border) bg-[color-mix(in_oklab,var(--background)_78%,transparent)] backdrop-blur-xl">
             <div className="page-width flex items-center justify-between gap-3 px-4 py-4 sm:px-6">
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  className="btn-secondary lg:hidden size-11 !rounded-[16px] !px-0"
+                  className="btn-secondary lg:hidden size-11 rounded-[16px]! px-0!"
                   onClick={() => setMobileNavOpen(true)}
                   aria-label="Open navigation"
                 >
@@ -380,7 +384,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[60] bg-black/55 backdrop-blur-sm lg:hidden"
+            className="fixed inset-0 z-60 bg-black/55 backdrop-blur-sm lg:hidden"
             onClick={() => setMobileNavOpen(false)}
           >
             <motion.div
@@ -391,9 +395,9 @@ export function AppShell({ children }: { children: ReactNode }) {
               className="h-full w-[min(90vw,320px)]"
               onClick={(event) => event.stopPropagation()}
             >
-              <div className="flex h-full flex-col border-r border-[var(--border)] bg-[var(--surface-1)] shadow-[var(--shadow-overlay)]">
+              <div className="flex h-full flex-col border-r border-(--border) bg-(--surface-1) shadow-(--shadow-overlay)">
                 <div className="flex items-center justify-end px-3 py-3">
-                  <button type="button" className="btn-ghost size-10 !rounded-[14px] !px-0" onClick={() => setMobileNavOpen(false)}>
+                  <button type="button" className="btn-ghost size-10 rounded-[14px]! px-0!" onClick={() => setMobileNavOpen(false)}>
                     <X className="size-4" />
                   </button>
                 </div>

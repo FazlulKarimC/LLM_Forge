@@ -284,8 +284,8 @@ export default function NewExperimentPage() {
     <div className="page-stack">
       <PageHeader
         eyebrow={<><WandSparkles className="size-3.5" /> Experiment builder</>}
-        title="Compose a run the backend already understands."
-        description="Every control here maps directly to the current experiment schema. The redesign changes structure and feedback, not backend capabilities."
+        title="Configure and launch a new experiment"
+        description="Set up the model, dataset, reasoning method, and parameters for your next evaluation run."
         actions={<Link href="/experiments" className="btn-secondary">Back to experiments</Link>}
       />
 
@@ -317,7 +317,7 @@ export default function NewExperimentPage() {
           className="space-y-4"
         >
           <Panel>
-            <PanelHeader label="Basics" title="Name the experiment" description="The title should read well in tables, result exports, and side-by-side comparisons." />
+            <PanelHeader label="Basics" title="Name the experiment" description="Choose a clear title that reads well in tables, exports, and comparisons." />
             <div className="panel-body grid gap-4 lg:grid-cols-[1fr_1.1fr]">
               <div>
                 <label className="field-label" htmlFor="experiment-name">Experiment name</label>
@@ -346,7 +346,7 @@ export default function NewExperimentPage() {
           </Panel>
 
           <Panel>
-            <PanelHeader label="Configuration" title="Model and reasoning" description="Pick the model, provider, and reasoning strategy before adding retrieval or optimization layers." />
+            <PanelHeader label="Configuration" title="Model and reasoning" description="Select the model, inference provider, and reasoning strategy." />
             <div className="panel-body grid gap-4 lg:grid-cols-2">
               <div>
                 <label className="field-label" htmlFor="model-name">Model</label>
@@ -384,7 +384,7 @@ export default function NewExperimentPage() {
 
             {formData.model_name === "custom_hosted" ? (
               <div className="panel-body pt-0">
-                <div className="rounded-[18px] border border-[var(--border)] bg-[var(--surface-2)] p-4">
+                <div className="rounded-[18px] border border-(--border) bg-(--surface-2) p-4">
                   <div className="grid gap-4 lg:grid-cols-2">
                     <div>
                       <label className="field-label" htmlFor="custom-base-url">Base URL</label>
@@ -405,7 +405,7 @@ export default function NewExperimentPage() {
           </Panel>
 
           <Panel>
-            <PanelHeader label="Evaluation setup" title="Dataset and runtime" description="These settings are backed directly by current dataset, RAG, agent, and optimization fields." />
+            <PanelHeader label="Evaluation setup" title="Dataset and runtime" description="Choose the evaluation dataset, retrieval strategy, and runtime parameters." />
             <div className="panel-body grid gap-4 lg:grid-cols-2">
               <div>
                 <label className="field-label" htmlFor="dataset">Dataset</label>
@@ -445,7 +445,7 @@ export default function NewExperimentPage() {
           </Panel>
 
           <Panel>
-            <PanelHeader label="Generation" title="Hyperparameters" description="These map directly to the existing hyperparameter payload sent to the backend." />
+            <PanelHeader label="Generation" title="Hyperparameters" description="Control randomness, output length, and reproducibility." />
             <div className="panel-body grid gap-4 lg:grid-cols-3">
               <div>
                 <label className="field-label" htmlFor="temperature">Temperature</label>
@@ -464,7 +464,7 @@ export default function NewExperimentPage() {
 
           {formData.reasoning_method === "react" ? (
             <Panel>
-              <PanelHeader label="Agent settings" title="Tool loop controls" description="Only shown because the current backend supports iterative tool calls for ReAct runs." />
+              <PanelHeader label="Agent settings" title="Tool loop controls" description="Configure tool access and iteration limits for ReAct agent runs." />
               <div className="panel-body grid gap-4 lg:grid-cols-2">
                 <div>
                   <label className="field-label" htmlFor="agent-max-iterations">Max iterations</label>
@@ -473,7 +473,7 @@ export default function NewExperimentPage() {
                 </div>
                 <div>
                   <div className="field-label">Enabled tools</div>
-                  <div className="space-y-2 rounded-[18px] border border-[var(--border)] bg-[var(--surface-2)] p-4 text-sm text-[var(--muted-foreground)]">
+                  <div className="space-y-2 rounded-[18px] border border-(--border) bg-(--surface-2) p-4 text-sm text-(--muted-foreground)">
                     {[
                       { value: "wikipedia_search", label: "Wikipedia search" },
                       { value: "calculator", label: "Calculator" },
@@ -500,9 +500,9 @@ export default function NewExperimentPage() {
           ) : null}
 
           <Panel>
-            <PanelHeader label="Optimization" title="Execution options" description="These switches are already backed by the optimization config and profiling data in the current API." />
+            <PanelHeader label="Optimization" title="Execution options" description="Enable batching and caching to optimize throughput and reduce costs." />
             <div className="panel-body grid gap-4 lg:grid-cols-2">
-              <div className="rounded-[18px] border border-[var(--border)] bg-[var(--surface-2)] p-4">
+              <div className="rounded-[18px] border border-(--border) bg-(--surface-2) p-4">
                 <label className="flex items-center gap-3 font-medium">
                   <input type="checkbox" checked={formData.enable_batching} onChange={(event) => updateField("enable_batching", event.target.checked)} />
                   Enable batching
@@ -515,7 +515,7 @@ export default function NewExperimentPage() {
                   </div>
                 ) : null}
               </div>
-              <div className="rounded-[18px] border border-[var(--border)] bg-[var(--surface-2)] p-4">
+              <div className="rounded-[18px] border border-(--border) bg-(--surface-2) p-4">
                 <label className="flex items-center gap-3 font-medium">
                   <input type="checkbox" checked={formData.enable_caching} onChange={(event) => updateField("enable_caching", event.target.checked)} />
                   Enable caching
@@ -547,22 +547,22 @@ export default function NewExperimentPage() {
 
         <div className="space-y-4 xl:sticky xl:top-24 xl:self-start">
           <Panel>
-            <PanelHeader label="Summary" title={formData.name || "Untitled experiment"} description="A dense overview of exactly what the backend will receive." />
+            <PanelHeader label="Summary" title={formData.name || "Untitled experiment"} description="Overview of the experiment configuration." />
             <div className="panel-body space-y-4">
-              <div className="flex flex-wrap gap-2 text-xs text-[var(--muted-foreground)]">
+              <div className="flex flex-wrap gap-2 text-xs text-(--muted-foreground)">
                 <span className="chip">{formData.reasoning_method.toUpperCase()}</span>
                 <span className="chip">{formData.dataset_name}</span>
                 <span className="chip">{formData.provider}</span>
               </div>
-              <div className="space-y-3 text-sm text-[var(--muted-foreground)]">
-                <div className="flex items-center justify-between gap-3"><span>Model</span><span className="font-medium text-[var(--foreground)]">{formData.model_name === "custom_hosted" ? customModelId || "Custom hosted" : selectedModel?.label}</span></div>
-                <div className="flex items-center justify-between gap-3"><span>Samples</span><span className="metric-value text-[var(--foreground)]">{formData.num_samples}</span></div>
-                <div className="flex items-center justify-between gap-3"><span>Max tokens</span><span className="metric-value text-[var(--foreground)]">{formData.max_tokens}</span></div>
-                <div className="flex items-center justify-between gap-3"><span>Retrieval</span><span className="font-medium text-[var(--foreground)]">{formData.retrieval_method}</span></div>
+              <div className="space-y-3 text-sm text-(--muted-foreground)">
+                <div className="flex items-center justify-between gap-3"><span>Model</span><span className="font-medium text-foreground">{formData.model_name === "custom_hosted" ? customModelId || "Custom hosted" : selectedModel?.label}</span></div>
+                <div className="flex items-center justify-between gap-3"><span>Samples</span><span className="metric-value text-foreground">{formData.num_samples}</span></div>
+                <div className="flex items-center justify-between gap-3"><span>Max tokens</span><span className="metric-value text-foreground">{formData.max_tokens}</span></div>
+                <div className="flex items-center justify-between gap-3"><span>Retrieval</span><span className="font-medium text-foreground">{formData.retrieval_method}</span></div>
               </div>
               <div className="space-y-2">
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-[var(--muted-foreground)]">Complexity</span>
+                  <span className="text-(--muted-foreground)">Complexity</span>
                   <span className="metric-value">{complexityScore}%</span>
                 </div>
                 <MetricBar value={complexityScore} />
@@ -571,30 +571,30 @@ export default function NewExperimentPage() {
           </Panel>
 
           <Panel>
-            <PanelHeader label="Quick starts" title="Backend-safe presets" description="These only prefill fields that the current API already supports." />
+            <PanelHeader label="Quick starts" title="Preset configurations" description="Quick-start templates for common evaluation scenarios." />
             <div className="panel-body space-y-3">
               {presetConfigs.map((preset) => (
-                <button key={preset.title} type="button" className="w-full rounded-[18px] border border-[var(--border)] bg-[var(--surface-2)] p-4 text-left transition-all hover:border-[var(--border-strong)] hover:bg-[var(--surface-3)]" onClick={() => applyPreset(preset.apply)}>
+                <button key={preset.title} type="button" className="w-full rounded-[18px] border border-(--border) bg-(--surface-2) p-4 text-left transition-all hover:border-(--border-strong) hover:bg-(--surface-3)" onClick={() => applyPreset(preset.apply)}>
                   <div className="font-semibold tracking-[-0.03em]">{preset.title}</div>
-                  <p className="mt-2 text-sm leading-7 text-[var(--muted-foreground)]">{preset.description}</p>
+                  <p className="mt-2 text-sm leading-7 text-(--muted-foreground)">{preset.description}</p>
                 </button>
               ))}
             </div>
           </Panel>
 
           <Panel>
-            <PanelHeader label="Field notes" title="What changes run time" description="Small UI guidance tied to the current execution model." />
-            <div className="panel-body space-y-3 text-sm leading-7 text-[var(--muted-foreground)]">
-              <div className="flex gap-3 rounded-[18px] border border-[var(--border)] bg-[var(--surface-2)] p-4">
-                <Database className="mt-1 size-4 shrink-0 text-[var(--accent)]" />
+            <PanelHeader label="Field notes" title="Execution trade-offs" description="Tips for understanding how settings affect run time and cost." />
+            <div className="panel-body space-y-3 text-sm leading-7 text-(--muted-foreground)">
+              <div className="flex gap-3 rounded-[18px] border border-(--border) bg-(--surface-2) p-4">
+                <Database className="mt-1 size-4 shrink-0 text-(--accent)" />
                 Retrieval adds context-fetch overhead, especially with hybrid or reranked modes.
               </div>
-              <div className="flex gap-3 rounded-[18px] border border-[var(--border)] bg-[var(--surface-2)] p-4">
-                <Layers3 className="mt-1 size-4 shrink-0 text-[var(--primary)]" />
+              <div className="flex gap-3 rounded-[18px] border border-(--border) bg-(--surface-2) p-4">
+                <Layers3 className="mt-1 size-4 shrink-0 text-(--primary)" />
                 More samples and larger max tokens increase result payload size and evaluation time.
               </div>
-              <div className="flex gap-3 rounded-[18px] border border-[var(--border)] bg-[var(--surface-2)] p-4">
-                <PlugZap className="mt-1 size-4 shrink-0 text-[var(--success)]" />
+              <div className="flex gap-3 rounded-[18px] border border-(--border) bg-(--surface-2) p-4">
+                <PlugZap className="mt-1 size-4 shrink-0 text-(--success)" />
                 Batching and caching are safe to enable because the backend already profiles them in result exports.
               </div>
             </div>

@@ -164,8 +164,8 @@ export default function DashboardPage() {
     <div className="page-stack">
       <PageHeader
         eyebrow={<><Activity className="size-3.5" /> Workspace snapshot</>}
-        title="Operate experiments like a product system."
-        description="Monitor readiness, launch new runs, and jump into the last experiments without leaving the main console."
+        title="Workspace overview"
+        description="System readiness, recent runs, and quick actions at a glance."
         actions={
           <>
             <Link href="/experiments" className="btn-secondary">
@@ -178,7 +178,7 @@ export default function DashboardPage() {
           </>
         }
       >
-        <div className="flex flex-wrap gap-3 text-sm text-[var(--muted-foreground)]">
+        <div className="flex flex-wrap gap-3 text-sm text-(--muted-foreground)">
           <span className="chip">Dashboard</span>
           <span className="chip">Readiness</span>
           <span className="chip">Queue control</span>
@@ -191,7 +191,7 @@ export default function DashboardPage() {
           <AlertTriangle className="mt-0.5 size-4 shrink-0" />
           <div className="space-y-1">
             <div className="font-semibold">Dashboard data failed to load</div>
-            <p className="text-sm text-[var(--muted-foreground)]">
+            <p className="text-sm text-(--muted-foreground)">
               {statsQuery.error instanceof Error ? statsQuery.error.message : "Unknown error"}
             </p>
           </div>
@@ -212,16 +212,16 @@ export default function DashboardPage() {
             ))}
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-[0.72fr_1.28fr]">
+      <section>
         <Panel>
           <PanelHeader
             label="System state"
             title="Readiness checks"
-            description="Frontend-safe visibility into API, database, and model dependencies."
+            description="Live status of API, database, and model provider connections."
           />
-          <div className="panel-body space-y-4">
+          <div className="panel-body">
             {readinessQuery.isLoading ? (
-              <div className="space-y-3">
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 <SkeletonBlock className="h-14" />
                 <SkeletonBlock className="h-14" />
                 <SkeletonBlock className="h-14" />
@@ -232,7 +232,7 @@ export default function DashboardPage() {
                 <p className="text-sm leading-7">{readinessMessage}</p>
               </div>
             ) : (
-              <div className="space-y-3">
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {Object.entries(readinessQuery.data?.checks ?? {}).map(([key, value]) => {
                   const status = String(value);
                   const tone =
@@ -245,7 +245,7 @@ export default function DashboardPage() {
                           : "status-failed";
 
                   return (
-                    <div key={key} className="rounded-[18px] border border-[var(--border)] bg-[var(--surface-2)] p-4">
+                    <div key={key} className="rounded-[18px] border border-(--border) bg-(--surface-2) p-4">
                       <div className="flex items-center justify-between gap-3">
                         <div>
                           <div className="section-label">{key.replace(/_/g, " ")}</div>
@@ -263,12 +263,14 @@ export default function DashboardPage() {
             )}
           </div>
         </Panel>
+      </section>
 
+      <section>
         <Panel>
           <PanelHeader
             label="Recent runs"
             title="Experiment queue"
-            description="The fastest way to resume work, rerun a configuration, or jump into a finished comparison."
+            description="Your most recent experiment runs."
             actions={<Link href="/experiments" className="btn-secondary">View all</Link>}
           />
           <div className="panel-body">
@@ -288,28 +290,30 @@ export default function DashboardPage() {
             ) : (
               <div className="space-y-3">
                 {experiments.map((experiment) => (
-                  <button
+                  <div
                     key={experiment.id}
-                    type="button"
+                    role="button"
+                    tabIndex={0}
                     onClick={() => router.push(`/experiments/${experiment.id}`)}
-                    className="w-full rounded-[20px] border border-[var(--border)] bg-[var(--surface-2)] p-4 text-left transition-all hover:border-[var(--border-strong)] hover:bg-[var(--surface-3)]"
+                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); router.push(`/experiments/${experiment.id}`); } }}
+                    className="w-full cursor-pointer rounded-[20px] border border-(--border) bg-(--surface-2) p-4 text-left transition-all hover:border-(--border-strong) hover:bg-(--surface-3)"
                   >
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div className="space-y-2">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <div className="text-lg font-semibold tracking-[-0.03em]">{experiment.name}</div>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1 space-y-2">
+                        <div className="flex items-center gap-2">
+                          <div className="truncate text-lg font-semibold tracking-[-0.03em]">{experiment.name}</div>
                           <StatusPill status={experiment.status} />
                         </div>
-                        <div className="flex flex-wrap gap-2 text-xs text-[var(--muted-foreground)]">
+                        <div className="flex flex-wrap gap-2 text-xs text-(--muted-foreground)">
                           <span className="chip">{experiment.config.reasoning_method.toUpperCase()}</span>
                           <span className="chip">{experiment.config.model_name.split("/").pop()}</span>
                           <span className="chip">{experiment.config.dataset_name}</span>
                         </div>
                         {experiment.description ? (
-                          <p className="max-w-2xl text-sm leading-7 text-[var(--muted-foreground)]">{experiment.description}</p>
+                          <p className="line-clamp-2 max-w-2xl text-sm leading-7 text-(--muted-foreground)">{experiment.description}</p>
                         ) : null}
                       </div>
-                      <div className="flex flex-wrap items-center gap-2" onClick={(event) => event.stopPropagation()}>
+                      <div className="flex shrink-0 items-center gap-2" onClick={(event) => event.stopPropagation()}>
                         <button
                           type="button"
                           className="btn-secondary"
@@ -330,11 +334,11 @@ export default function DashboardPage() {
                         </button>
                       </div>
                     </div>
-                    <div className="mt-4 flex flex-wrap items-center gap-3 text-sm text-[var(--muted-foreground)]">
+                    <div className="mt-4 flex flex-wrap items-center gap-3 text-sm text-(--muted-foreground)">
                       <span className="mono-caption">Created {formatDate(experiment.created_at)}</span>
                       {experiment.completed_at ? <span className="mono-caption">Completed {formatDate(experiment.completed_at)}</span> : null}
                     </div>
-                  </button>
+                  </div>
                 ))}
               </div>
             )}
@@ -348,7 +352,7 @@ export default function DashboardPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[70] flex items-center justify-center bg-black/55 px-4 backdrop-blur-sm"
+            className="fixed inset-0 z-70 flex items-center justify-center bg-black/55 px-4 backdrop-blur-sm"
             onClick={() => setExperimentToDelete(null)}
           >
             <motion.div
@@ -360,7 +364,7 @@ export default function DashboardPage() {
               onClick={(event) => event.stopPropagation()}
             >
               <div className="flex items-start gap-4">
-                <div className="flex size-12 items-center justify-center rounded-[18px] border border-[color:color-mix(in_oklab,var(--destructive)_38%,transparent)] bg-[var(--destructive-soft)] text-[color:color-mix(in_oklab,var(--destructive)_84%,white_12%)]">
+                <div className="flex size-12 items-center justify-center rounded-[18px] border border-[color-mix(in_oklab,var(--destructive)_38%,transparent)] bg-(--destructive-soft) text-[color-mix(in_oklab,var(--destructive)_84%,white_12%)]">
                   <AlertTriangle className="size-5" />
                 </div>
                 <div className="space-y-3">
@@ -368,8 +372,8 @@ export default function DashboardPage() {
                     <div className="section-label">Destructive action</div>
                     <h2 className="mt-1 text-2xl font-semibold tracking-[-0.04em]">Delete experiment</h2>
                   </div>
-                  <p className="text-sm leading-7 text-[var(--muted-foreground)]">
-                    Remove <span className="font-semibold text-[var(--foreground)]">{experimentToDelete.name}</span> and its saved metrics from the workspace.
+                  <p className="text-sm leading-7 text-(--muted-foreground)">
+                    Remove <span className="font-semibold text-foreground">{experimentToDelete.name}</span> and its saved metrics from the workspace.
                     This cannot be undone.
                   </p>
                 </div>

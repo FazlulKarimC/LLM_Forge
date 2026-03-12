@@ -18,7 +18,7 @@ import {
   type Experiment,
   type StatisticalComparison,
 } from "@/lib/api";
-import { EmptyState, MetricBar, PageHeader, Panel, PanelHeader, SkeletonBlock, StatusPill } from "@/components/ui/primitives";
+import { EmptyState, MetricBar, PageHeader, Panel, PanelHeader, SkeletonBlock } from "@/components/ui/primitives";
 import { cn } from "@/lib/utils";
 
 function formatMetric(value?: number, format: "percent" | "ms" | "number" = "percent") {
@@ -54,11 +54,11 @@ function MetricCompareCard({
     <div className="metric-card">
       <div className="metric-label">{label}</div>
       <div className="grid grid-cols-2 gap-3 text-sm">
-        <div className="rounded-[14px] border border-[var(--border)] bg-[var(--surface-2)] p-3">
+        <div className="rounded-[14px] border border-(--border) bg-(--surface-2) p-3">
           <div className="section-label">A</div>
           <div className="metric-value mt-2 text-2xl">{formatMetric(valueA, format)}</div>
         </div>
-        <div className="rounded-[14px] border border-[var(--border)] bg-[var(--surface-2)] p-3">
+        <div className="rounded-[14px] border border-(--border) bg-(--surface-2) p-3">
           <div className="section-label">B</div>
           <div className="metric-value mt-2 text-2xl">{formatMetric(valueB, format)}</div>
         </div>
@@ -92,16 +92,16 @@ function AgreementSummary({ summary }: { summary: StatisticalComparison["summary
 
   return (
     <Panel>
-      <PanelHeader label="Agreement" title="Outcome distribution" description="How often the experiments agree, disagree, or both fail on the same examples." />
+      <PanelHeader label="Agreement" title="Outcome distribution" description="How often the two experiments agree, disagree, or both fail on the same examples." />
       <div className="panel-body space-y-4">
-        <div className="flex h-3 overflow-hidden rounded-full bg-[var(--muted)]">
+        <div className="flex h-3 overflow-hidden rounded-full bg-(--muted)">
           {segments.map((segment) => (
             <div key={segment.label} style={{ width: `${(segment.value / total) * 100}%`, background: segment.color }} />
           ))}
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
           {segments.map((segment) => (
-            <div key={segment.label} className="rounded-[16px] border border-[var(--border)] bg-[var(--surface-2)] p-4">
+            <div key={segment.label} className="rounded-[16px] border border-(--border) bg-(--surface-2) p-4">
               <div className="section-label">{segment.label}</div>
               <div className="metric-value mt-2 text-2xl">{segment.value}</div>
               <div className="metric-caption mt-1">{((segment.value / total) * 100).toFixed(1)}% of common examples</div>
@@ -118,8 +118,8 @@ function SignificancePanel({ stats }: { stats: StatisticalComparison }) {
     <Panel>
       <PanelHeader
         label="Significance"
-        title="Statistical view"
-        description="McNemar and bootstrap outputs stay visible so the winner is defensible in an interview, not just visually obvious."
+        title="Statistical analysis"
+        description="McNemar chi-squared test and bootstrap confidence intervals quantify whether the observed accuracy difference is statistically meaningful."
       />
       <div className="panel-body space-y-4">
         <div className={cn("alert", stats.mcnemar.is_significant ? "alert-info" : "alert-warning")}>
@@ -128,7 +128,7 @@ function SignificancePanel({ stats }: { stats: StatisticalComparison }) {
             <div className="font-semibold">
               {stats.mcnemar.is_significant ? "Difference is statistically significant" : "Difference is not statistically significant"}
             </div>
-            <p className="text-sm text-[var(--muted-foreground)]">McNemar p-value {stats.mcnemar.p_value < 0.0001 ? "< 0.0001" : stats.mcnemar.p_value.toFixed(4)}</p>
+            <p className="text-sm text-(--muted-foreground)">McNemar p-value {stats.mcnemar.p_value < 0.0001 ? "< 0.0001" : stats.mcnemar.p_value.toFixed(4)}</p>
           </div>
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
@@ -199,23 +199,23 @@ function DifferencesTable({
                     <td>
                       <span className={cn("status-pill", diff.b_correct ? "status-completed" : "status-failed")}>{diff.b_correct ? "Correct" : "Incorrect"}</span>
                     </td>
-                    <td className="text-sm text-[var(--muted-foreground)]">{diff.expected}</td>
+                    <td className="text-sm text-(--muted-foreground)">{diff.expected}</td>
                   </tr>
                   {isExpanded ? (
                     <tr>
-                      <td colSpan={4} className="!p-0">
-                        <div className="grid gap-3 border-b border-[var(--border)] bg-[var(--surface-2)] p-4 lg:grid-cols-3">
-                          <div className="rounded-[16px] border border-[var(--border)] bg-[var(--surface-1)] p-4">
+                      <td colSpan={4} className="p-0!">
+                        <div className="grid gap-3 border-b border-(--border) bg-(--surface-2) p-4 lg:grid-cols-3">
+                          <div className="rounded-[16px] border border-(--border) bg-(--surface-1) p-4">
                             <div className="section-label">{nameA}</div>
-                            <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-[var(--muted-foreground)]">{diff.a_output || "No output"}</p>
+                            <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-(--muted-foreground)">{diff.a_output || "No output"}</p>
                           </div>
-                          <div className="rounded-[16px] border border-[var(--border)] bg-[var(--surface-1)] p-4">
+                          <div className="rounded-[16px] border border-(--border) bg-(--surface-1) p-4">
                             <div className="section-label">{nameB}</div>
-                            <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-[var(--muted-foreground)]">{diff.b_output || "No output"}</p>
+                            <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-(--muted-foreground)">{diff.b_output || "No output"}</p>
                           </div>
-                          <div className="rounded-[16px] border border-[var(--border)] bg-[var(--surface-1)] p-4">
+                          <div className="rounded-[16px] border border-(--border) bg-(--surface-1) p-4">
                             <div className="section-label">Expected</div>
-                            <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-[var(--muted-foreground)]">{diff.expected}</p>
+                            <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-(--muted-foreground)">{diff.expected}</p>
                           </div>
                         </div>
                       </td>
@@ -263,19 +263,19 @@ function ComparePageInner() {
   const expA = comparison?.experiments[0];
   const expB = comparison?.experiments[1];
 
-  function toggleSelection(id: string) {
+  function setSlotA(id: string) {
     setSelectedIds((current) => {
       const base = getValidSelection(current, experimentIds);
+      if (!id) return base.length > 1 ? ["", base[1]] : [];
+      return base.length > 1 ? [id, base[1]] : [id];
+    });
+  }
 
-      if (base.includes(id)) {
-        return base.filter((item) => item !== id);
-      }
-
-      if (base.length < 2) {
-        return [...base, id];
-      }
-
-      return [base[1], id];
+  function setSlotB(id: string) {
+    setSelectedIds((current) => {
+      const base = getValidSelection(current, experimentIds);
+      if (!id) return base.length > 0 ? [base[0]] : [];
+      return [base[0] || "", id];
     });
   }
 
@@ -283,23 +283,24 @@ function ComparePageInner() {
     <div className="page-stack">
       <PageHeader
         eyebrow={<><GitCompareArrows className="size-3.5" /> Comparison workspace</>}
-        title="Judge experiments side by side."
-        description="Use the same shell to inspect metrics, significance, and disagreement examples without inventing new backend requirements."
+        title="Compare experiments side by side"
+        description="Select two completed runs to compare accuracy, latency, cost, and statistical significance."
         actions={<Link href="/experiments" className="btn-secondary">Back to experiments</Link>}
       />
 
-      <section className="grid gap-4 xl:grid-cols-[0.82fr_1.18fr]">
+      <section>
         <Panel>
           <PanelHeader
             label="Selection"
             title="Choose two completed runs"
-            description="The oldest selected item is replaced when you choose a third candidate."
+            description="Pick one experiment for each slot to begin the comparison."
             actions={effectiveSelectedIds.length ? <button type="button" className="btn-secondary" onClick={() => setSelectedIds([])}>Clear</button> : null}
           />
           <div className="panel-body">
             {experimentsQuery.isLoading ? (
-              <div className="space-y-3">
-                {Array.from({ length: 5 }).map((_, index) => <SkeletonBlock key={index} className="h-[96px]" />)}
+              <div className="grid gap-4 sm:grid-cols-2">
+                <SkeletonBlock className="h-14" />
+                <SkeletonBlock className="h-14" />
               </div>
             ) : experiments.length === 0 ? (
               <EmptyState
@@ -309,131 +310,132 @@ function ComparePageInner() {
                 action={<Link href="/experiments/new" className="btn-primary">Create experiment</Link>}
               />
             ) : (
-              <div className="space-y-3">
-                {experiments.map((experiment: Experiment) => {
-                  const selectedIndex = effectiveSelectedIds.indexOf(experiment.id);
-                  const active = selectedIndex !== -1;
-                  const slot = selectedIndex === 0 ? "A" : selectedIndex === 1 ? "B" : null;
-
-                  return (
-                    <button
-                      key={experiment.id}
-                      type="button"
-                      onClick={() => toggleSelection(experiment.id)}
-                      className={cn(
-                        "w-full rounded-[20px] border p-4 text-left transition-all",
-                        active
-                          ? "border-[color:color-mix(in_oklab,var(--accent)_34%,transparent)] bg-[color:color-mix(in_oklab,var(--accent)_10%,transparent)]"
-                          : "border-[var(--border)] bg-[var(--surface-2)] hover:border-[var(--border-strong)] hover:bg-[var(--surface-3)]"
-                      )}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="space-y-2">
-                          <div className="text-base font-semibold tracking-[-0.03em]">{experiment.name}</div>
-                          <div className="flex flex-wrap gap-2 text-xs text-[var(--muted-foreground)]">
-                            <span className="chip">{experiment.config.reasoning_method.toUpperCase()}</span>
-                            <span className="chip">{experiment.config.model_name.split("/").pop()}</span>
-                            <span className="chip">{experiment.config.dataset_name}</span>
-                          </div>
-                        </div>
-                        {slot ? <span className="status-pill status-running">Slot {slot}</span> : <StatusPill status={experiment.status} />}
-                      </div>
-                    </button>
-                  );
-                })}
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <label className="field-label" htmlFor="slot-a">Experiment A</label>
+                  <select
+                    id="slot-a"
+                    className="select-shell"
+                    value={effectiveSelectedIds[0] ?? ""}
+                    onChange={(e) => setSlotA(e.target.value)}
+                  >
+                    <option value="">Select experiment…</option>
+                    {experiments.map((exp: Experiment) => (
+                      <option key={exp.id} value={exp.id} disabled={exp.id === effectiveSelectedIds[1]}>
+                        {exp.name} — {exp.config.reasoning_method.toUpperCase()} · {exp.config.model_name.split("/").pop()}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="field-label" htmlFor="slot-b">Experiment B</label>
+                  <select
+                    id="slot-b"
+                    className="select-shell"
+                    value={effectiveSelectedIds[1] ?? ""}
+                    onChange={(e) => setSlotB(e.target.value)}
+                  >
+                    <option value="">Select experiment…</option>
+                    {experiments.map((exp: Experiment) => (
+                      <option key={exp.id} value={exp.id} disabled={exp.id === effectiveSelectedIds[0]}>
+                        {exp.name} — {exp.config.reasoning_method.toUpperCase()} · {exp.config.model_name.split("/").pop()}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
             )}
           </div>
         </Panel>
-
-        {effectiveSelectedIds.length < 2 ? (
-          <EmptyState
-            icon={<GitCompareArrows className="size-5" />}
-            title={effectiveSelectedIds.length === 1 ? "Select one more experiment" : "Select two experiments to compare"}
-            description="Once two completed runs are selected, the metrics, significance, and disagreement analysis will render here."
-          />
-        ) : comparisonQuery.isLoading || statsQuery.isLoading ? (
-          <div className="space-y-4">
-            <SkeletonBlock className="h-[180px]" />
-            <SkeletonBlock className="h-[220px]" />
-            <SkeletonBlock className="h-[320px]" />
-          </div>
-        ) : comparisonQuery.error || statsQuery.error || !comparison || !expA || !expB ? (
-          <div className="alert alert-danger">
-            <ScanSearch className="mt-0.5 size-4 shrink-0" />
-            <div className="space-y-1">
-              <div className="font-semibold">Comparison failed to load</div>
-              <p className="text-sm text-[var(--muted-foreground)]">
-                {comparisonQuery.error instanceof Error
-                  ? comparisonQuery.error.message
-                  : statsQuery.error instanceof Error
-                    ? statsQuery.error.message
-                    : "The comparison response was incomplete."}
-              </p>
-            </div>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            <Panel>
-              <PanelHeader
-                label="Selected pair"
-                title="Active comparison"
-                description="The view keeps the model, method, and dataset context attached to the metrics so the screenshot explains itself."
-              />
-              <div className="panel-body grid gap-3 lg:grid-cols-2">
-                {[selectedA, selectedB].map((experiment, index) => (
-                  <div
-                    key={experiment?.id ?? index}
-                    className={cn(
-                      "rounded-[18px] border p-4",
-                      index === 0
-                        ? "border-[color:color-mix(in_oklab,var(--primary)_34%,transparent)] bg-[color:color-mix(in_oklab,var(--primary)_10%,transparent)]"
-                        : "border-[color:color-mix(in_oklab,var(--accent)_34%,transparent)] bg-[color:color-mix(in_oklab,var(--accent)_10%,transparent)]"
-                    )}
-                  >
-                    <div className="section-label">Experiment {index === 0 ? "A" : "B"}</div>
-                    <div className="mt-2 text-xl font-semibold tracking-[-0.04em]">{experiment?.name}</div>
-                    <div className="mt-3 flex flex-wrap gap-2 text-xs text-[var(--muted-foreground)]">
-                      <span className="chip">{experiment?.config.reasoning_method.toUpperCase()}</span>
-                      <span className="chip">{experiment?.config.model_name.split("/").pop()}</span>
-                      <span className="chip">{experiment?.config.dataset_name}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </Panel>
-
-            <Panel>
-              <PanelHeader label="Metrics" title="Head-to-head performance" description="Compare quality, latency, and cost without leaving the active pair." />
-              <div className="panel-body grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                <MetricCompareCard label="Exact match accuracy" valueA={expA.metrics.quality.accuracy_exact} valueB={expB.metrics.quality.accuracy_exact} />
-                <MetricCompareCard label="F1 score" valueA={expA.metrics.quality.accuracy_f1} valueB={expB.metrics.quality.accuracy_f1} />
-                <MetricCompareCard label="Substring accuracy" valueA={expA.metrics.quality.accuracy_substring} valueB={expB.metrics.quality.accuracy_substring} />
-                <MetricCompareCard label="Latency p50" valueA={expA.metrics.performance.latency_p50} valueB={expB.metrics.performance.latency_p50} format="ms" higherIsBetter={false} />
-                <MetricCompareCard label="Latency p95" valueA={expA.metrics.performance.latency_p95} valueB={expB.metrics.performance.latency_p95} format="ms" higherIsBetter={false} />
-                <MetricCompareCard
-                  label="Total tokens"
-                  valueA={(expA.metrics.cost.total_tokens_input || 0) + (expA.metrics.cost.total_tokens_output || 0)}
-                  valueB={(expB.metrics.cost.total_tokens_input || 0) + (expB.metrics.cost.total_tokens_output || 0)}
-                  format="number"
-                  higherIsBetter={false}
-                />
-              </div>
-            </Panel>
-
-            {statsQuery.data ? (
-              <div className="grid gap-4 xl:grid-cols-2">
-                <SignificancePanel stats={statsQuery.data} />
-                <AgreementSummary summary={statsQuery.data.summary} />
-              </div>
-            ) : null}
-
-            {statsQuery.data ? (
-              <DifferencesTable diffs={statsQuery.data.per_example_differences} nameA={selectedA?.name ?? "A"} nameB={selectedB?.name ?? "B"} />
-            ) : null}
-          </div>
-        )}
       </section>
+
+      {effectiveSelectedIds.length < 2 || !effectiveSelectedIds[0] || !effectiveSelectedIds[1] ? (
+        <EmptyState
+          icon={<GitCompareArrows className="size-5" />}
+          title={effectiveSelectedIds.filter(Boolean).length === 1 ? "Select one more experiment" : "Select two experiments to compare"}
+          description="Once two completed runs are selected, the metrics, significance, and disagreement analysis will render here."
+        />
+      ) : comparisonQuery.isLoading || statsQuery.isLoading ? (
+        <div className="space-y-4">
+          <SkeletonBlock className="h-[180px]" />
+          <SkeletonBlock className="h-[220px]" />
+          <SkeletonBlock className="h-[320px]" />
+        </div>
+      ) : comparisonQuery.error || statsQuery.error || !comparison || !expA || !expB ? (
+        <div className="alert alert-danger">
+          <ScanSearch className="mt-0.5 size-4 shrink-0" />
+          <div className="space-y-1">
+            <div className="font-semibold">Comparison failed to load</div>
+            <p className="text-sm text-(--muted-foreground)">
+              {comparisonQuery.error instanceof Error
+                ? comparisonQuery.error.message
+                : statsQuery.error instanceof Error
+                  ? statsQuery.error.message
+                  : "The comparison response was incomplete."}
+            </p>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <Panel>
+            <PanelHeader
+              label="Selected pair"
+              title="Active comparison"
+              description="Model, method, and dataset details for each run at a glance."
+            />
+            <div className="panel-body grid gap-3 lg:grid-cols-2">
+              {[selectedA, selectedB].map((experiment, index) => (
+                <div
+                  key={experiment?.id ?? index}
+                  className={cn(
+                    "rounded-[18px] border p-4",
+                    index === 0
+                      ? "border-[color-mix(in_oklab,var(--primary)_34%,transparent)] bg-[color-mix(in_oklab,var(--primary)_10%,transparent)]"
+                      : "border-[color-mix(in_oklab,var(--accent)_34%,transparent)] bg-[color-mix(in_oklab,var(--accent)_10%,transparent)]"
+                  )}
+                >
+                  <div className="section-label">Experiment {index === 0 ? "A" : "B"}</div>
+                  <div className="mt-2 text-xl font-semibold tracking-[-0.04em]">{experiment?.name}</div>
+                  <div className="mt-3 flex flex-wrap gap-2 text-xs text-(--muted-foreground)">
+                    <span className="chip">{experiment?.config.reasoning_method.toUpperCase()}</span>
+                    <span className="chip">{experiment?.config.model_name.split("/").pop()}</span>
+                    <span className="chip">{experiment?.config.dataset_name}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Panel>
+
+          <Panel>
+            <PanelHeader label="Metrics" title="Head-to-head performance" description="Quality, latency, and cost metrics compared between the two runs." />
+            <div className="panel-body grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              <MetricCompareCard label="Exact match accuracy" valueA={expA.metrics.quality.accuracy_exact} valueB={expB.metrics.quality.accuracy_exact} />
+              <MetricCompareCard label="F1 score" valueA={expA.metrics.quality.accuracy_f1} valueB={expB.metrics.quality.accuracy_f1} />
+              <MetricCompareCard label="Substring accuracy" valueA={expA.metrics.quality.accuracy_substring} valueB={expB.metrics.quality.accuracy_substring} />
+              <MetricCompareCard label="Latency p50" valueA={expA.metrics.performance.latency_p50} valueB={expB.metrics.performance.latency_p50} format="ms" higherIsBetter={false} />
+              <MetricCompareCard label="Latency p95" valueA={expA.metrics.performance.latency_p95} valueB={expB.metrics.performance.latency_p95} format="ms" higherIsBetter={false} />
+              <MetricCompareCard
+                label="Total tokens"
+                valueA={(expA.metrics.cost.total_tokens_input || 0) + (expA.metrics.cost.total_tokens_output || 0)}
+                valueB={(expB.metrics.cost.total_tokens_input || 0) + (expB.metrics.cost.total_tokens_output || 0)}
+                format="number"
+                higherIsBetter={false}
+              />
+            </div>
+          </Panel>
+
+          {statsQuery.data ? (
+            <div className="grid gap-4 xl:grid-cols-2">
+              <SignificancePanel stats={statsQuery.data} />
+              <AgreementSummary summary={statsQuery.data.summary} />
+            </div>
+          ) : null}
+
+          {statsQuery.data ? (
+            <DifferencesTable diffs={statsQuery.data.per_example_differences} nameA={selectedA?.name ?? "A"} nameB={selectedB?.name ?? "B"} />
+          ) : null}
+        </div>
+      )}
     </div>
   );
 }

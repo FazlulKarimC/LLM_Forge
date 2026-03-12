@@ -114,7 +114,7 @@ export default function ExperimentsPage() {
       <PageHeader
         eyebrow={<><Filter className="size-3.5" /> Experiment catalog</>}
         title={`All experiments (${total})`}
-        description="Filter by execution state or reasoning method, then rerun, delete, or compare directly from the workspace list."
+        description="Filter, rerun, delete, or compare your experiment runs."
         actions={
           <>
             <Link href="/experiments/compare" className="btn-secondary">
@@ -134,71 +134,72 @@ export default function ExperimentsPage() {
           <AlertTriangle className="mt-0.5 size-4 shrink-0" />
           <div className="space-y-1">
             <div className="font-semibold">Failed to load experiments</div>
-            <p className="text-sm text-[var(--muted-foreground)]">
+            <p className="text-sm text-(--muted-foreground)">
               {experimentsQuery.error instanceof Error ? experimentsQuery.error.message : "Unknown error"}
             </p>
           </div>
         </div>
       ) : null}
 
-      <section className="grid gap-4 xl:grid-cols-[0.78fr_1.22fr]">
+      <section>
         <Panel>
           <PanelHeader
             label="Filters"
             title="Refine the workspace"
-            description="Keep the catalog dense, but make every filter explicit and easy to clear."
+            description="Narrow the list by status or reasoning method."
+            actions={
+              <button type="button" className="btn-secondary" onClick={() => { setStatusFilter(""); setMethodFilter(""); }}>
+                <SlidersHorizontal className="size-4" />
+                Clear filters
+              </button>
+            }
           />
-          <div className="panel-body space-y-5">
-            <div className="space-y-2">
-              <label className="field-label" htmlFor="status-filter">
-                Status
-              </label>
-              <select id="status-filter" className="select-shell" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
-                <option value="">All statuses</option>
-                <option value="pending">Pending</option>
-                <option value="queued">Queued</option>
-                <option value="running">Running</option>
-                <option value="completed">Completed</option>
-                <option value="failed">Failed</option>
-              </select>
-            </div>
-
-            <div className="space-y-2">
-              <label className="field-label" htmlFor="method-filter">
-                Reasoning method
-              </label>
-              <select id="method-filter" className="select-shell" value={methodFilter} onChange={(event) => setMethodFilter(event.target.value)}>
-                <option value="">All methods</option>
-                <option value="naive">Naive</option>
-                <option value="cot">Chain of thought</option>
-                <option value="react">ReAct agent</option>
-              </select>
-            </div>
-
-            <div className="rounded-[18px] border border-[var(--border)] bg-[var(--surface-2)] p-4">
-              <div className="section-label">Current slice</div>
-              <div className="mt-2 text-lg font-semibold tracking-[-0.03em]">
-                {statusFilter || methodFilter ? "Filtered workspace" : "Full workspace"}
+          <div className="panel-body">
+            <div className="flex flex-wrap items-end gap-4">
+              <div className="min-w-[160px] flex-1 space-y-2">
+                <label className="field-label" htmlFor="status-filter">Status</label>
+                <select id="status-filter" className="select-shell" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+                  <option value="">All statuses</option>
+                  <option value="pending">Pending</option>
+                  <option value="queued">Queued</option>
+                  <option value="running">Running</option>
+                  <option value="completed">Completed</option>
+                  <option value="failed">Failed</option>
+                </select>
               </div>
-              <p className="mt-2 text-sm leading-7 text-[var(--muted-foreground)]">
-                {statusFilter || methodFilter
-                  ? `Showing ${total} experiments that match the active filters.`
-                  : "Showing all saved experiments in the repository-backed evaluation workspace."}
-              </p>
-            </div>
 
-            <button type="button" className="btn-secondary w-full" onClick={() => { setStatusFilter(""); setMethodFilter(""); }}>
-              <SlidersHorizontal className="size-4" />
-              Clear filters
-            </button>
+              <div className="min-w-[160px] flex-1 space-y-2">
+                <label className="field-label" htmlFor="method-filter">Reasoning method</label>
+                <select id="method-filter" className="select-shell" value={methodFilter} onChange={(event) => setMethodFilter(event.target.value)}>
+                  <option value="">All methods</option>
+                  <option value="naive">Naive</option>
+                  <option value="cot">Chain of thought</option>
+                  <option value="react">ReAct agent</option>
+                </select>
+              </div>
+
+              <div className="min-w-[200px] flex-1 rounded-[18px] border border-(--border) bg-(--surface-2) p-4">
+                <div className="section-label">Current slice</div>
+                <div className="mt-1 font-semibold tracking-[-0.03em]">
+                  {statusFilter || methodFilter ? "Filtered workspace" : "Full workspace"}
+                </div>
+                <p className="mt-1 text-sm leading-6 text-(--muted-foreground)">
+                  {statusFilter || methodFilter
+                    ? `${total} experiments matching filters.`
+                    : `Showing all ${total} experiments.`}
+                </p>
+              </div>
+            </div>
           </div>
         </Panel>
+      </section>
 
+      <section>
         <Panel>
           <PanelHeader
             label="Catalog"
             title="Runs and configurations"
-            description="Every card preserves the data you need to decide whether to inspect, rerun, or compare."
+            description="Experiment runs with configuration, status, and quick actions."
           />
           <div className="panel-body">
             {experimentsQuery.isLoading ? (
@@ -215,29 +216,31 @@ export default function ExperimentsPage() {
             ) : (
               <div className="space-y-3">
                 {experiments.map((experiment) => (
-                  <button
+                  <div
                     key={experiment.id}
-                    type="button"
-                    className="w-full rounded-[20px] border border-[var(--border)] bg-[var(--surface-2)] p-4 text-left transition-all hover:border-[var(--border-strong)] hover:bg-[var(--surface-3)]"
+                    role="button"
+                    tabIndex={0}
+                    className="w-full cursor-pointer rounded-[20px] border border-(--border) bg-(--surface-2) p-4 text-left transition-all hover:border-(--border-strong) hover:bg-(--surface-3)"
                     onClick={() => router.push(`/experiments/${experiment.id}`)}
+                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); router.push(`/experiments/${experiment.id}`); } }}
                   >
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div className="space-y-3">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <div className="text-lg font-semibold tracking-[-0.03em]">{experiment.name}</div>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1 space-y-3">
+                        <div className="flex items-center gap-2">
+                          <div className="truncate text-lg font-semibold tracking-[-0.03em]">{experiment.name}</div>
                           <StatusPill status={experiment.status} />
                         </div>
                         {experiment.description ? (
-                          <p className="max-w-2xl text-sm leading-7 text-[var(--muted-foreground)]">{experiment.description}</p>
+                          <p className="line-clamp-2 max-w-3xl text-sm leading-7 text-(--muted-foreground)">{experiment.description}</p>
                         ) : null}
-                        <div className="flex flex-wrap gap-2 text-xs text-[var(--muted-foreground)]">
+                        <div className="flex flex-wrap gap-2 text-xs text-(--muted-foreground)">
                           <span className="chip">{methodLabels[experiment.config.reasoning_method] ?? experiment.config.reasoning_method}</span>
                           <span className="chip">{experiment.config.model_name.split("/").pop()}</span>
                           <span className="chip">{experiment.config.dataset_name}</span>
                           <span className="chip">Samples {experiment.config.num_samples ?? "N/A"}</span>
                         </div>
                       </div>
-                      <div className="flex flex-wrap items-center gap-2" onClick={(event) => event.stopPropagation()}>
+                      <div className="flex shrink-0 items-center gap-2" onClick={(event) => event.stopPropagation()}>
                         <button
                           type="button"
                           className="btn-secondary"
@@ -258,11 +261,11 @@ export default function ExperimentsPage() {
                         </button>
                       </div>
                     </div>
-                    <div className="mt-4 flex flex-wrap items-center gap-3 text-sm text-[var(--muted-foreground)]">
+                    <div className="mt-4 flex flex-wrap items-center gap-3 text-sm text-(--muted-foreground)">
                       <span className="mono-caption">Created {formatDate(experiment.created_at)}</span>
                       {experiment.completed_at ? <span className="mono-caption">Completed {formatDate(experiment.completed_at)}</span> : null}
                     </div>
-                  </button>
+                  </div>
                 ))}
               </div>
             )}
@@ -276,7 +279,7 @@ export default function ExperimentsPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[70] flex items-center justify-center bg-black/55 px-4 backdrop-blur-sm"
+            className="fixed inset-0 z-70 flex items-center justify-center bg-black/55 px-4 backdrop-blur-sm"
             onClick={() => setExperimentToDelete(null)}
           >
             <motion.div
@@ -288,7 +291,7 @@ export default function ExperimentsPage() {
               onClick={(event) => event.stopPropagation()}
             >
               <div className="flex items-start gap-4">
-                <div className="flex size-12 items-center justify-center rounded-[18px] border border-[color:color-mix(in_oklab,var(--destructive)_38%,transparent)] bg-[var(--destructive-soft)] text-[color:color-mix(in_oklab,var(--destructive)_84%,white_12%)]">
+                <div className="flex size-12 items-center justify-center rounded-[18px] border border-[color-mix(in_oklab,var(--destructive)_38%,transparent)] bg-(--destructive-soft) text-[color-mix(in_oklab,var(--destructive)_84%,white_12%)]">
                   <AlertTriangle className="size-5" />
                 </div>
                 <div className="space-y-3">
@@ -296,8 +299,8 @@ export default function ExperimentsPage() {
                     <div className="section-label">Destructive action</div>
                     <h2 className="mt-1 text-2xl font-semibold tracking-[-0.04em]">Delete experiment</h2>
                   </div>
-                  <p className="text-sm leading-7 text-[var(--muted-foreground)]">
-                    Remove <span className="font-semibold text-[var(--foreground)]">{experimentToDelete.name}</span> from the experiment catalog and its saved metrics from the results store.
+                  <p className="text-sm leading-7 text-(--muted-foreground)">
+                    Remove <span className="font-semibold text-foreground">{experimentToDelete.name}</span> from the experiment catalog and its saved metrics from the results store.
                   </p>
                 </div>
               </div>

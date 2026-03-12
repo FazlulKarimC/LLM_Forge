@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { use, useState } from "react";
-import { Download, FileText, LoaderCircle, Play, ScanSearch, TriangleAlert } from "lucide-react";
+import { ArrowLeft, Download, FileText, LoaderCircle, Play, ScanSearch, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -65,19 +65,19 @@ function LatencyHistogram({ runs }: { runs: RunSummary[] }) {
 
   return (
     <Panel>
-      <PanelHeader label="Latency" title="Distribution" description="A lightweight histogram using only frontend code and the existing run summaries." />
+      <PanelHeader label="Latency" title="Distribution" description="Response time distribution across all evaluated samples." />
       <div className="panel-body">
         <div className="flex h-48 items-end gap-2">
           {buckets.map((bucket) => (
             <div key={bucket.label} className="flex-1">
               <div className="flex h-40 items-end">
                 <div
-                  className="w-full rounded-t-[12px] bg-[var(--accent)]"
+                  className="w-full rounded-t-[12px] bg-(--accent)"
                   style={{ height: `${Math.max(8, (bucket.count / peak) * 100)}%` }}
                   title={`${bucket.count} runs`}
                 />
               </div>
-              <div className="mt-2 text-center font-mono text-[11px] text-[var(--muted-foreground)]">{bucket.label}</div>
+              <div className="mt-2 text-center font-mono text-[11px] text-(--muted-foreground)">{bucket.label}</div>
             </div>
           ))}
         </div>
@@ -90,12 +90,12 @@ function RunFilmstrip({ runs }: { runs: RunSummary[] }) {
   const [selectedRun, setSelectedRun] = useState<RunSummary | null>(runs[0] ?? null);
 
   return (
-    <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
+    <div className="space-y-4">
       <Panel>
         <PanelHeader
           label="Per-run overview"
           title="Evaluation filmstrip"
-          description="Each cell is one example, colored by correctness so disagreements and failures pop immediately."
+          description="Each cell represents one sample, color-coded by correctness."
         />
         <div className="panel-body space-y-4">
           <div className="grid grid-cols-8 gap-2 sm:grid-cols-12 xl:grid-cols-10">
@@ -110,11 +110,11 @@ function RunFilmstrip({ runs }: { runs: RunSummary[] }) {
                 <button
                   key={run.id}
                   type="button"
-                  className={`rounded-[12px] border p-2 text-left transition-all hover:border-[var(--border-strong)] ${selectedRun?.id === run.id ? "border-[var(--accent)] bg-[color:color-mix(in_oklab,var(--accent)_14%,transparent)]" : "border-[var(--border)] bg-[var(--surface-2)]"}`}
+                  className={`min-w-0 rounded-[12px] border p-2 text-left transition-all hover:border-(--border-strong) ${selectedRun?.id === run.id ? "border-(--accent) bg-[color-mix(in_oklab,var(--accent)_14%,transparent)]" : "border-(--border) bg-(--surface-2)"}`}
                   onClick={() => setSelectedRun(run)}
                   title={run.example_id ?? "Run"}
                 >
-                  <span className={`status-pill ${statusClass} !w-full justify-center !px-0`}>{run.example_id ?? "run"}</span>
+                  <span className={`status-pill ${statusClass} w-full! justify-center truncate overflow-hidden px-0!`}>{run.example_id ?? "run"}</span>
                 </button>
               );
             })}
@@ -140,7 +140,7 @@ function RunFilmstrip({ runs }: { runs: RunSummary[] }) {
         <PanelHeader
           label="Selected example"
           title={selectedRun?.example_id || "Pick a run"}
-          description="The inspector uses only current run summary fields: prompt, raw output, expected answer, traces, and retrieval context."
+          description="Inspect the prompt, model output, and expected answer for this sample."
         />
         <div className="panel-body">
           {selectedRun ? (
@@ -152,25 +152,25 @@ function RunFilmstrip({ runs }: { runs: RunSummary[] }) {
                 {selectedRun.failure_mode ? <span className="chip">Failure {selectedRun.failure_mode}</span> : null}
               </div>
               <div className="grid gap-4">
-                <div className="rounded-[18px] border border-[var(--border)] bg-[var(--surface-2)] p-4">
+                <div className="rounded-[18px] border border-(--border) bg-(--surface-2) p-4">
                   <div className="section-label">Prompt</div>
-                  <pre className="mt-3 whitespace-pre-wrap text-sm leading-7 text-[var(--muted-foreground)]">{selectedRun.prompt || "No prompt recorded"}</pre>
+                  <pre className="mt-3 whitespace-pre-wrap text-sm leading-7 text-(--muted-foreground)">{selectedRun.prompt || "No prompt recorded"}</pre>
                 </div>
-                <div className="rounded-[18px] border border-[var(--border)] bg-[var(--surface-2)] p-4">
+                <div className="rounded-[18px] border border-(--border) bg-(--surface-2) p-4">
                   <div className="section-label">Model output</div>
-                  <pre className="mt-3 whitespace-pre-wrap text-sm leading-7 text-[var(--muted-foreground)]">{selectedRun.raw_output || "No output recorded"}</pre>
+                  <pre className="mt-3 whitespace-pre-wrap text-sm leading-7 text-(--muted-foreground)">{selectedRun.raw_output || "No output recorded"}</pre>
                 </div>
-                <div className="rounded-[18px] border border-[var(--border)] bg-[var(--surface-2)] p-4">
+                <div className="rounded-[18px] border border-(--border) bg-(--surface-2) p-4">
                   <div className="section-label">Expected answer</div>
-                  <pre className="mt-3 whitespace-pre-wrap text-sm leading-7 text-[var(--muted-foreground)]">{selectedRun.expected_output || "No expected answer recorded"}</pre>
+                  <pre className="mt-3 whitespace-pre-wrap text-sm leading-7 text-(--muted-foreground)">{selectedRun.expected_output || "No expected answer recorded"}</pre>
                 </div>
                 {selectedRun.retrieved_chunks?.chunks?.length ? (
-                  <div className="rounded-[18px] border border-[var(--border)] bg-[var(--surface-2)] p-4">
+                  <div className="rounded-[18px] border border-(--border) bg-(--surface-2) p-4">
                     <div className="section-label">Retrieved context</div>
-                    <div className="mt-3 space-y-3 text-sm leading-7 text-[var(--muted-foreground)]">
+                    <div className="mt-3 space-y-3 text-sm leading-7 text-(--muted-foreground)">
                       {selectedRun.retrieved_chunks.chunks.map((chunk, index) => (
-                        <div key={`${selectedRun.id}-${index}`} className="rounded-[16px] border border-[var(--border)] bg-[var(--surface-1)] p-3">
-                          <div className="font-mono text-[11px] text-[var(--muted-foreground)]">Chunk {index + 1}</div>
+                        <div key={`${selectedRun.id}-${index}`} className="rounded-[16px] border border-(--border) bg-(--surface-1) p-3">
+                          <div className="font-mono text-[11px] text-(--muted-foreground)">Chunk {index + 1}</div>
                           <p className="mt-2 whitespace-pre-wrap">{chunk.text || chunk.page_content || JSON.stringify(chunk)}</p>
                         </div>
                       ))}
@@ -178,12 +178,12 @@ function RunFilmstrip({ runs }: { runs: RunSummary[] }) {
                   </div>
                 ) : null}
                 {selectedRun.agent_trace?.steps?.length ? (
-                  <div className="rounded-[18px] border border-[var(--border)] bg-[var(--surface-2)] p-4">
+                  <div className="rounded-[18px] border border-(--border) bg-(--surface-2) p-4">
                     <div className="section-label">Agent trace</div>
-                    <div className="mt-3 space-y-3 text-sm leading-7 text-[var(--muted-foreground)]">
+                    <div className="mt-3 space-y-3 text-sm leading-7 text-(--muted-foreground)">
                       {selectedRun.agent_trace.steps.map((step, index) => (
-                        <div key={`${selectedRun.id}-trace-${index}`} className="rounded-[16px] border border-[var(--border)] bg-[var(--surface-1)] p-3">
-                          <div className="font-semibold text-[var(--foreground)]">Step {index + 1}</div>
+                        <div key={`${selectedRun.id}-trace-${index}`} className="rounded-[16px] border border-(--border) bg-(--surface-1) p-3">
+                          <div className="font-semibold text-foreground">Step {index + 1}</div>
                           <p className="mt-2 whitespace-pre-wrap"><span className="font-semibold">Thought:</span> {step.thought}</p>
                           {step.action ? <p className="mt-2 whitespace-pre-wrap"><span className="font-semibold">Action:</span> {step.action} {step.action_input ? `- ${step.action_input}` : ""}</p> : null}
                           {step.observation ? <p className="mt-2 whitespace-pre-wrap"><span className="font-semibold">Observation:</span> {step.observation}</p> : null}
@@ -285,7 +285,7 @@ function ResultsDashboard({ experimentId, experimentName }: { experimentId: stri
         <PanelHeader
           label="Summary"
           title="Result snapshot"
-          description="Export JSON or markdown directly from the frontend using the current results endpoint."
+          description="Download results as JSON or a formatted Markdown report."
           actions={
             <>
               <button type="button" className="btn-secondary" onClick={() => {
@@ -312,14 +312,14 @@ function ResultsDashboard({ experimentId, experimentName }: { experimentId: stri
           }
         />
         <div className="panel-body grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
-          <div className="rounded-[18px] border border-[var(--border)] bg-[var(--surface-2)] p-4">
+          <div className="rounded-[18px] border border-(--border) bg-(--surface-2) p-4">
             <div className="section-label">Narrative summary</div>
-            <p className="mt-3 text-sm leading-8 text-[var(--muted-foreground)]">{metrics.summary_text || "No generated summary was stored for this experiment. The core metrics below still reflect the latest saved run."}</p>
+            <p className="mt-3 text-sm leading-8 text-(--muted-foreground)">{metrics.summary_text || "No generated summary was stored for this experiment. The core metrics below still reflect the latest saved run."}</p>
           </div>
-          <div className="space-y-3 rounded-[18px] border border-[var(--border)] bg-[var(--surface-2)] p-4">
+          <div className="space-y-3 rounded-[18px] border border-(--border) bg-(--surface-2) p-4">
             <div>
               <div className="section-label">Quality mix</div>
-              <div className="mt-2 text-sm text-[var(--muted-foreground)]">Exact accuracy versus mean F1</div>
+              <div className="mt-2 text-sm text-(--muted-foreground)">Exact accuracy versus mean F1</div>
             </div>
             <div className="space-y-3">
               <div>
@@ -343,10 +343,10 @@ function ResultsDashboard({ experimentId, experimentName }: { experimentId: stri
 
       {metrics.failure_modes?.total_failures ? (
         <Panel>
-          <PanelHeader label="Failures" title={`Failure analysis (${metrics.failure_modes.total_failures})`} description="Sampled from the existing failure mode counts returned by the backend." />
+          <PanelHeader label="Failures" title={`Failure analysis (${metrics.failure_modes.total_failures})`} description="Breakdown of error types from the latest run." />
           <div className="panel-body grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             {Object.entries(metrics.failure_modes.counts).map(([mode, count]) => (
-              <div key={mode} className="rounded-[18px] border border-[var(--border)] bg-[var(--surface-2)] p-4">
+              <div key={mode} className="rounded-[18px] border border-(--border) bg-(--surface-2) p-4">
                 <div className="section-label">{mode.replace(/_/g, " ")}</div>
                 <div className="metric-value mt-2 text-3xl">{count}</div>
               </div>
@@ -380,7 +380,7 @@ function ProfileDashboard({ experimentId }: { experimentId: string }) {
 
   return (
     <Panel>
-      <PanelHeader label="Optimization" title="Execution profile" description="These numbers already come from the backend optimization report stored with the run." />
+      <PanelHeader label="Optimization" title="Execution profile" description="Profiling data from batching, caching, and per-phase execution timing." />
       <div className="panel-body space-y-4">
         <div className="grid gap-4 md:grid-cols-3">
           <MetricCard label="Wall time" value={<AnimatedNumber value={(profile.total_wall_time_ms ?? 0) / 1000} decimals={2} suffix=" s" className="text-3xl" />} detail="End-to-end execution time" />
@@ -389,7 +389,7 @@ function ProfileDashboard({ experimentId }: { experimentId: string }) {
         </div>
 
         {sections.length ? (
-          <div className="overflow-x-auto rounded-[18px] border border-[var(--border)] bg-[var(--surface-2)]">
+          <div className="overflow-x-auto rounded-[18px] border border-(--border) bg-(--surface-2)">
             <table className="data-table min-w-[720px]">
               <thead>
                 <tr>
@@ -493,17 +493,6 @@ export default function ExperimentDetailPage({ params }: Props) {
         eyebrow={<><ScanSearch className="size-3.5" /> Experiment detail</>}
         title={experiment.name}
         description={experiment.description || "Inspect configuration, metrics, and execution details for this experiment."}
-        actions={
-          <>
-            {experiment.status === "completed" ? <Link href={`/experiments/compare?preselect=${id}`} className="btn-secondary">Compare</Link> : null}
-            {canRun ? (
-              <button type="button" className="btn-primary" onClick={() => runMutation.mutate()} disabled={runMutation.isPending}>
-                {runMutation.isPending ? <LoaderCircle className="size-4 animate-spin" /> : <Play className="size-4" />}
-                {experiment.status === "completed" ? "Run again" : "Run experiment"}
-              </button>
-            ) : null}
-          </>
-        }
       >
         <div className="flex flex-wrap gap-2">
           <StatusPill status={experiment.status} />
@@ -511,6 +500,19 @@ export default function ExperimentDetailPage({ params }: Props) {
           <span className="chip">{experiment.config.model_name.split("/").pop()}</span>
           <span className="chip">{experiment.config.dataset_name}</span>
           {isActive ? <span className="chip">Auto-refresh every 3s</span> : null}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Link href="/experiments" className="btn-secondary">
+            <ArrowLeft className="size-4" />
+            Back to experiments
+          </Link>
+          {experiment.status === "completed" ? <Link href={`/experiments/compare?preselect=${id}`} className="btn-secondary">Compare</Link> : null}
+          {canRun ? (
+            <button type="button" className="btn-primary" onClick={() => runMutation.mutate()} disabled={runMutation.isPending}>
+              {runMutation.isPending ? <LoaderCircle className="size-4 animate-spin" /> : <Play className="size-4" />}
+              {experiment.status === "completed" ? "Run again" : "Run experiment"}
+            </button>
+          ) : null}
         </div>
       </PageHeader>
 
@@ -521,17 +523,10 @@ export default function ExperimentDetailPage({ params }: Props) {
         </div>
       ) : null}
 
-      <section className="grid gap-4 xl:grid-cols-[0.78fr_1.22fr]">
+      <section>
         <Panel>
-          <PanelHeader label="Configuration" title="Experiment payload" description="The raw config remains visible so you can verify exactly what was sent to the backend." />
-          <div className="panel-body">
-            <pre className="code-panel">{JSON.stringify(experiment.config, null, 2)}</pre>
-          </div>
-        </Panel>
-
-        <Panel>
-          <PanelHeader label="Lifecycle" title="Run metadata" description="Execution status and timestamps reflect the current backend experiment model." />
-          <div className="panel-body grid gap-4 sm:grid-cols-2">
+          <PanelHeader label="Lifecycle" title="Run metadata" description="Lifecycle timestamps for this experiment run." />
+          <div className="panel-body grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <div className="metric-card">
               <div className="metric-label">Created</div>
               <div className="metric-value text-xl">{formatDate(experiment.created_at)}</div>
@@ -548,6 +543,15 @@ export default function ExperimentDetailPage({ params }: Props) {
               <div className="metric-label">Samples</div>
               <div className="metric-value text-xl">{experiment.config.num_samples ?? "--"}</div>
             </div>
+          </div>
+        </Panel>
+      </section>
+
+      <section>
+        <Panel>
+          <PanelHeader label="Configuration" title="Experiment payload" description="The experiment configuration as submitted." />
+          <div className="panel-body">
+            <pre className="code-panel">{JSON.stringify(experiment.config, null, 2)}</pre>
           </div>
         </Panel>
       </section>
