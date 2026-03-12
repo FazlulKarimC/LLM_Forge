@@ -52,21 +52,22 @@ export default function LandingPage() {
     <div className="min-h-screen">
       <header className="border-b border-(--border) bg-[color-mix(in_oklab,var(--background)_86%,transparent)] backdrop-blur-xl">
         <div className="page-width flex items-center justify-between gap-4 px-4 py-5 sm:px-6">
-          <Link href="/" className="flex items-center gap-3">
-            <div className="flex size-11 items-center justify-center rounded-[18px] border border-(--border) bg-(--surface-2) text-(--primary)">
+          <Link href="/" className="flex items-center gap-3 min-w-0">
+            <div className="flex shrink-0 size-11 items-center justify-center rounded-[18px] border border-(--border) bg-(--surface-2) text-(--primary)">
               <Activity className="size-5" />
             </div>
-            <div>
-              <div className="text-sm font-semibold uppercase tracking-[0.18em] text-(--muted-foreground)">LLMForge</div>
-              <div className="text-lg font-semibold tracking-[-0.04em]">Evaluation Console</div>
+            <div className="min-w-0">
+              <div className="truncate text-sm font-semibold uppercase tracking-[0.18em] text-(--muted-foreground)">LLMForge</div>
+              <div className="truncate text-lg font-semibold tracking-[-0.04em]">Evaluation Console</div>
             </div>
           </Link>
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2">
             <a href="https://github.com/FazlulKarimC/LLM_Forge" target="_blank" rel="noreferrer" className="btn-ghost hidden sm:inline-flex">
               Repository
             </a>
             <Link href="/dashboard" className="btn-primary">
-              Launch app
+              <span className="hidden sm:inline">Launch app</span>
+              <span className="sm:hidden">Launch</span>
               <ArrowRight className="size-4" />
             </Link>
           </div>
@@ -81,19 +82,19 @@ export default function LandingPage() {
               LLM Evaluation Platform
             </div>
             <div className="space-y-4">
-              <h1 className="text-[clamp(3rem,6vw,5.75rem)] font-semibold leading-[0.92] tracking-[-0.06em]">
+              <h1 className="text-[clamp(2.5rem,8vw,5.75rem)] font-semibold leading-[0.92] tracking-[-0.06em]">
                 Run, compare, and optimize LLM experiments.
               </h1>
               <p className="max-w-2xl text-lg leading-8 text-(--muted-foreground)">
                 Configure reasoning methods, run side-by-side A/B comparisons, inspect statistical significance, and track latency and token cost — all from one console.
               </p>
             </div>
-            <div className="flex flex-wrap items-center gap-3">
-              <Link href="/dashboard" className="btn-primary">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full sm:w-auto">
+              <Link href="/dashboard" className="btn-primary w-full sm:w-auto justify-center">
                 Open dashboard
                 <ArrowRight className="size-4" />
               </Link>
-              <Link href="/experiments/new" className="btn-secondary">
+              <Link href="/experiments/new" className="btn-secondary w-full sm:w-auto justify-center">
                 Create experiment
               </Link>
             </div>

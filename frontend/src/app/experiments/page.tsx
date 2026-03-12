@@ -155,8 +155,8 @@ export default function ExperimentsPage() {
             }
           />
           <div className="panel-body">
-            <div className="flex flex-wrap items-end gap-4">
-              <div className="min-w-[160px] flex-1 space-y-2">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 lg:items-end">
+              <div className="space-y-2">
                 <label className="field-label" htmlFor="status-filter">Status</label>
                 <select id="status-filter" className="select-shell" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
                   <option value="">All statuses</option>
@@ -168,7 +168,7 @@ export default function ExperimentsPage() {
                 </select>
               </div>
 
-              <div className="min-w-[160px] flex-1 space-y-2">
+              <div className="space-y-2">
                 <label className="field-label" htmlFor="method-filter">Reasoning method</label>
                 <select id="method-filter" className="select-shell" value={methodFilter} onChange={(event) => setMethodFilter(event.target.value)}>
                   <option value="">All methods</option>
@@ -178,7 +178,7 @@ export default function ExperimentsPage() {
                 </select>
               </div>
 
-              <div className="min-w-[200px] flex-1 rounded-[18px] border border-(--border) bg-(--surface-2) p-4">
+              <div className="rounded-[18px] border border-(--border) bg-(--surface-2) p-4">
                 <div className="section-label">Current slice</div>
                 <div className="mt-1 font-semibold tracking-[-0.03em]">
                   {statusFilter || methodFilter ? "Filtered workspace" : "Full workspace"}
@@ -224,8 +224,8 @@ export default function ExperimentsPage() {
                     onClick={() => router.push(`/experiments/${experiment.id}`)}
                     onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); router.push(`/experiments/${experiment.id}`); } }}
                   >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0 flex-1 space-y-3">
+                    <div className="flex flex-col items-start justify-between gap-4 sm:flex-row">
+                      <div className="min-w-0 w-full flex-1 space-y-3">
                         <div className="flex items-center gap-2">
                           <div className="truncate text-lg font-semibold tracking-[-0.03em]">{experiment.name}</div>
                           <StatusPill status={experiment.status} />
@@ -240,10 +240,10 @@ export default function ExperimentsPage() {
                           <span className="chip">Samples {experiment.config.num_samples ?? "N/A"}</span>
                         </div>
                       </div>
-                      <div className="flex shrink-0 items-center gap-2" onClick={(event) => event.stopPropagation()}>
+                      <div className="flex w-full shrink-0 flex-wrap items-center gap-2 sm:w-auto" onClick={(event) => event.stopPropagation()}>
                         <button
                           type="button"
-                          className="btn-secondary"
+                          className="btn-secondary flex-1 justify-center sm:flex-none"
                           onClick={() => runMutation.mutate(experiment.id)}
                           disabled={runningIds.has(experiment.id) || experiment.status === "running" || experiment.status === "queued"}
                         >
@@ -252,7 +252,7 @@ export default function ExperimentsPage() {
                         </button>
                         <button
                           type="button"
-                          className="btn-danger"
+                          className="btn-danger flex-1 justify-center sm:flex-none"
                           onClick={() => setExperimentToDelete({ id: experiment.id, name: experiment.name })}
                           disabled={deletingIds.has(experiment.id)}
                         >
