@@ -24,6 +24,7 @@ statsmodels>=0.14.0
 # --- Utilities ---
 python-dotenv>=1.0.0
 httpx>=0.26.0
+requests>=2.31.0
 tenacity>=8.2.0
 
 # --- Background Tasks (RQ + Upstash Redis) ---

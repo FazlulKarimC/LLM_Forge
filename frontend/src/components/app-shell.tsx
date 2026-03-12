@@ -240,7 +240,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const sidebar = (
     <aside
       className={cn(
-        "flex h-screen flex-col border-r border-(--border) bg-[color-mix(in_oklab,var(--surface-1)_92%,transparent)] backdrop-blur",
+        "flex h-full flex-col border-r border-(--border) bg-[color-mix(in_oklab,var(--surface-1)_92%,transparent)] backdrop-blur",
         collapsed ? "w-[88px]" : "w-(--sidebar-width)"
       )}
     >
@@ -343,8 +343,8 @@ export function AppShell({ children }: { children: ReactNode }) {
         <div className="hidden lg:sticky lg:top-0 lg:h-screen lg:block">{sidebar}</div>
         <div className="min-w-0 overflow-y-auto">
           <header className="sticky top-0 z-40 border-b border-(--border) bg-[color-mix(in_oklab,var(--background)_78%,transparent)] backdrop-blur-xl">
-            <div className="page-width flex items-center justify-between gap-3 px-4 py-4 sm:px-6">
-              <div className="flex items-center gap-2">
+            <div className="page-width flex flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-6">
+              <div className="flex shrink-0 items-center gap-2">
                 <button
                   type="button"
                   className="btn-secondary lg:hidden size-11 rounded-[16px]! px-0!"
@@ -353,8 +353,8 @@ export function AppShell({ children }: { children: ReactNode }) {
                 >
                   <Command className="size-4" />
                 </button>
-                <button type="button" className="btn-secondary" onClick={() => setPaletteOpen(true)}>
-                  <Search className="size-4" />
+                <button type="button" className="btn-secondary shrink-0" onClick={() => setPaletteOpen(true)}>
+                  <Search className="size-4 shrink-0" />
                   Search
                   <span className="hidden items-center gap-1 sm:inline-flex">
                     <Keycap>Ctrl</Keycap>
@@ -362,13 +362,13 @@ export function AppShell({ children }: { children: ReactNode }) {
                   </span>
                 </button>
               </div>
-              <div className="hidden items-center gap-2 sm:flex">
-                <Link href="/" className="btn-ghost">
-                  <Home className="size-4" />
+              <div className="hidden flex-wrap items-center gap-2 sm:flex">
+                <Link href="/" className="btn-ghost shrink-0">
+                  <Home className="size-4 shrink-0" />
                   Home
                 </Link>
-                <a href="https://github.com/FazlulKarimC/LLM_Forge" target="_blank" rel="noreferrer" className="btn-ghost">
-                  <Github className="size-4" />
+                <a href="https://github.com/FazlulKarimC/LLM_Forge" target="_blank" rel="noreferrer" className="btn-ghost shrink-0">
+                  <Github className="size-4 shrink-0" />
                   GitHub
                 </a>
               </div>
@@ -401,7 +401,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                     <X className="size-4" />
                   </button>
                 </div>
-                <div className="flex-1">{sidebar}</div>
+                <div className="flex-1 overflow-hidden">{sidebar}</div>
               </div>
             </motion.div>
           </motion.div>

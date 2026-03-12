@@ -318,7 +318,7 @@ export default function NewExperimentPage() {
         >
           <Panel>
             <PanelHeader label="Basics" title="Name the experiment" description="Choose a clear title that reads well in tables, exports, and comparisons." />
-            <div className="panel-body grid gap-4 lg:grid-cols-[1fr_1.1fr]">
+            <div className="panel-body grid grid-cols-1 gap-4 lg:grid-cols-[1fr_1.1fr]">
               <div>
                 <label className="field-label" htmlFor="experiment-name">Experiment name</label>
                 <input
@@ -347,10 +347,18 @@ export default function NewExperimentPage() {
 
           <Panel>
             <PanelHeader label="Configuration" title="Model and reasoning" description="Select the model, inference provider, and reasoning strategy." />
-            <div className="panel-body grid gap-4 lg:grid-cols-2">
+            <div className="panel-body grid grid-cols-1 gap-4 md:grid-cols-2">
               <div>
                 <label className="field-label" htmlFor="model-name">Model</label>
-                <select id="model-name" value={formData.model_name} onChange={(event) => updateField("model_name", event.target.value)} className="select-shell">
+                <select id="model-name" value={formData.model_name} onChange={(event) => {
+                  const value = event.target.value;
+                  updateField("model_name", value);
+                  if (value === "custom_hosted" && formData.provider !== "custom") {
+                    updateField("provider", "custom");
+                  } else if (value !== "custom_hosted" && formData.provider === "custom") {
+                    updateField("provider", "auto");
+                  }
+                }} className="select-shell">
                   <optgroup label="Hugging Face / serverless">
                     {availableModels.map((model) => (
                       <option key={model.value} value={model.value}>{model.label}</option>
@@ -373,7 +381,15 @@ export default function NewExperimentPage() {
               </div>
               <div>
                 <label className="field-label" htmlFor="provider">Provider</label>
-                <select id="provider" value={formData.provider} onChange={(event) => updateField("provider", event.target.value as typeof formData.provider)} className="select-shell">
+                <select id="provider" value={formData.provider} onChange={(event) => {
+                  const value = event.target.value as typeof formData.provider;
+                  updateField("provider", value);
+                  if (value === "custom" && formData.model_name !== "custom_hosted") {
+                    updateField("model_name", "custom_hosted");
+                  } else if (value !== "custom" && formData.model_name === "custom_hosted") {
+                    updateField("model_name", availableModels[0]?.value ?? "meta-llama/Llama-3.2-1B-Instruct");
+                  }
+                }} className="select-shell">
                   {providerOptions.map((option) => (
                     <option key={option.value} value={option.value}>{option.label}</option>
                   ))}
@@ -385,7 +401,7 @@ export default function NewExperimentPage() {
             {formData.model_name === "custom_hosted" ? (
               <div className="panel-body pt-0">
                 <div className="rounded-[18px] border border-(--border) bg-(--surface-2) p-4">
-                  <div className="grid gap-4 lg:grid-cols-2">
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <div>
                       <label className="field-label" htmlFor="custom-base-url">Base URL</label>
                       <input id="custom-base-url" type="url" value={customBaseUrl} onChange={(event) => setCustomBaseUrl(event.target.value)} className="input-shell font-mono text-sm" placeholder="http://localhost:8000/v1" />
@@ -406,7 +422,7 @@ export default function NewExperimentPage() {
 
           <Panel>
             <PanelHeader label="Evaluation setup" title="Dataset and runtime" description="Choose the evaluation dataset, retrieval strategy, and runtime parameters." />
-            <div className="panel-body grid gap-4 lg:grid-cols-2">
+            <div className="panel-body grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-2">
               <div>
                 <label className="field-label" htmlFor="dataset">Dataset</label>
                 <select id="dataset" value={formData.dataset_name} onChange={(event) => updateField("dataset_name", event.target.value)} className="select-shell">
@@ -446,7 +462,7 @@ export default function NewExperimentPage() {
 
           <Panel>
             <PanelHeader label="Generation" title="Hyperparameters" description="Control randomness, output length, and reproducibility." />
-            <div className="panel-body grid gap-4 lg:grid-cols-3">
+            <div className="panel-body grid grid-cols-1 gap-4 md:grid-cols-3">
               <div>
                 <label className="field-label" htmlFor="temperature">Temperature</label>
                 <input id="temperature" type="number" step="0.1" min="0" max="2" value={formData.temperature} onChange={(event) => updateField("temperature", parseFloat(event.target.value) || 0)} className="input-shell" />
@@ -465,7 +481,7 @@ export default function NewExperimentPage() {
           {formData.reasoning_method === "react" ? (
             <Panel>
               <PanelHeader label="Agent settings" title="Tool loop controls" description="Configure tool access and iteration limits for ReAct agent runs." />
-              <div className="panel-body grid gap-4 lg:grid-cols-2">
+              <div className="panel-body grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>
                   <label className="field-label" htmlFor="agent-max-iterations">Max iterations</label>
                   <input id="agent-max-iterations" type="number" min="1" max="20" value={formData.agent_max_iterations} onChange={(event) => updateField("agent_max_iterations", parseInt(event.target.value, 10) || 1)} className="input-shell" />
@@ -501,7 +517,7 @@ export default function NewExperimentPage() {
 
           <Panel>
             <PanelHeader label="Optimization" title="Execution options" description="Enable batching and caching to optimize throughput and reduce costs." />
-            <div className="panel-body grid gap-4 lg:grid-cols-2">
+            <div className="panel-body grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-2">
               <div className="rounded-[18px] border border-(--border) bg-(--surface-2) p-4">
                 <label className="flex items-center gap-3 font-medium">
                   <input type="checkbox" checked={formData.enable_batching} onChange={(event) => updateField("enable_batching", event.target.checked)} />
