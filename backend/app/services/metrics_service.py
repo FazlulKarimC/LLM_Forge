@@ -114,7 +114,13 @@ class MetricsService:
             experiment_id=experiment_id
         )
 
-        # Build raw metrics dict
+        # Keys owned by this service — all other keys in raw_metrics are preserved
+        _METRICS_OWNED_KEYS = {
+            "summary_text", "accuracy", "latency", "cost", "faithfulness",
+            "semantic_similarity", "failure_modes", "attempt", "per_run",
+        }
+
+        # Build raw metrics dict (only keys this service owns)
         raw_metrics = {
             "summary_text": summary_text,
             "accuracy": accuracy,
@@ -147,6 +153,12 @@ class MetricsService:
         existing_query = select(Result).where(Result.experiment_id == experiment_id)
         existing_result = await self.db.execute(existing_query)
         db_result = existing_result.scalar_one_or_none()
+
+        # Merge-safe: preserve keys written by other services (regression, routing, etc.)
+        if db_result and db_result.raw_metrics:
+            preserved = {k: v for k, v in db_result.raw_metrics.items()
+                         if k not in _METRICS_OWNED_KEYS}
+            raw_metrics.update(preserved)
 
         # Common field values
         fields = dict(

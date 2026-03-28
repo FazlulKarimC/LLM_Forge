@@ -307,3 +307,50 @@ async def delete_experiment(
     
     if not deleted:
         raise ResourceNotFoundException(resource_type="Experiment", resource_id=experiment_id)
+
+
+@router.post("/{experiment_id}/set-baseline", response_model=ExperimentResponse)
+async def set_baseline(
+    experiment_id: UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Pin an experiment as the baseline for its lineage.
+    
+    Rules:
+    - Only COMPLETED experiments can be pinned
+    - Unpins any existing baseline with same (dataset_name, model_name) lineage
+    - Cannot pin an experiment that references another baseline
+    - pinned_attempt is frozen to current_attempt at pin time
+    """
+    from app.services.regression_service import RegressionService
+    service = RegressionService(db)
+    
+    try:
+        experiment = await service.pin_baseline(experiment_id)
+        await db.commit()
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    
+    exp_service = ExperimentService(db)
+    return exp_service._to_response(experiment)
+
+
+@router.delete("/{experiment_id}/set-baseline", response_model=ExperimentResponse)
+async def unset_baseline(
+    experiment_id: UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    """Remove baseline status. Does NOT invalidate previous regression verdicts."""
+    from app.services.regression_service import RegressionService
+    service = RegressionService(db)
+    
+    try:
+        experiment = await service.unpin_baseline(experiment_id)
+        await db.commit()
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    
+    exp_service = ExperimentService(db)
+    return exp_service._to_response(experiment)
+

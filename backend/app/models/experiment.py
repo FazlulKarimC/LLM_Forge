@@ -9,7 +9,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import Column, String, DateTime, JSON, Enum, Text, Integer
+from sqlalchemy import Column, String, DateTime, JSON, Enum, Text, Integer, Boolean, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
@@ -72,6 +72,13 @@ class Experiment(Base):
     # Phase 2: Tags + Run Manifest
     tags = Column(JSON, nullable=True, default=list)   # Free-form experiment tags
     run_manifest = Column(JSON, nullable=True)         # Full reproducibility manifest
+    
+    # Phase: Trajectory Regression Gates
+    is_baseline = Column(Boolean, default=False, server_default="false", nullable=False)
+    baseline_id = Column(UUID(as_uuid=True), ForeignKey("experiments.id"), nullable=True)
+    pinned_attempt = Column(Integer, nullable=True)    # Frozen attempt when pinned as baseline
+    prompt_version_id = Column(UUID(as_uuid=True), nullable=True)
+    regression_passed = Column(Boolean, nullable=True) # null=not checked, true=pass, false=fail
     
     # Soft delete
     deleted_at = Column(DateTime(timezone=True), nullable=True, index=True)

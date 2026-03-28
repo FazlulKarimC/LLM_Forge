@@ -125,6 +125,12 @@ class Run(Base):
     
     # ----- Attempt tracking (non-destructive re-runs) -----
     attempt: Mapped[int] = mapped_column(Integer, default=1, server_default="1", nullable=False)
+
+    # ----- Grader verdicts (Phase: Trajectory Regression Gates) -----
+    grader_results: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+
+    # ----- Routing telemetry (Phase: Adaptive Router) -----
+    served_provider: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     
     # ----- Timestamps -----
     created_at: Mapped[datetime] = mapped_column(

@@ -65,6 +65,7 @@ class RunSummary(BaseModel):
     agent_trace: Optional[Dict[str, Any]] = None
     failure_mode: Optional[str] = None
     error_message: Optional[str] = None
+    grader_results: Optional[Dict[str, Any]] = None
 
     model_config = ConfigDict(from_attributes=True)
 

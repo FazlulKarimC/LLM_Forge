@@ -267,6 +267,32 @@ class StatisticalService:
         runs_a = [run for run in runs_a if run.attempt == latest_attempt_a]
         runs_b = [run for run in runs_b if run.attempt == latest_attempt_b]
         
+        result = self.compare_run_sets(runs_a, runs_b)
+        result["experiment_a_id"] = str(experiment_a_id)
+        result["experiment_b_id"] = str(experiment_b_id)
+        return result
+
+    @staticmethod
+    def compare_run_sets(
+        runs_a: list,
+        runs_b: list,
+    ) -> dict:
+        """
+        Attempt-agnostic statistical comparison on pre-filtered run lists.
+        
+        Reuses all existing logic (McNemar, bootstrap, per-example diff)
+        but takes already-selected runs instead of loading from DB.
+        Callers are responsible for attempt filtering.
+        
+        Args:
+            runs_a: Pre-filtered runs for side A
+            runs_b: Pre-filtered runs for side B
+            
+        Returns:
+            Dict with statistical comparison results (no experiment IDs).
+        """
+        svc = StatisticalService.__new__(StatisticalService)
+        
         # Index runs by example_id for matching
         runs_a_by_example = {r.example_id: r for r in runs_a}
         runs_b_by_example = {r.example_id: r for r in runs_b}
@@ -275,7 +301,7 @@ class StatisticalService:
         common_examples = set(runs_a_by_example.keys()) & set(runs_b_by_example.keys())
         
         if not common_examples:
-            raise ValueError("No common examples found between experiments")
+            raise ValueError("No common examples found between run sets")
         
         # Build paired lists
         correct_a = []
@@ -304,43 +330,46 @@ class StatisticalService:
                     "example_id": example_id,
                     "a_correct": ca,
                     "b_correct": cb,
-                    "a_output": run_a.raw_output,
-                    "b_output": run_b.raw_output,
-                    "expected": run_a.expected_output,
+                    "a_output": getattr(run_a, 'raw_output', None),
+                    "b_output": getattr(run_b, 'raw_output', None),
+                    "expected": getattr(run_a, 'expected_output', None),
                     "a_score": sa,
                     "b_score": sb,
                 })
         
         # Compute McNemar's test
-        mcnemar_result = self.mcnemar_test(correct_a, correct_b)
+        mcnemar_result = svc.mcnemar_test(correct_a, correct_b)
         
-        # P0 #5: Compute SEPARATE CIs for accuracy (booleans) and F1 (scores)
+        # Compute SEPARATE CIs for accuracy (booleans) and F1 (scores)
         accuracy_values_a = [1.0 if c else 0.0 for c in correct_a]
         accuracy_values_b = [1.0 if c else 0.0 for c in correct_b]
         
-        accuracy_ci_a = self.bootstrap_confidence_interval(accuracy_values_a)
-        accuracy_ci_b = self.bootstrap_confidence_interval(accuracy_values_b)
-        f1_ci_a = self.bootstrap_confidence_interval(scores_a)
-        f1_ci_b = self.bootstrap_confidence_interval(scores_b)
+        accuracy_ci_a = svc.bootstrap_confidence_interval(accuracy_values_a)
+        accuracy_ci_b = svc.bootstrap_confidence_interval(accuracy_values_b)
+        f1_ci_a = svc.bootstrap_confidence_interval(scores_a)
+        f1_ci_b = svc.bootstrap_confidence_interval(scores_b)
         
         # Accuracy summary
         acc_a = sum(correct_a) / len(correct_a) if correct_a else 0.0
         acc_b = sum(correct_b) / len(correct_b) if correct_b else 0.0
         
+        # Overlap metrics
+        total_a = len(runs_a_by_example)
+        total_b = len(runs_b_by_example)
+        overlap_ratio = len(common_examples) / max(total_a, total_b) if max(total_a, total_b) > 0 else 0.0
+        
         return {
-            "experiment_a_id": str(experiment_a_id),
-            "experiment_b_id": str(experiment_b_id),
             "num_common_examples": len(common_examples),
+            "overlap_ratio": overlap_ratio,
             "accuracy_a": acc_a,
             "accuracy_b": acc_b,
             "accuracy_diff": acc_b - acc_a,
             "mcnemar": mcnemar_result,
-            # P0 #5: Clearly labeled CIs
             "accuracy_ci_a": accuracy_ci_a,
             "accuracy_ci_b": accuracy_ci_b,
             "f1_ci_a": f1_ci_a,
             "f1_ci_b": f1_ci_b,
-            # Keep backward-compatible keys (mapped to accuracy CIs)
+            # Keep backward-compatible keys
             "bootstrap_ci_a": accuracy_ci_a,
             "bootstrap_ci_b": accuracy_ci_b,
             "per_example_differences": per_example[:50],  # Limit to 50
@@ -351,3 +380,4 @@ class StatisticalService:
                 "b_only_correct": mcnemar_result["c"],
             },
         }
+

@@ -167,6 +167,75 @@ class OptimizationConfig(BaseModel):
     )
 
 
+class GraderType(str, Enum):
+    """Supported deterministic grader types for per-run evaluation."""
+    MAX_TURNS = "max_turns"
+    REQUIRED_TOOLS = "required_tools"
+    FORBIDDEN_FAILURE_MODES = "forbidden_failure_modes"
+    MUST_USE_RETRIEVAL_WHEN_RAG = "must_use_retrieval_when_rag"
+    LATENCY_BUDGET_MS = "latency_budget_ms"
+    TOKEN_BUDGET = "token_budget"
+    MIN_F1_SCORE = "min_f1_score"
+
+
+class GraderRule(BaseModel):
+    """A single deterministic grading rule applied per-run."""
+    name: str = Field(..., min_length=1, max_length=64, description="Unique grader name")
+    type: GraderType = Field(..., description="Grader type")
+    params: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Grader-specific params, e.g. {'max': 5}"
+    )
+
+
+class GradersConfig(BaseModel):
+    """Grading rules applied per-run after execution."""
+    rules: List[GraderRule] = Field(default_factory=list)
+    llm_judge_on_failures: bool = Field(
+        default=False,
+        description="Run sampled LLM judge only on grader failures/disagreements"
+    )
+
+    @field_validator("rules")
+    @classmethod
+    def unique_names(cls, v: List[GraderRule]) -> List[GraderRule]:
+        """Enforce unique grader names within a config."""
+        names = [r.name for r in v]
+        if len(names) != len(set(names)):
+            raise ValueError("Grader names must be unique")
+        if len(v) > MAX_TOOL_COUNT:
+            raise ValueError(f"At most {MAX_TOOL_COUNT} grader rules are allowed")
+        return v
+
+
+class RegressionConfig(BaseModel):
+    """Regression gate thresholds — compared against pinned baseline."""
+    accuracy_min_delta: float = Field(
+        default=-0.05,
+        description="Max allowed accuracy drop vs baseline (negative = drop)"
+    )
+    f1_min_delta: float = Field(
+        default=-0.05,
+        description="Max allowed F1 drop vs baseline"
+    )
+    latency_p95_max_ms: Optional[float] = Field(
+        default=None,
+        description="Absolute p95 latency cap in ms"
+    )
+    no_sample_regressions: bool = Field(
+        default=False,
+        description="Fail if any previously-correct sample becomes wrong"
+    )
+    max_new_failures: Optional[int] = Field(
+        default=None,
+        description="Max acceptable new failure-mode occurrences"
+    )
+    min_overlap_ratio: float = Field(
+        default=0.8, ge=0.0, le=1.0,
+        description="Min sample overlap ratio to produce PASS/FAIL verdict"
+    )
+
+
 class ExperimentConfig(BaseModel):
     """
     Complete experiment configuration.
@@ -216,6 +285,21 @@ class ExperimentConfig(BaseModel):
         ge=1,
         le=500,  # Matches frontend validation cap
         description="Number of dataset samples to evaluate"
+    )
+
+    # Grading rules (Phase: Trajectory Regression Gates)
+    graders: Optional[GradersConfig] = None
+
+    # Regression gate thresholds
+    regression: Optional[RegressionConfig] = None
+
+    # Routing policy (Phase: Adaptive Router)
+    routing: Optional['RoutingConfig'] = None
+
+    # Prompt lineage tracking
+    prompt_version_id: Optional[UUID] = Field(
+        default=None,
+        description="Link to PromptVersion for tracking prompt lineage"
     )
     
     @field_validator("agent")
@@ -268,6 +352,8 @@ class ExperimentResponse(BaseModel):
     error_message: Optional[str]
     tags: Optional[List[str]] = None
     run_manifest: Optional[Dict[str, Any]] = None
+    is_baseline: Optional[bool] = None
+    regression_passed: Optional[bool] = None
     
     # Pydantic v2 style — replaces deprecated inner `class Config`
     model_config = ConfigDict(from_attributes=True)
@@ -279,3 +365,23 @@ class ExperimentListResponse(BaseModel):
     experiments: List[ExperimentResponse]
     skip: int
     limit: int
+
+
+class RoutingConfig(BaseModel):
+    """Adaptive router configuration."""
+    policy: str = Field(
+        default="fallback_chain",
+        description="Routing policy: fallback_chain, cheapest_first, fastest_first, adaptive"
+    )
+    epsilon: float = Field(
+        default=0.15, ge=0.0, le=1.0,
+        description="Exploration rate for adaptive (epsilon-greedy) policy"
+    )
+    exploration_window: int = Field(
+        default=10, ge=1, le=50,
+        description="Number of initial requests to round-robin before exploiting"
+    )
+
+
+# Rebuild forward refs for ExperimentConfig.routing
+ExperimentConfig.model_rebuild()

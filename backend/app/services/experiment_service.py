@@ -102,6 +102,10 @@ class ExperimentService:
             started_at=experiment.started_at,
             completed_at=experiment.completed_at,
             error_message=experiment.error_message,
+            tags=experiment.tags,
+            run_manifest=experiment.run_manifest,
+            is_baseline=getattr(experiment, 'is_baseline', False),
+            regression_passed=getattr(experiment, 'regression_passed', None),
         )
     
     async def create(self, data: ExperimentCreate) -> ExperimentResponse:
@@ -122,13 +126,17 @@ class ExperimentService:
         manifest_data = {
             "dataset_name": data.config.dataset_name,
             "model_name": data.config.model_name,
-            "provider": "hf_api",
+            "provider": data.config.provider.value if data.config.provider else "auto",
             "reasoning_method": data.config.reasoning_method.value,
             "hyperparameters": config_dict.get("hyperparameters", {}),
             "num_samples": data.config.num_samples,
             "rag": config_dict.get("rag"),
             "agent": config_dict.get("agent"),
             "optimization": config_dict.get("optimization"),
+            "graders": config_dict.get("graders"),
+            "regression": config_dict.get("regression"),
+            "routing": config_dict.get("routing"),
+            "prompt_version_id": str(data.config.prompt_version_id) if hasattr(data.config, 'prompt_version_id') and data.config.prompt_version_id else None,
         }
         manifest_json = json.dumps(manifest_data, sort_keys=True, default=str)
         manifest_data["manifest_hash"] = hashlib.sha256(manifest_json.encode()).hexdigest()
@@ -483,8 +491,27 @@ class ExperimentService:
                     # No API keys configured — fall back to HF API without key
                     engines.append(HFAPIEngine(model_name=model_name))
                 
-                engine = ProviderRouter(engines=engines)
-                logger.info("[EXECUTE] Router initialized with %d providers", len(engines))
+                # Apply routing config if present
+                from app.services.inference.provider_stats import RoutingPolicy as _RP
+                _routing_cfg = experiment_response.config.routing
+                _router_policy = _RP.FALLBACK_CHAIN
+                _epsilon = 0.15
+                _exp_window = 10
+                if _routing_cfg:
+                    try:
+                        _router_policy = _RP(_routing_cfg.policy)
+                    except ValueError:
+                        _router_policy = _RP.FALLBACK_CHAIN
+                    _epsilon = _routing_cfg.epsilon
+                    _exp_window = _routing_cfg.exploration_window
+                
+                engine = ProviderRouter(
+                    engines=engines,
+                    policy=_router_policy,
+                    epsilon=_epsilon,
+                    exploration_window=_exp_window,
+                )
+                logger.info("[EXECUTE] Router initialized with %d providers (policy=%s)", len(engines), _router_policy.value)
             else:
                 # Default: hf_api or settings-based
                 if engine_type == "hf_api":
@@ -963,6 +990,40 @@ class ExperimentService:
             # Step 8: Commit all runs
             logger.info("[EXECUTE] Committing %s runs to database...", len(examples))
             await self.db.commit()
+
+            # Step 8b: Apply graders (if configured)
+            graders_config = experiment_response.config.graders
+            if graders_config and graders_config.rules:
+                from app.services.grader_service import GraderEngine
+                grader_engine = GraderEngine()
+
+                reasoning = experiment_response.config.reasoning_method.value
+                has_rag = bool(
+                    experiment_response.config.rag
+                    and experiment_response.config.rag.retrieval_method != "none"
+                )
+
+                # Load latest-attempt runs for grading
+                from app.models.run import Run as _GraderRun
+                grader_query = select(_GraderRun).where(
+                    _GraderRun.experiment_id == experiment_id,
+                    _GraderRun.attempt == current_attempt,
+                )
+                grader_result = await self.db.execute(grader_query)
+                grader_runs = grader_result.scalars().all()
+
+                for run in grader_runs:
+                    verdicts = [
+                        grader_engine.grade_run(run, rule, reasoning, has_rag)
+                        for rule in graders_config.rules
+                    ]
+                    run.grader_results = {v.grader_name: v.to_dict() for v in verdicts}
+
+                await self.db.flush()
+                logger.info(
+                    "[EXECUTE] ✓ Applied %d graders to %d runs",
+                    len(graders_config.rules), len(grader_runs),
+                )
             
             # Step 9: Compute aggregate metrics and save Result
             logger.info("[EXECUTE] Computing aggregate metrics...")
@@ -981,6 +1042,13 @@ class ExperimentService:
             if result_obj:
                 existing_raw = dict(result_obj.raw_metrics or {})
                 existing_raw["optimization"] = opt_report.to_dict()
+                
+                # Save routing telemetry if using router
+                from app.services.inference.provider_router import ProviderRouter as _PR
+                if isinstance(engine, _PR):
+                    existing_raw["routing"] = engine.stats_tracker.summary()
+                    logger.info("[EXECUTE] ✓ Routing telemetry saved to raw_metrics")
+                
                 result_obj.raw_metrics = existing_raw
                 from sqlalchemy.orm.attributes import flag_modified
                 flag_modified(result_obj, "raw_metrics")
@@ -994,6 +1062,49 @@ class ExperimentService:
             # Step 11: Update status to COMPLETED
             await self.update_status(experiment_id, ExperimentStatus.COMPLETED)
             await self.db.commit()
+            
+            # Step 12: Auto-regression check (if baseline exists)
+            try:
+                from app.services.regression_service import RegressionService
+                reg_svc = RegressionService(self.db)
+                
+                # Reload experiment for baseline lookup
+                from app.models.experiment import Experiment as _RegExp
+                reg_query = select(_RegExp).where(_RegExp.id == experiment_id)
+                reg_result = await self.db.execute(reg_query)
+                reg_exp = reg_result.scalar_one_or_none()
+                
+                if reg_exp:
+                    baseline = await reg_svc.find_baseline(reg_exp)
+                    if baseline and baseline.id != experiment_id:
+                        verdict = await reg_svc.run_regression_check(experiment_id, baseline.id)
+                        
+                        # Merge verdict into raw_metrics
+                        res_q2 = select(Result).where(Result.experiment_id == experiment_id)
+                        res_r2 = await self.db.execute(res_q2)
+                        result_obj2 = res_r2.scalar_one_or_none()
+                        
+                        if result_obj2:
+                            existing_raw2 = dict(result_obj2.raw_metrics or {})
+                            existing_raw2["regression"] = verdict.to_dict()
+                            result_obj2.raw_metrics = existing_raw2
+                            from sqlalchemy.orm.attributes import flag_modified as _fm2
+                            _fm2(result_obj2, "raw_metrics")
+                        
+                        # Denormalize for list-view badges
+                        reg_exp.regression_passed = verdict.passed
+                        
+                        await self.db.flush()
+                        await self.db.commit()
+                        
+                        status = "PASS" if verdict.passed else ("FAIL" if verdict.passed is False else "INCONCLUSIVE")
+                        logger.info(
+                            "[EXECUTE] ✓ Regression check: %s (overlap=%.2f, violations=%d)",
+                            status, verdict.overlap_ratio, len(verdict.violations),
+                        )
+            except Exception as reg_err:
+                # Regression check failure must not fail the experiment
+                logger.warning("[EXECUTE] Regression check failed (non-fatal): %s", reg_err)
             
             logger.info(
                 "[EXECUTE] ✅ EXECUTION COMPLETED (wall time: %.0fms)",

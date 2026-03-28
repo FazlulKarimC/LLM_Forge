@@ -47,6 +47,8 @@ class GenerationResult:
     gpu_memory_mb: Optional[float] = None
     failure_mode: Optional[FailureMode] = None
     error_message: Optional[str] = None
+    served_provider: Optional[str] = None
+    routing_reason: Optional[str] = None
 
 
 class InferenceEngine(ABC):

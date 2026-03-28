@@ -302,6 +302,10 @@ export interface Experiment {
     started_at?: string;
     completed_at?: string;
     error_message?: string;
+    tags?: string[];
+    run_manifest?: Record<string, unknown>;
+    is_baseline?: boolean;
+    regression_passed?: boolean | null;
 }
 
 export interface ExperimentList {
@@ -395,6 +399,7 @@ export interface RunSummary {
     failure_mode?: string;
     error_message?: string;
     agent_trace?: AgentTrace;
+    grader_results?: Record<string, {status: 'pass' | 'fail' | 'skip'; value?: unknown; threshold?: unknown; reason?: string}>;
 }
 
 export interface ModelOption {
@@ -884,3 +889,77 @@ export async function generateSyntheticData(
     return waitForBackgroundJob<SyntheticDataResult>(job.job_id);
 }
 
+// =============================================================================
+// REGRESSION & BASELINE API FUNCTIONS
+// =============================================================================
+
+export interface RegressionReport {
+    passed: boolean | null;
+    baseline_id: string;
+    baseline_attempt: number;
+    candidate_attempt: number;
+    overlap_ratio: number;
+    violations: Array<{ rule: string; message: string; actual?: unknown; threshold?: unknown }>;
+    sample_regressions_count: number;
+    sample_improvements_count: number;
+    grader_summary: Record<string, unknown>;
+    statistical: Record<string, unknown>;
+    config_diff: Record<string, unknown>;
+}
+
+/**
+ * Pin an experiment as the baseline for its lineage.
+ */
+export async function setBaseline(experimentId: string): Promise<Experiment> {
+    return fetchAPI<Experiment>(`/experiments/${experimentId}/set-baseline`, {
+        method: 'POST',
+    });
+}
+
+/**
+ * Remove baseline status from an experiment.
+ */
+export async function unsetBaseline(experimentId: string): Promise<Experiment> {
+    return fetchAPI<Experiment>(`/experiments/${experimentId}/set-baseline`, {
+        method: 'DELETE',
+    });
+}
+
+/**
+ * Get regression report for an experiment.
+ */
+export async function getRegressionReport(experimentId: string, options: RequestInit = {}): Promise<RegressionReport> {
+    return fetchAPI<RegressionReport>(`/results/${experimentId}/regression`, options);
+}
+
+/**
+ * Rerun regression check against a specific or auto-detected baseline.
+ */
+export async function rerunRegression(experimentId: string, baselineId?: string): Promise<RegressionReport> {
+    const params = baselineId ? `?baseline_id=${baselineId}` : '';
+    return fetchAPI<RegressionReport>(`/results/${experimentId}/regression/rerun${params}`, {
+        method: 'POST',
+    });
+}
+
+// =============================================================================
+// ROUTING TELEMETRY API
+// =============================================================================
+
+export interface ProviderStats {
+    total_requests: number;
+    total_errors: number;
+    error_rate: number;
+    mean_latency_ms: number | null;
+    p95_latency_ms: number | null;
+    total_tokens: number;
+    total_cost_usd: number;
+    cost_per_request: number;
+}
+
+/**
+ * Get routing telemetry (per-provider stats) for an experiment.
+ */
+export async function getRoutingTelemetry(experimentId: string): Promise<Record<string, ProviderStats>> {
+    return fetchAPI<Record<string, ProviderStats>>(`/results/${experimentId}/routing`);
+}
