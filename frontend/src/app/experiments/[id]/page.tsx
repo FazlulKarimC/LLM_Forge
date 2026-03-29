@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { use, useState } from "react";
-import { ArrowLeft, Download, FileText, LoaderCircle, Play, ScanSearch, TriangleAlert } from "lucide-react";
+import { ArrowLeft, Download, FileText, LoaderCircle, Pin, PinOff, Play, ScanSearch, Shield, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -15,6 +15,8 @@ import {
   getProfile,
   getRunSummaries,
   runExperiment,
+  setBaseline,
+  unsetBaseline,
   type ProfileData,
   type RunSummary,
 } from "@/lib/api";
@@ -29,6 +31,8 @@ import {
   SkeletonBlock,
   StatusPill,
 } from "@/components/ui/primitives";
+import { RegressionPanel } from "@/components/ui/RegressionPanel";
+import { RoutingPanel } from "@/components/ui/RoutingPanel";
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -164,6 +168,23 @@ function RunFilmstrip({ runs }: { runs: RunSummary[] }) {
                   <div className="section-label">Expected answer</div>
                   <pre className="mt-3 whitespace-pre-wrap text-sm leading-7 text-(--muted-foreground)">{selectedRun.expected_output || "No expected answer recorded"}</pre>
                 </div>
+                {selectedRun.grader_results && Array.isArray(selectedRun.grader_results) && selectedRun.grader_results.length > 0 ? (
+                  <div className="rounded-[18px] border border-(--border) bg-(--surface-2) p-4">
+                    <div className="section-label">Grader verdicts</div>
+                    <div className="mt-3 space-y-2">
+                      {selectedRun.grader_results.map((v: { grader_name: string; status: string; message?: string }, i: number) => (
+                        <div key={`${v.grader_name}-${i}`} className="flex items-center justify-between text-sm">
+                          <span className="font-mono text-xs">{v.grader_name}</span>
+                          <span className={`status-pill ${
+                            v.status === 'pass' ? 'status-completed' :
+                            v.status === 'fail' ? 'status-failed' :
+                            'status-pending'
+                          }`}>{v.status}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
                 {selectedRun.retrieved_chunks?.chunks?.length ? (
                   <div className="rounded-[18px] border border-(--border) bg-(--surface-2) p-4">
                     <div className="section-label">Retrieved context</div>
@@ -499,6 +520,18 @@ export default function ExperimentDetailPage({ params }: Props) {
           <span className="chip">{experiment.config.reasoning_method.toUpperCase()}</span>
           <span className="chip">{experiment.config.model_name.split("/").pop()}</span>
           <span className="chip">{experiment.config.dataset_name}</span>
+          {experiment.is_baseline ? (
+            <span className="chip" style={{ color: 'color-mix(in oklab, var(--primary) 84%, white 12%)' }}>
+              <Pin className="size-3" /> Baseline
+            </span>
+          ) : null}
+          {experiment.regression_passed === true ? (
+            <span className="status-pill status-completed">✅ Pass</span>
+          ) : experiment.regression_passed === false ? (
+            <span className="status-pill status-failed">❌ Fail</span>
+          ) : experiment.regression_passed === null ? (
+            <span className="status-pill status-queued">⚠️ Inconclusive</span>
+          ) : null}
           {isActive ? <span className="chip">Auto-refresh every 3s</span> : null}
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -507,6 +540,39 @@ export default function ExperimentDetailPage({ params }: Props) {
             Back to experiments
           </Link>
           {experiment.status === "completed" ? <Link href={`/experiments/compare?preselect=${id}`} className="btn-secondary">Compare</Link> : null}
+          {experiment.status === "completed" ? (
+            experiment.is_baseline ? (
+              <button
+                type="button"
+                className="btn-danger"
+                onClick={() => {
+                  void unsetBaseline(id).then(() => {
+                    queryClient.invalidateQueries({ queryKey: ["experiment", id] });
+                    queryClient.invalidateQueries({ queryKey: ["experiments"] });
+                    toast.success("Baseline unpinned");
+                  }).catch((e: Error) => toast.error(`Failed to unpin: ${e.message}`));
+                }}
+              >
+                <PinOff className="size-4" />
+                Unpin baseline
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => {
+                  void setBaseline(id).then(() => {
+                    queryClient.invalidateQueries({ queryKey: ["experiment", id] });
+                    queryClient.invalidateQueries({ queryKey: ["experiments"] });
+                    toast.success("Pinned as baseline");
+                  }).catch((e: Error) => toast.error(`Failed to pin: ${e.message}`));
+                }}
+              >
+                <Pin className="size-4" />
+                Pin as baseline
+              </button>
+            )
+          ) : null}
           {canRun ? (
             <button type="button" className="btn-primary" onClick={() => runMutation.mutate()} disabled={runMutation.isPending}>
               {runMutation.isPending ? <LoaderCircle className="size-4 animate-spin" /> : <Play className="size-4" />}
@@ -560,6 +626,12 @@ export default function ExperimentDetailPage({ params }: Props) {
         <>
           <ResultsDashboard experimentId={id} experimentName={experiment.name} />
           <ProfileDashboard experimentId={id} />
+          <section>
+            <RegressionPanel experimentId={id} />
+          </section>
+          <section>
+            <RoutingPanel experimentId={id} />
+          </section>
         </>
       ) : (
         <EmptyState

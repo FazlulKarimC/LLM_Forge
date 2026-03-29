@@ -11,6 +11,7 @@ import {
   Filter,
   GitCompareArrows,
   LoaderCircle,
+  Pin,
   Play,
   SlidersHorizontal,
   Trash2,
@@ -229,6 +230,18 @@ export default function ExperimentsPage() {
                         <div className="flex items-center gap-2">
                           <div className="truncate text-lg font-semibold tracking-[-0.03em]">{experiment.name}</div>
                           <StatusPill status={experiment.status} />
+                          {experiment.is_baseline ? (
+                            <span className="chip" style={{ color: 'color-mix(in oklab, var(--primary) 84%, white 12%)' }}>
+                              <Pin className="size-3" /> Baseline
+                            </span>
+                          ) : null}
+                          {experiment.regression_passed === true ? (
+                            <span className="status-pill status-completed">✅ Pass</span>
+                          ) : experiment.regression_passed === false ? (
+                            <span className="status-pill status-failed">❌ Fail</span>
+                          ) : experiment.regression_passed === null ? (
+                            <span className="status-pill status-queued">⚠️ Inconclusive</span>
+                          ) : null}
                         </div>
                         {experiment.description ? (
                           <p className="line-clamp-2 max-w-3xl text-sm leading-7 text-(--muted-foreground)">{experiment.description}</p>

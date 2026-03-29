@@ -960,6 +960,6 @@ export interface ProviderStats {
 /**
  * Get routing telemetry (per-provider stats) for an experiment.
  */
-export async function getRoutingTelemetry(experimentId: string): Promise<Record<string, ProviderStats>> {
-    return fetchAPI<Record<string, ProviderStats>>(`/results/${experimentId}/routing`);
+export async function getRoutingTelemetry(experimentId: string, options: RequestInit = {}): Promise<Record<string, ProviderStats>> {
+    return fetchAPI<Record<string, ProviderStats>>(`/results/${experimentId}/routing`, options);
 }
