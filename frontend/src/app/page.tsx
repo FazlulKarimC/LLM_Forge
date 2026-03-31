@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useRef } from "react";
 import { motion } from "framer-motion";
 import {
   Activity,
@@ -14,15 +15,137 @@ import {
   TimerReset,
 } from "lucide-react";
 
-const cardVariant = {
-  hidden: { opacity: 0, y: 18, filter: "blur(8px)" },
-  visible: {
+/* ─── animated mesh-gradient shader (minimalistic, subtle) ─── */
+
+const VERTEX_SRC = `
+  attribute vec2 a_position;
+  void main() { gl_Position = vec4(a_position, 0.0, 1.0); }
+`;
+
+const FRAGMENT_SRC = `
+  precision mediump float;
+  uniform float u_time;
+  uniform vec2  u_resolution;
+
+  void main() {
+    // Center and correct aspect ratio
+    vec2 p = (gl_FragCoord.xy / u_resolution.xy) - 0.5;
+    p.x *= u_resolution.x / u_resolution.y;
+
+    float t = u_time * 0.15;
+    
+    // Minimal soft fluid math
+    float v = 0.0;
+    vec2 c = p * 2.0; 
+    
+    for (float i = 1.0; i < 4.0; i++) {
+        c.x += sin(t * 0.5 * i + c.y * i + t) * 0.5;
+        c.y += cos(t * 0.4 * i + c.x * i - t) * 0.5;
+        v += sin(c.x + t) * cos(c.y + t);
+    }
+    
+    // Map smoothly to roughly 0..1 grayscale
+    v = smoothstep(-1.5, 1.5, v);
+    
+    // Output pure black-and-white (alpha 1)
+    // CSS mix-blend-mode will handle coloring appropriately over the background
+    gl_FragColor = vec4(vec3(v), 1.0);
+  }
+`;
+
+function useShader(canvasRef: React.RefObject<HTMLCanvasElement | null>) {
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const gl = canvas.getContext("webgl", { alpha: false, antialias: false });
+    if (!gl) return;
+
+    const createShader = (type: number, source: string) => {
+      const shader = gl.createShader(type);
+      if (!shader) return null;
+      gl.shaderSource(shader, source);
+      gl.compileShader(shader);
+      return shader;
+    };
+
+    const vShader = createShader(gl.VERTEX_SHADER, VERTEX_SRC);
+    const fShader = createShader(gl.FRAGMENT_SHADER, FRAGMENT_SRC);
+    if (!vShader || !fShader) return;
+
+    const program = gl.createProgram();
+    if (!program) return;
+    gl.attachShader(program, vShader);
+    gl.attachShader(program, fShader);
+    gl.linkProgram(program);
+    gl.useProgram(program);
+
+    // Full-screen quad
+    const buffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+
+    const posLoc = gl.getAttribLocation(program, "a_position");
+    gl.enableVertexAttribArray(posLoc);
+    gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
+
+    const uTime = gl.getUniformLocation(program, "u_time");
+    const uRes = gl.getUniformLocation(program, "u_resolution");
+
+    const resize = () => {
+      // Intentionally low-res for softer blurs and vastly better performance
+      const dpr = Math.min(window.devicePixelRatio, 1.0);
+      canvas.width = canvas.clientWidth * dpr;
+      canvas.height = canvas.clientHeight * dpr;
+      gl.viewport(0, 0, canvas.width, canvas.height);
+      gl.uniform2f(uRes, canvas.width, canvas.height);
+    };
+
+    resize();
+    window.addEventListener("resize", resize);
+
+    let frameId: number;
+    const start = performance.now();
+
+    const tick = () => {
+      gl.uniform1f(uTime, (performance.now() - start) / 1000);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      frameId = requestAnimationFrame(tick);
+    };
+
+    tick();
+
+    return () => {
+      cancelAnimationFrame(frameId);
+      window.removeEventListener("resize", resize);
+      gl.getExtension("WEBGL_lose_context")?.loseContext();
+    };
+  }, [canvasRef]);
+}
+
+/* ─── animation variants ─── */
+
+const fadeUp = {
+  hidden: { opacity: 0, y: 20, filter: "blur(6px)" },
+  visible: (delay: number) => ({
     opacity: 1,
     y: 0,
     filter: "blur(0px)",
-    transition: { duration: 0.4, ease: [0.16, 1, 0.3, 1] as const },
-  },
+    transition: { duration: 0.55, delay, ease: [0.16, 1, 0.3, 1] as const },
+  }),
 };
+
+const wordPull = {
+  hidden: { opacity: 0, y: 14, filter: "blur(4px)" },
+  visible: (i: number) => ({
+    opacity: 1,
+    y: 0,
+    filter: "blur(0px)",
+    transition: { duration: 0.5, delay: 0.15 + i * 0.06, ease: [0.16, 1, 0.3, 1] as const },
+  }),
+};
+
+const headlineWords = ["Run,", "compare,", "and", "optimize", "LLM", "experiments."];
 
 const features = [
   {
@@ -48,9 +171,13 @@ const features = [
 ];
 
 export default function LandingPage() {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  useShader(canvasRef);
+
   return (
     <div className="min-h-screen">
-      <header className="border-b border-(--border) bg-[color-mix(in_oklab,var(--background)_86%,transparent)] backdrop-blur-xl">
+      {/* navbar */}
+      <header className="relative z-10 border-b border-(--border) bg-[color-mix(in_oklab,var(--background)_60%,transparent)] backdrop-blur-xl">
         <div className="page-width flex items-center justify-between gap-4 px-4 py-5 sm:px-6">
           <Link href="/" className="flex items-center gap-3 min-w-0">
             <div className="flex shrink-0 size-11 items-center justify-center rounded-[18px] border border-(--border) bg-(--surface-2) text-(--primary)">
@@ -74,22 +201,79 @@ export default function LandingPage() {
         </div>
       </header>
 
-      <main className="page-width px-4 py-10 sm:px-6 lg:py-16">
-        <section className="grid gap-8 lg:grid-cols-[1.05fr_0.95fr] lg:items-center">
-          <motion.div initial="hidden" animate="visible" variants={cardVariant} className="space-y-6">
-            <div className="page-eyebrow">
+      {/* hero section with shader background */}
+      <section className="relative min-h-[min(85vh,820px)] flex items-center overflow-hidden">
+        {/* shader canvas */}
+        <canvas
+          ref={canvasRef}
+          className="absolute inset-0 h-full w-full"
+          style={{ 
+            opacity: 0.85, 
+            mixBlendMode: "overlay", 
+            filter: "blur(20px) saturate(2.0)"
+          }}
+          aria-hidden="true"
+        />
+        {/* gradient overlays for blending into page */}
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-[var(--background)] via-transparent to-[var(--background)]" style={{ opacity: 0.5 }} />
+        <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-[var(--background)] to-transparent" />
+
+        <div className="relative z-10 page-width w-full px-4 py-20 sm:px-6 lg:py-28">
+          <div className="mx-auto max-w-4xl text-center space-y-8">
+            {/* eyebrow */}
+            <motion.div
+              initial="hidden"
+              animate="visible"
+              custom={0}
+              variants={fadeUp}
+              className="inline-flex items-center gap-2 page-eyebrow"
+            >
               <Command className="size-3.5" />
               LLM Evaluation Platform
-            </div>
-            <div className="space-y-4">
-              <h1 className="text-[clamp(2.5rem,8vw,5.75rem)] font-semibold leading-[0.92] tracking-[-0.06em]">
-                Run, compare, and optimize LLM experiments.
-              </h1>
-              <p className="max-w-2xl text-lg leading-8 text-(--muted-foreground)">
-                Configure reasoning methods, run side-by-side A/B comparisons, inspect statistical significance, and track latency and token cost — all from one console.
-              </p>
-            </div>
-            <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full sm:w-auto">
+            </motion.div>
+
+            {/* headline — word-by-word animated */}
+            <h1 className="text-[clamp(2.8rem,9vw,6.5rem)] font-semibold leading-[0.9] tracking-[-0.06em]">
+              {headlineWords.map((word, i) => (
+                <motion.span
+                  key={word}
+                  initial="hidden"
+                  animate="visible"
+                  custom={i}
+                  variants={wordPull}
+                  className="inline-block mr-[0.28em]"
+                  style={
+                    word === "optimize" || word === "LLM"
+                      ? { color: "color-mix(in oklab, var(--primary) 90%, white 10%)" }
+                      : undefined
+                  }
+                >
+                  {word}
+                </motion.span>
+              ))}
+            </h1>
+
+            {/* subtitle */}
+            <motion.p
+              initial="hidden"
+              animate="visible"
+              custom={0.55}
+              variants={fadeUp}
+              className="mx-auto max-w-2xl text-lg leading-8 text-(--muted-foreground)"
+            >
+              Configure reasoning methods, run side-by-side A/B comparisons,
+              inspect statistical significance, and track latency and token cost
+              — all from one console.
+            </motion.p>
+
+            {/* buttons */}
+            <motion.div
+              initial="hidden"
+              animate="visible"
+              custom={0.7}
+              variants={fadeUp}
+              className="flex flex-col sm:flex-row items-center justify-center gap-3"
+            >
               <Link href="/dashboard" className="btn-primary w-full sm:w-auto justify-center">
                 Open dashboard
                 <ArrowRight className="size-4" />
@@ -97,86 +281,38 @@ export default function LandingPage() {
               <Link href="/experiments/new" className="btn-secondary w-full sm:w-auto justify-center">
                 Create experiment
               </Link>
-            </div>
-            <div className="flex flex-wrap gap-3 text-sm text-(--muted-foreground)">
+            </motion.div>
+
+            {/* chips */}
+            <motion.div
+              initial="hidden"
+              animate="visible"
+              custom={0.85}
+              variants={fadeUp}
+              className="flex flex-wrap justify-center gap-3 text-sm text-(--muted-foreground)"
+            >
               <span className="chip">Chain-of-Thought</span>
               <span className="chip">A/B Comparison</span>
               <span className="chip">Metrics Dashboard</span>
               <span className="chip">RAG Evaluation</span>
-            </div>
-          </motion.div>
+            </motion.div>
+          </div>
+        </div>
+      </section>
 
-          <motion.div initial="hidden" animate="visible" variants={cardVariant} transition={{ delay: 0.08 }} className="panel overflow-hidden">
-            <div className="border-b border-(--border) px-5 py-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <div className="section-label">Live preview</div>
-                  <div className="section-title">Comparison workspace</div>
-                </div>
-                <div className="chip">Naive vs CoT</div>
-              </div>
-            </div>
-            <div className="grid gap-4 p-5 lg:grid-cols-[1fr_80px_1fr]">
-              <div className="space-y-4 rounded-[18px] border border-(--border) bg-(--surface-2) p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="section-label">Experiment A</div>
-                    <div className="font-semibold">Naive baseline</div>
-                  </div>
-                  <span className="status-pill status-completed">completed</span>
-                </div>
-                <div className="grid gap-3">
-                  <div className="metric-card">
-                    <div className="metric-label">Accuracy</div>
-                    <div className="metric-value text-3xl">68.4%</div>
-                    <div className="metric-caption">24 / 35 exact matches</div>
-                  </div>
-                  <div className="metric-card">
-                    <div className="metric-label">Latency p50</div>
-                    <div className="metric-value text-3xl">1380 ms</div>
-                    <div className="metric-caption">Fast but low reasoning depth</div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="hidden items-center justify-center lg:flex">
-                <div className="flex h-full w-full flex-col items-center justify-center gap-3 rounded-[18px] border border-(--border) bg-(--surface-2) p-3">
-                  <div className="section-label">Delta</div>
-                  <div className="metric-value text-3xl text-(--accent)">+22%</div>
-                  <div className="h-full w-2 rounded-full bg-(--muted)">
-                    <div className="h-[78%] rounded-full bg-(--accent)" />
-                  </div>
-                </div>
-              </div>
-
-              <div className="space-y-4 rounded-[18px] border border-[color-mix(in_oklab,var(--accent)_34%,transparent)] bg-[color-mix(in_oklab,var(--accent)_10%,transparent)] p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="section-label">Experiment B</div>
-                    <div className="font-semibold">Chain-of-thought</div>
-                  </div>
-                  <span className="status-pill status-running">running</span>
-                </div>
-                <div className="grid gap-3">
-                  <div className="metric-card border-[color-mix(in_oklab,var(--accent)_32%,transparent)]">
-                    <div className="metric-label">Accuracy</div>
-                    <div className="metric-value text-3xl">90.1%</div>
-                    <div className="metric-caption">31 / 35 exact matches</div>
-                  </div>
-                  <div className="metric-card border-[color-mix(in_oklab,var(--primary)_24%,transparent)]">
-                    <div className="metric-label">Latency p50</div>
-                    <div className="metric-value text-3xl">2140 ms</div>
-                    <div className="metric-caption">Higher cost, higher reasoning payoff</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </motion.div>
-        </section>
-
-        <section className="mt-10 grid gap-4 lg:grid-cols-4">
+      {/* features grid */}
+      <main className="page-width px-4 sm:px-6">
+        <section className="grid gap-4 lg:grid-cols-4">
           {features.map((feature, index) => (
-            <motion.div key={feature.title} initial="hidden" whileInView="visible" viewport={{ once: true, margin: "-100px" }} variants={cardVariant} transition={{ delay: index * 0.05 }} className="panel p-5">
+            <motion.div
+              key={feature.title}
+              initial="hidden"
+              whileInView="visible"
+              viewport={{ once: true, margin: "-80px" }}
+              custom={index * 0.06}
+              variants={fadeUp}
+              className="panel p-5"
+            >
               <div className="flex size-11 items-center justify-center rounded-[18px] border border-(--border) bg-(--surface-2) text-(--accent)">
                 <feature.icon className="size-5" />
               </div>
@@ -221,7 +357,8 @@ export default function LandingPage() {
         </section>
       </main>
 
-      <footer className="border-t border-(--border) bg-[color-mix(in_oklab,var(--surface-1)_60%,transparent)]">
+      {/* footer */}
+      <footer className="mt-16 border-t border-(--border) bg-[color-mix(in_oklab,var(--surface-1)_60%,transparent)]">
         <div className="page-width px-4 py-16 sm:px-6 lg:py-20">
           <div className="space-y-8">
             <div className="space-y-3">
@@ -240,7 +377,7 @@ export default function LandingPage() {
                 Experiments
               </Link>
               <Link href="/experiments/new" className="btn-ghost">
-                New Run
+                New experiment
               </Link>
               <a href="https://github.com/FazlulKarimC/LLM_Forge" target="_blank" rel="noreferrer" className="btn-ghost">
                 <Github className="size-4" />
@@ -262,4 +399,3 @@ export default function LandingPage() {
     </div>
   );
 }
-

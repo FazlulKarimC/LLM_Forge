@@ -282,10 +282,11 @@ function ComparePageInner() {
   return (
     <div className="page-stack">
       <PageHeader
+        backHref="/experiments"
+        backLabel="Back to experiments"
         eyebrow={<><GitCompareArrows className="size-3.5" /> Comparison workspace</>}
         title="Compare experiments side by side"
         description="Select two completed runs to compare accuracy, latency, cost, and statistical significance."
-        actions={<Link href="/experiments" className="btn-secondary">Back to experiments</Link>}
       />
 
       <section>

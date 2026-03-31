@@ -55,7 +55,7 @@ const navItems: NavItem[] = [
   },
   {
     href: "/experiments/new",
-    label: "New Run",
+    label: "New experiment",
     icon: Plus,
     match: (pathname) => pathname.startsWith("/experiments/new"),
   },

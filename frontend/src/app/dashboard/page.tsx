@@ -13,7 +13,9 @@ import {
   FlaskConical,
   LoaderCircle,
   Play,
+  RefreshCcw,
   Trash2,
+  WifiOff,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -189,15 +191,58 @@ export default function DashboardPage() {
         </div>
       </PageHeader>
 
-      {statsQuery.error ? (
+      {statsQuery.error && experimentsQuery.error ? (
+        <div className="alert alert-danger">
+          <WifiOff className="mt-0.5 size-4 shrink-0" />
+          <div className="flex-1 space-y-1">
+            <div className="font-semibold">Backend unreachable</div>
+            <p className="text-sm text-(--muted-foreground)">
+              Could not connect to the API. The backend may be sleeping, booting, or temporarily down.
+              {statsQuery.error instanceof ApiError && statsQuery.error.statusCode === 408
+                ? " Free-tier cold starts on Hugging Face Spaces can take up to a minute."
+                : ""}
+            </p>
+          </div>
+          <button
+            type="button"
+            className="btn-secondary shrink-0"
+            onClick={() => {
+              statsQuery.refetch();
+              experimentsQuery.refetch();
+              readinessQuery.refetch();
+            }}
+          >
+            <RefreshCcw className="size-4" />
+            Retry
+          </button>
+        </div>
+      ) : statsQuery.error ? (
         <div className="alert alert-danger">
           <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-          <div className="space-y-1">
+          <div className="flex-1 space-y-1">
             <div className="font-semibold">Dashboard data failed to load</div>
             <p className="text-sm text-(--muted-foreground)">
               {statsQuery.error instanceof Error ? statsQuery.error.message : "Unknown error"}
             </p>
           </div>
+          <button type="button" className="btn-secondary shrink-0" onClick={() => statsQuery.refetch()}>
+            <RefreshCcw className="size-4" />
+            Retry
+          </button>
+        </div>
+      ) : experimentsQuery.error ? (
+        <div className="alert alert-danger">
+          <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+          <div className="flex-1 space-y-1">
+            <div className="font-semibold">Recent experiments failed to load</div>
+            <p className="text-sm text-(--muted-foreground)">
+              {experimentsQuery.error instanceof Error ? experimentsQuery.error.message : "Unknown error"}
+            </p>
+          </div>
+          <button type="button" className="btn-secondary shrink-0" onClick={() => experimentsQuery.refetch()}>
+            <RefreshCcw className="size-4" />
+            Retry
+          </button>
         </div>
       ) : null}
 

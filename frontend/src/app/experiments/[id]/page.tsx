@@ -4,7 +4,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { use, useState } from "react";
 import {
-  ArrowLeft,
   Download,
   FileText,
   LoaderCircle,
@@ -12,6 +11,7 @@ import {
   PinOff,
   Play,
   ScanSearch,
+  SearchX,
   TriangleAlert,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -31,6 +31,7 @@ import {
   type ProfileData,
   type RunSummary,
 } from "@/lib/api";
+import { cn } from "@/lib/utils";
 import {
   AnimatedNumber,
   EmptyState,
@@ -543,12 +544,32 @@ export default function ExperimentDetailPage({ params }: Props) {
   }
 
   if (experimentQuery.error || !experimentQuery.data) {
+    const err = experimentQuery.error;
+    const isNotFound =
+      (err instanceof ApiError && (err.statusCode === 404 || err.statusCode === 422 || err.statusCode === 400)) ||
+      (err instanceof Error && /uuid|valid|not found/i.test(err.message));
+
     return (
       <div className="page-stack">
-        <div className="alert alert-danger">
-          <TriangleAlert className="mt-0.5 size-4 shrink-0" />
-          <p className="text-sm leading-7">{experimentQuery.error instanceof Error ? experimentQuery.error.message : "Experiment not found."}</p>
-        </div>
+        <PageHeader
+          backHref="/experiments"
+          backLabel="Back to experiments"
+          eyebrow={<><ScanSearch className="size-3.5" /> Experiment detail</>}
+          title="Experiment not found"
+        />
+        {isNotFound ? (
+          <EmptyState
+            icon={<SearchX className="size-5" />}
+            title="This experiment does not exist"
+            description="The experiment ID in the URL is invalid or has been deleted. Return to the catalog to find a valid experiment."
+            action={<Link href="/experiments" className="btn-primary">Browse experiments</Link>}
+          />
+        ) : (
+          <div className="alert alert-danger">
+            <TriangleAlert className="mt-0.5 size-4 shrink-0" />
+            <p className="text-sm leading-7">{err instanceof Error ? err.message : "Failed to load experiment."}</p>
+          </div>
+        )}
       </div>
     );
   }
@@ -560,6 +581,8 @@ export default function ExperimentDetailPage({ params }: Props) {
   return (
     <div className="page-stack">
       <PageHeader
+        backHref="/experiments"
+        backLabel="Back to experiments"
         eyebrow={<><ScanSearch className="size-3.5" /> Experiment detail</>}
         title={experiment.name}
         description={experiment.description || "Inspect configuration, metrics, and execution details for this experiment."}
@@ -578,10 +601,6 @@ export default function ExperimentDetailPage({ params }: Props) {
           {isActive ? <span className="chip">Auto-refresh every 3s</span> : null}
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Link href="/experiments" className="btn-secondary">
-            <ArrowLeft className="size-4" />
-            Back to experiments
-          </Link>
           {experiment.status === "completed" ? <Link href={`/experiments/compare?preselect=${id}`} className="btn-secondary">Compare</Link> : null}
           {experiment.status === "completed" ? (
             experiment.is_baseline ? (

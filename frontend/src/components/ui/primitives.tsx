@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState, type HTMLAttributes, type ReactNode } from "react";
+import Link from "next/link";
 import { animate, motion, useMotionValue, useTransform } from "framer-motion";
-import { AlertTriangle, CheckCircle2, CircleDashed, LoaderCircle, PauseCircle } from "lucide-react";
+import { AlertTriangle, ArrowLeft, CheckCircle2, CircleDashed, LoaderCircle, PauseCircle } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -36,12 +37,16 @@ export function PanelHeader({
 }
 
 export function PageHeader({
+  backHref,
+  backLabel,
   eyebrow,
   title,
   description,
   actions,
   children,
 }: {
+  backHref?: string;
+  backLabel?: string;
   eyebrow?: ReactNode;
   title: string;
   description?: string;
@@ -50,6 +55,12 @@ export function PageHeader({
 }) {
   return (
     <div className="page-header">
+      {backHref ? (
+        <Link href={backHref} className="inline-flex items-center gap-1.5 text-sm font-medium text-(--muted-foreground) transition-colors hover:text-foreground">
+          <ArrowLeft className="size-3.5" />
+          {backLabel || "Back"}
+        </Link>
+      ) : null}
       {eyebrow ? <div className="page-eyebrow">{eyebrow}</div> : null}
       <div className="page-header-row">
         <div className="space-y-3">

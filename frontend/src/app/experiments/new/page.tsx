@@ -350,10 +350,11 @@ export default function NewExperimentPage() {
   return (
     <div className="page-stack">
       <PageHeader
+        backHref="/experiments"
+        backLabel="Back to experiments"
         eyebrow={<><WandSparkles className="size-3.5" /> Experiment builder</>}
         title="Configure and launch a new experiment"
         description="Set up the model, dataset, reasoning method, and parameters for your next evaluation run."
-        actions={<Link href="/experiments" className="btn-secondary">Back to experiments</Link>}
       />
 
       {validationError ? (
@@ -381,7 +382,7 @@ export default function NewExperimentPage() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] as const }}
           onSubmit={(event) => handleSubmit(event, false)}
-          className="space-y-4"
+          className="space-y-6"
         >
           <Panel>
             <PanelHeader label="Basics" title="Name the experiment" description="Choose a clear title that reads well in tables, exports, and comparisons." />
@@ -719,6 +720,18 @@ export default function NewExperimentPage() {
 
         <div className="space-y-4 xl:sticky xl:top-24 xl:self-start">
           <Panel>
+            <PanelHeader label="Quick starts" title="Preset configurations" description="Quick-start templates for common evaluation scenarios." />
+            <div className="panel-body space-y-3">
+              {presetConfigs.map((preset) => (
+                <button key={preset.title} type="button" className="w-full rounded-[18px] border border-(--border) bg-(--surface-2) p-4 text-left transition-all hover:border-(--border-strong) hover:bg-(--surface-3)" onClick={() => applyPreset(preset.apply)}>
+                  <div className="font-semibold tracking-[-0.03em]">{preset.title}</div>
+                  <p className="mt-2 text-sm leading-7 text-(--muted-foreground)">{preset.description}</p>
+                </button>
+              ))}
+            </div>
+          </Panel>
+
+          <Panel>
             <PanelHeader label="Summary" title={formData.name || "Untitled experiment"} description="Overview of the experiment configuration." />
             <div className="panel-body space-y-4">
               <div className="flex flex-wrap gap-2 text-xs text-(--muted-foreground)">
@@ -739,18 +752,6 @@ export default function NewExperimentPage() {
                 </div>
                 <MetricBar value={complexityScore} />
               </div>
-            </div>
-          </Panel>
-
-          <Panel>
-            <PanelHeader label="Quick starts" title="Preset configurations" description="Quick-start templates for common evaluation scenarios." />
-            <div className="panel-body space-y-3">
-              {presetConfigs.map((preset) => (
-                <button key={preset.title} type="button" className="w-full rounded-[18px] border border-(--border) bg-(--surface-2) p-4 text-left transition-all hover:border-(--border-strong) hover:bg-(--surface-3)" onClick={() => applyPreset(preset.apply)}>
-                  <div className="font-semibold tracking-[-0.03em]">{preset.title}</div>
-                  <p className="mt-2 text-sm leading-7 text-(--muted-foreground)">{preset.description}</p>
-                </button>
-              ))}
             </div>
           </Panel>
 
