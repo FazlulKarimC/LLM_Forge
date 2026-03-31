@@ -31,6 +31,8 @@ from app.schemas.experiment import (
     ExperimentStatus,
     ExperimentConfig,
     OptimizationConfig,
+    RegressionStatus,
+    regression_status_from_verdict,
 )
 
 logger = logging.getLogger(__name__)
@@ -105,6 +107,9 @@ class ExperimentService:
             tags=experiment.tags,
             run_manifest=experiment.run_manifest,
             is_baseline=getattr(experiment, 'is_baseline', False),
+            regression_status=RegressionStatus(
+                getattr(experiment, 'regression_status', None) or RegressionStatus.NOT_CHECKED.value
+            ),
             regression_passed=getattr(experiment, 'regression_passed', None),
         )
     
@@ -305,8 +310,12 @@ class ExperimentService:
         
         # Set timestamps based on status
         now = datetime.now(timezone.utc)
-        if status == ExperimentStatus.RUNNING and experiment.started_at is None:
+        if status == ExperimentStatus.QUEUED:
+            experiment.started_at = None
+            experiment.completed_at = None
+        elif status == ExperimentStatus.RUNNING:
             experiment.started_at = now
+            experiment.completed_at = None
         elif status in (ExperimentStatus.COMPLETED, ExperimentStatus.FAILED):
             experiment.completed_at = now
         
@@ -411,6 +420,8 @@ class ExperimentService:
             exp_obj = exp_row.scalar_one_or_none()
             if exp_obj:
                 exp_obj.current_attempt = current_attempt
+                exp_obj.regression_status = RegressionStatus.NOT_CHECKED.value
+                exp_obj.regression_passed = None
             
             # Clear old results (will be recomputed from latest attempt)
             await metrics_svc.clear_results(experiment_id)
@@ -440,13 +451,18 @@ class ExperimentService:
             provider = getattr(experiment_response.config, 'provider', None)
             provider_value = provider.value if provider else "auto"
             engine_type = settings.INFERENCE_ENGINE
+
+            if provider_value == "custom" and not custom_base_url:
+                raise ValueError(
+                    "Custom provider runs require stored custom endpoint credentials for the configured model."
+                )
             
             # Auto-detect mock models regardless of provider setting
             if "mock" in model_name.lower():
                 engine_type = "mock"
                 logger.info("[EXECUTE] Auto-detected mock model '%s', using MockEngine", model_name)
                 engine = MockEngine()
-            elif custom_base_url:
+            elif provider_value == "custom":
                 engine_type = "custom"
                 logger.info("[EXECUTE] Custom base URL detected, using OpenAIEngine")
                 from app.services.inference.openai_engine import OpenAIEngine
@@ -763,6 +779,7 @@ class ExperimentService:
                             "tokens_output": result.tokens_output,
                             "latency_ms": result.latency_ms,
                             "gpu_memory_mb": result.gpu_memory_mb,
+                            "served_provider": result.served_provider,
                             "failure_mode": result.failure_mode,
                             "error_message": result.error_message,
                             "attempt": current_attempt,
@@ -840,6 +857,7 @@ class ExperimentService:
                     # RAG retrieval (if enabled)
                     context_chunks = []
                     retrieval_context = ""
+                    retrieved_chunk_payload = None
                     if use_rag and rag_pipeline:
                         with profiler.section("rag_retrieval"):
                             retrieval_result = rag_pipeline.retrieve(
@@ -848,6 +866,15 @@ class ExperimentService:
                                 top_k=rag_config.top_k,
                             )
                         context_chunks = [c.text for c in retrieval_result.chunks]
+                        retrieved_chunk_payload = {
+                            "chunks": [
+                                {
+                                    "text": c.text,
+                                    "score": getattr(c, "score", None),
+                                }
+                                for c in retrieval_result.chunks
+                            ]
+                        }
                         retrieval_context = " ".join(context_chunks)
                         logger.info(f"[EXECUTE]   Retrieved {len(context_chunks)} chunks ({retrieval_result.latency_ms:.0f}ms)")
                     
@@ -973,8 +1000,9 @@ class ExperimentService:
                         "latency_ms": result.latency_ms,
                         "gpu_memory_mb": result.gpu_memory_mb,
                         "faithfulness_score": faithfulness,
-                        "retrieved_chunks": {"chunks": context_chunks} if use_rag else None,
+                        "retrieved_chunks": retrieved_chunk_payload,
                         "context_relevance_score": ctx_relevance,
+                        "served_provider": result.served_provider,
                         "failure_mode": result.failure_mode,
                         "error_message": result.error_message,
                         "attempt": current_attempt,
@@ -1033,6 +1061,9 @@ class ExperimentService:
             
             # ─── Step 9b: Save optimization report into raw_metrics ───
             wall_end = _time.perf_counter()
+            opt_report.cache_stats = cache.stats() if cache else {}
+            opt_report.profiling_summary = profiler.summary()
+            opt_report.batch_stats = dict(batch_stats)
             opt_report.total_wall_time_ms = (wall_end - wall_start) * 1000
             
             res_query = select(Result).where(Result.experiment_id == experiment_id)
@@ -1092,6 +1123,7 @@ class ExperimentService:
                             _fm2(result_obj2, "raw_metrics")
                         
                         # Denormalize for list-view badges
+                        reg_exp.regression_status = regression_status_from_verdict(verdict.passed).value
                         reg_exp.regression_passed = verdict.passed
                         
                         await self.db.flush()

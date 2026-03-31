@@ -18,8 +18,22 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-import { deleteExperiment, listExperiments, runExperiment, type ListExperimentsParams } from "@/lib/api";
-import { EmptyState, PageHeader, Panel, PanelHeader, SkeletonBlock, StatusPill } from "@/components/ui/primitives";
+import {
+  deleteExperiment,
+  listExperiments,
+  resolveRunExperimentCredentials,
+  runExperiment,
+  type Experiment,
+  type ListExperimentsParams,
+} from "@/lib/api";
+import {
+  EmptyState,
+  PageHeader,
+  Panel,
+  PanelHeader,
+  SkeletonBlock,
+  StatusPill,
+} from "@/components/ui/primitives";
 
 const methodLabels: Record<string, string> = {
   naive: "Naive prompting",
@@ -34,6 +48,19 @@ function formatDate(dateStr: string) {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function regressionBadge(status?: Experiment["regression_status"]) {
+  switch (status) {
+    case "pass":
+      return <span className="status-pill status-completed">Pass</span>;
+    case "fail":
+      return <span className="status-pill status-failed">Fail</span>;
+    case "inconclusive":
+      return <span className="status-pill status-queued">Inconclusive</span>;
+    default:
+      return null;
+  }
 }
 
 export default function ExperimentsPage() {
@@ -58,23 +85,24 @@ export default function ExperimentsPage() {
   });
 
   const runMutation = useMutation({
-    mutationFn: (id: string) => {
-      setRunningIds((prev) => new Set(prev).add(id));
-      return runExperiment(id);
+    mutationFn: (experiment: Experiment) => {
+      setRunningIds((prev) => new Set(prev).add(experiment.id));
+      const credentials = resolveRunExperimentCredentials(experiment.config);
+      return runExperiment(experiment.id, credentials.customBaseUrl, credentials.customApiKey);
     },
-    onSuccess: (_data, id) => {
+    onSuccess: (_data, experiment) => {
       setRunningIds((prev) => {
         const next = new Set(prev);
-        next.delete(id);
+        next.delete(experiment.id);
         return next;
       });
       queryClient.invalidateQueries({ queryKey: ["experiments"] });
       toast.success("Experiment queued for execution");
     },
-    onError: (error: Error, id) => {
+    onError: (error: Error, experiment) => {
       setRunningIds((prev) => {
         const next = new Set(prev);
-        next.delete(id);
+        next.delete(experiment.id);
         return next;
       });
       toast.error(`Failed to run experiment: ${error.message}`);
@@ -149,7 +177,14 @@ export default function ExperimentsPage() {
             title="Refine the workspace"
             description="Narrow the list by status or reasoning method."
             actions={
-              <button type="button" className="btn-secondary" onClick={() => { setStatusFilter(""); setMethodFilter(""); }}>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => {
+                  setStatusFilter("");
+                  setMethodFilter("");
+                }}
+              >
                 <SlidersHorizontal className="size-4" />
                 Clear filters
               </button>
@@ -159,7 +194,12 @@ export default function ExperimentsPage() {
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 lg:items-end">
               <div className="space-y-2">
                 <label className="field-label" htmlFor="status-filter">Status</label>
-                <select id="status-filter" className="select-shell" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+                <select
+                  id="status-filter"
+                  className="select-shell"
+                  value={statusFilter}
+                  onChange={(event) => setStatusFilter(event.target.value)}
+                >
                   <option value="">All statuses</option>
                   <option value="pending">Pending</option>
                   <option value="queued">Queued</option>
@@ -171,7 +211,12 @@ export default function ExperimentsPage() {
 
               <div className="space-y-2">
                 <label className="field-label" htmlFor="method-filter">Reasoning method</label>
-                <select id="method-filter" className="select-shell" value={methodFilter} onChange={(event) => setMethodFilter(event.target.value)}>
+                <select
+                  id="method-filter"
+                  className="select-shell"
+                  value={methodFilter}
+                  onChange={(event) => setMethodFilter(event.target.value)}
+                >
                   <option value="">All methods</option>
                   <option value="naive">Naive</option>
                   <option value="cot">Chain of thought</option>
@@ -223,7 +268,12 @@ export default function ExperimentsPage() {
                     tabIndex={0}
                     className="w-full cursor-pointer rounded-[20px] border border-(--border) bg-(--surface-2) p-4 text-left transition-all hover:border-(--border-strong) hover:bg-(--surface-3)"
                     onClick={() => router.push(`/experiments/${experiment.id}`)}
-                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); router.push(`/experiments/${experiment.id}`); } }}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        router.push(`/experiments/${experiment.id}`);
+                      }
+                    }}
                   >
                     <div className="flex flex-col items-start justify-between gap-4 sm:flex-row">
                       <div className="min-w-0 w-full flex-1 space-y-3">
@@ -231,17 +281,11 @@ export default function ExperimentsPage() {
                           <div className="truncate text-lg font-semibold tracking-[-0.03em]">{experiment.name}</div>
                           <StatusPill status={experiment.status} />
                           {experiment.is_baseline ? (
-                            <span className="chip" style={{ color: 'color-mix(in oklab, var(--primary) 84%, white 12%)' }}>
+                            <span className="chip" style={{ color: "color-mix(in oklab, var(--primary) 84%, white 12%)" }}>
                               <Pin className="size-3" /> Baseline
                             </span>
                           ) : null}
-                          {experiment.regression_passed === true ? (
-                            <span className="status-pill status-completed">✅ Pass</span>
-                          ) : experiment.regression_passed === false ? (
-                            <span className="status-pill status-failed">❌ Fail</span>
-                          ) : experiment.regression_passed === null ? (
-                            <span className="status-pill status-queued">⚠️ Inconclusive</span>
-                          ) : null}
+                          {regressionBadge(experiment.regression_status)}
                         </div>
                         {experiment.description ? (
                           <p className="line-clamp-2 max-w-3xl text-sm leading-7 text-(--muted-foreground)">{experiment.description}</p>
@@ -257,7 +301,7 @@ export default function ExperimentsPage() {
                         <button
                           type="button"
                           className="btn-secondary flex-1 justify-center sm:flex-none"
-                          onClick={() => runMutation.mutate(experiment.id)}
+                          onClick={() => runMutation.mutate(experiment)}
                           disabled={runningIds.has(experiment.id) || experiment.status === "running" || experiment.status === "queued"}
                         >
                           {runningIds.has(experiment.id) ? <LoaderCircle className="size-4 animate-spin" /> : <Play className="size-4" />}
@@ -318,7 +362,12 @@ export default function ExperimentsPage() {
                 </div>
               </div>
               <div className="mt-6 flex flex-wrap justify-end gap-3">
-                <button type="button" className="btn-secondary" onClick={() => setExperimentToDelete(null)} disabled={deleteMutation.isPending}>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => setExperimentToDelete(null)}
+                  disabled={deleteMutation.isPending}
+                >
                   Cancel
                 </button>
                 <button
@@ -338,4 +387,3 @@ export default function ExperimentsPage() {
     </div>
   );
 }
-

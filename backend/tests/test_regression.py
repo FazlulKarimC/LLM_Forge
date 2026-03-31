@@ -177,6 +177,19 @@ class TestAggregateThresholds:
         violations = RegressionService._check_aggregate_thresholds(stats, config)
         assert len(violations) == 2
 
+    def test_latency_p95_violation(self):
+        stats = {
+            "accuracy_diff": 0.0,
+            "f1_ci_a": {"mean": 0.9},
+            "f1_ci_b": {"mean": 0.9},
+            "candidate_latency_p95_ms": 950.0,
+        }
+        config = RegressionConfig(latency_p95_max_ms=500.0)
+        violations = RegressionService._check_aggregate_thresholds(stats, config)
+
+        assert len(violations) == 1
+        assert violations[0]["rule"] == "latency_p95_max_ms"
+
 
 # ─── Sample regression detection ────────────────────────────────────────────
 

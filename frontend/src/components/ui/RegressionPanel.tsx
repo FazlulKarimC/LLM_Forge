@@ -1,10 +1,11 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, RefreshCw, LoaderCircle, Shield, GitCompareArrows } from "lucide-react";
+import { AlertTriangle, RefreshCw, LoaderCircle, Shield } from "lucide-react";
 import { toast } from "sonner";
 
 import {
+  ApiError,
   getRegressionReport,
   rerunRegression,
   type RegressionReport,
@@ -49,13 +50,19 @@ export function RegressionPanel({ experimentId }: { experimentId: string }) {
     },
   });
 
-  // 404 = no regression data → show rerun button only
+  if (reportQuery.isLoading) {
+    return <SkeletonBlock className="h-[320px]" />;
+  }
+
   if (reportQuery.error) {
+    const error = reportQuery.error;
+    const isMissingReport = error instanceof ApiError && error.statusCode === 404;
+
     return (
       <Panel>
         <PanelHeader
           label="Regression"
-          title="Regression gate"
+          title={isMissingReport ? "Regression gate" : "Regression gate unavailable"}
           description="Compare this experiment against a pinned baseline."
           actions={
             <button
@@ -74,18 +81,21 @@ export function RegressionPanel({ experimentId }: { experimentId: string }) {
           }
         />
         <div className="panel-body">
-          <EmptyState
-            icon={<Shield className="size-5" />}
-            title="No regression data"
-            description="Pin a baseline and run a regression check to compare experiments."
-          />
+          {isMissingReport ? (
+            <EmptyState
+              icon={<Shield className="size-5" />}
+              title="No regression data"
+              description="Pin a baseline and run a regression check to compare experiments."
+            />
+          ) : (
+            <div className="alert alert-danger">
+              <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+              <p className="text-sm leading-7">{error instanceof Error ? error.message : "Failed to load regression data."}</p>
+            </div>
+          )}
         </div>
       </Panel>
     );
-  }
-
-  if (reportQuery.isLoading) {
-    return <SkeletonBlock className="h-[320px]" />;
   }
 
   const report = reportQuery.data;
@@ -127,7 +137,6 @@ export function RegressionPanel({ experimentId }: { experimentId: string }) {
         }
       />
       <div className="panel-body space-y-5">
-        {/* KPI row */}
         <div className="grid gap-4 sm:grid-cols-3">
           <MetricCard
             label="Verdict"
@@ -165,31 +174,28 @@ export function RegressionPanel({ experimentId }: { experimentId: string }) {
           />
         </div>
 
-        {/* Violations */}
         {report.violations.length > 0 ? (
           <div className="space-y-2">
             <div className="section-label">Violations</div>
-            {report.violations.map((v, i) => (
-              <div key={`${v.rule}-${i}`} className="alert alert-danger">
+            {report.violations.map((violation, index) => (
+              <div key={`${violation.rule}-${index}`} className="alert alert-danger">
                 <AlertTriangle className="mt-0.5 size-4 shrink-0" />
                 <div className="space-y-0.5">
                   <div className="font-mono text-xs font-semibold">
-                    {v.rule}
+                    {violation.rule}
                   </div>
-                  <p className="text-sm leading-7">{v.message}</p>
+                  <p className="text-sm leading-7">{violation.message}</p>
                 </div>
               </div>
             ))}
           </div>
         ) : null}
 
-        {/* Sample regressions / improvements */}
         {(report.sample_regressions_count > 0 ||
           report.sample_improvements_count > 0) && report.statistical ? (
           <SampleTables report={report} />
         ) : null}
 
-        {/* Config diff */}
         {report.config_diff &&
         Object.keys(report.config_diff).length > 0 &&
         !("error" in report.config_diff) ? (
@@ -201,7 +207,6 @@ export function RegressionPanel({ experimentId }: { experimentId: string }) {
           </div>
         ) : null}
 
-        {/* Grader summary */}
         {report.grader_summary &&
         (Object.keys(report.grader_summary.baseline ?? {}).length > 0 ||
           Object.keys(report.grader_summary.candidate ?? {}).length > 0) ? (
@@ -213,8 +218,7 @@ export function RegressionPanel({ experimentId }: { experimentId: string }) {
 }
 
 function SampleTables({ report }: { report: RegressionReport }) {
-  const stats = report.statistical as Record<string, unknown> | undefined;
-  const perExample = (stats?.per_example_differences ?? []) as Array<{
+  const perExample = (report.statistical?.per_example_differences ?? []) as Array<{
     example_id: string;
     a_correct: boolean;
     b_correct: boolean;
@@ -222,73 +226,39 @@ function SampleTables({ report }: { report: RegressionReport }) {
     b_score: number;
   }>;
 
-  const regressions = perExample.filter((d) => d.a_correct && !d.b_correct);
-  const improvements = perExample.filter((d) => !d.a_correct && d.b_correct);
-
-  if (regressions.length === 0 && improvements.length === 0) return null;
+  const regressions = perExample.filter((diff) => diff.a_correct && !diff.b_correct);
+  const improvements = perExample.filter((diff) => !diff.a_correct && diff.b_correct);
 
   return (
-    <div className="grid gap-4 lg:grid-cols-2">
+    <div className="grid gap-4 xl:grid-cols-2">
       {regressions.length > 0 ? (
-        <div>
-          <div className="section-label mb-2 text-(--destructive)">
-            Sample regressions ({regressions.length})
-          </div>
-          <div className="overflow-x-auto rounded-[18px] border border-(--border) bg-(--surface-2)">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Example</th>
-                  <th>Baseline</th>
-                  <th>Candidate</th>
-                </tr>
-              </thead>
-              <tbody>
-                {regressions.slice(0, 20).map((d) => (
-                  <tr key={d.example_id} className="data-row">
-                    <td className="font-mono text-xs">{d.example_id}</td>
-                    <td className="metric-value text-(--success)">
-                      {d.a_score.toFixed(3)}
-                    </td>
-                    <td className="metric-value text-(--destructive)">
-                      {d.b_score.toFixed(3)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        <div className="rounded-[18px] border border-(--border) bg-(--surface-2) p-4">
+          <div className="section-label">Sample regressions</div>
+          <div className="mt-3 space-y-2">
+            {regressions.slice(0, 10).map((diff) => (
+              <div key={diff.example_id} className="rounded-[16px] border border-(--border) bg-(--surface-1) p-3 text-sm">
+                <div className="font-mono text-xs">{diff.example_id}</div>
+                <div className="mt-2 text-(--muted-foreground)">
+                  Baseline {diff.a_score.toFixed(2)} {"->"} Candidate {diff.b_score.toFixed(2)}
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       ) : null}
 
       {improvements.length > 0 ? (
-        <div>
-          <div className="section-label mb-2 text-(--success)">
-            Sample improvements ({improvements.length})
-          </div>
-          <div className="overflow-x-auto rounded-[18px] border border-(--border) bg-(--surface-2)">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Example</th>
-                  <th>Baseline</th>
-                  <th>Candidate</th>
-                </tr>
-              </thead>
-              <tbody>
-                {improvements.slice(0, 20).map((d) => (
-                  <tr key={d.example_id} className="data-row">
-                    <td className="font-mono text-xs">{d.example_id}</td>
-                    <td className="metric-value text-(--destructive)">
-                      {d.a_score.toFixed(3)}
-                    </td>
-                    <td className="metric-value text-(--success)">
-                      {d.b_score.toFixed(3)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        <div className="rounded-[18px] border border-(--border) bg-(--surface-2) p-4">
+          <div className="section-label">Sample improvements</div>
+          <div className="mt-3 space-y-2">
+            {improvements.slice(0, 10).map((diff) => (
+              <div key={diff.example_id} className="rounded-[16px] border border-(--border) bg-(--surface-1) p-3 text-sm">
+                <div className="font-mono text-xs">{diff.example_id}</div>
+                <div className="mt-2 text-(--muted-foreground)">
+                  Baseline {diff.a_score.toFixed(2)} {"->"} Candidate {diff.b_score.toFixed(2)}
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       ) : null}
@@ -296,69 +266,31 @@ function SampleTables({ report }: { report: RegressionReport }) {
   );
 }
 
-function GraderSummary({
-  summary,
-}: {
-  summary: Record<string, unknown>;
-}) {
-  const baseline = (summary.baseline ?? {}) as Record<
-    string,
-    { pass: number; fail: number; skip: number }
-  >;
-  const candidate = (summary.candidate ?? {}) as Record<
-    string,
-    { pass: number; fail: number; skip: number }
-  >;
-
-  const allGraders = [
-    ...new Set([...Object.keys(baseline), ...Object.keys(candidate)]),
-  ];
-  if (allGraders.length === 0) return null;
-
+function GraderSummary({ summary }: { summary: Record<string, Record<string, { pass: number; fail: number; skip: number }>> }) {
   return (
-    <div>
-      <div className="section-label mb-2">Grader summary</div>
-      <div className="overflow-x-auto rounded-[18px] border border-(--border) bg-(--surface-2)">
-        <table className="data-table min-w-[580px]">
-          <thead>
-            <tr>
-              <th>Grader</th>
-              <th colSpan={3} className="text-center">
-                Baseline
-              </th>
-              <th colSpan={3} className="text-center">
-                Candidate
-              </th>
-            </tr>
-            <tr>
-              <th />
-              <th className="text-(--success)">Pass</th>
-              <th className="text-(--destructive)">Fail</th>
-              <th className="text-(--muted-foreground)">Skip</th>
-              <th className="text-(--success)">Pass</th>
-              <th className="text-(--destructive)">Fail</th>
-              <th className="text-(--muted-foreground)">Skip</th>
-            </tr>
-          </thead>
-          <tbody>
-            {allGraders.map((name) => {
-              const b = baseline[name] ?? { pass: 0, fail: 0, skip: 0 };
-              const c = candidate[name] ?? { pass: 0, fail: 0, skip: 0 };
-              return (
-                <tr key={name} className="data-row">
-                  <td className="font-mono text-xs">{name}</td>
-                  <td className="metric-value">{b.pass}</td>
-                  <td className="metric-value">{b.fail}</td>
-                  <td className="metric-value">{b.skip}</td>
-                  <td className="metric-value">{c.pass}</td>
-                  <td className="metric-value">{c.fail}</td>
-                  <td className="metric-value">{c.skip}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+    <div className="grid gap-4 xl:grid-cols-2">
+      {(["baseline", "candidate"] as const).map((side) => {
+        const graders = summary[side] ?? {};
+        if (Object.keys(graders).length === 0) return null;
+
+        return (
+          <div key={side} className="rounded-[18px] border border-(--border) bg-(--surface-2) p-4">
+            <div className="section-label">{side}</div>
+            <div className="mt-3 space-y-2">
+              {Object.entries(graders).map(([graderName, counts]) => (
+                <div key={`${side}-${graderName}`} className="rounded-[16px] border border-(--border) bg-(--surface-1) p-3">
+                  <div className="font-mono text-xs">{graderName}</div>
+                  <div className="mt-2 flex flex-wrap gap-2 text-sm text-(--muted-foreground)">
+                    <span className="chip">Pass {counts.pass}</span>
+                    <span className="chip">Fail {counts.fail}</span>
+                    <span className="chip">Skip {counts.skip}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

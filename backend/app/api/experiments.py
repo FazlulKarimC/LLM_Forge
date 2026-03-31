@@ -36,7 +36,7 @@ async def _active_run_count(service: ExperimentService) -> int:
     """Best-effort queued/running count used for global concurrency gating."""
     try:
         stats = await service.get_stats()
-    except SQLAlchemyError as exc:
+    except (SQLAlchemyError, Exception) as exc:
         logger.warning("Skipping concurrency check because stats query failed: %s", exc)
         return 0
 
@@ -247,6 +247,13 @@ async def run_experiment(
     
     if experiment.status in [ExperimentStatus.QUEUED, ExperimentStatus.RUNNING]:
         raise ValidationException(message="Experiment already queued or running")
+
+    experiment_provider = getattr(experiment.config, "provider", None)
+    provider_value = getattr(experiment_provider, "value", experiment_provider)
+    if provider_value == "custom" and not x_custom_llm_base:
+        raise ValidationException(
+            message="This experiment uses a custom provider. Add custom endpoint credentials before running it."
+        )
     
     # Rate limit check
     from app.core.rate_limit import check_run_rate_limit

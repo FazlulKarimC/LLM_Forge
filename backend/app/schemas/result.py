@@ -39,6 +39,9 @@ class CostMetrics(BaseModel):
     total_tokens_output: int = 0
     total_runs: int = 0
     gpu_time_seconds: Optional[float] = None
+    total_cost_usd: Optional[float] = None
+    cost_per_correct_answer: Optional[float] = None
+    provider: Optional[str] = None
     
     @property
     def total_tokens(self) -> int:
@@ -47,7 +50,7 @@ class CostMetrics(BaseModel):
 
 class RunSummary(BaseModel):
     """Lightweight per-run data for grid view."""
-    id: UUID
+    id: Optional[UUID] = None
     example_id: Optional[str] = None
     is_correct: Optional[bool] = None
     score: Optional[float] = None
@@ -66,6 +69,8 @@ class RunSummary(BaseModel):
     failure_mode: Optional[str] = None
     error_message: Optional[str] = None
     grader_results: Optional[Dict[str, Any]] = None
+    retrieved_chunks: Optional[Dict[str, Any]] = None
+    served_provider: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -73,9 +78,11 @@ class RunSummary(BaseModel):
 class MetricsResponse(BaseModel):
     """Complete metrics for an experiment."""
     experiment_id: UUID
+    summary_text: Optional[str] = None
     quality: QualityMetrics
     performance: PerformanceMetrics
     cost: CostMetrics
+    failure_modes: Optional[Dict[str, Any]] = None
     computed_at: datetime
 
 

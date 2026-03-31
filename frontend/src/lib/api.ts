@@ -280,6 +280,34 @@ export interface OptimizationConfig {
     enable_profiling?: boolean;
 }
 
+export interface GraderRule {
+    name: string;
+    type: 'max_turns' | 'required_tools' | 'forbidden_failure_modes' | 'must_use_retrieval_when_rag' | 'latency_budget_ms' | 'token_budget' | 'min_f1_score';
+    params?: Record<string, unknown>;
+}
+
+export interface GradersConfig {
+    rules?: GraderRule[];
+    llm_judge_on_failures?: boolean;
+}
+
+export interface RegressionConfig {
+    accuracy_min_delta?: number;
+    f1_min_delta?: number;
+    latency_p95_max_ms?: number;
+    no_sample_regressions?: boolean;
+    max_new_failures?: number;
+    min_overlap_ratio?: number;
+}
+
+export interface RoutingConfig {
+    policy?: 'fallback_chain' | 'cheapest_first' | 'fastest_first' | 'adaptive';
+    epsilon?: number;
+    exploration_window?: number;
+}
+
+export type RegressionStatus = 'not_checked' | 'pass' | 'fail' | 'inconclusive';
+
 export interface ExperimentConfig {
     model_name: string;
     reasoning_method: 'naive' | 'cot' | 'react';
@@ -289,6 +317,10 @@ export interface ExperimentConfig {
     rag?: RAGConfig;
     agent?: AgentConfig;
     optimization?: OptimizationConfig;
+    graders?: GradersConfig;
+    regression?: RegressionConfig;
+    routing?: RoutingConfig;
+    prompt_version_id?: string;
     num_samples?: number;
 }
 
@@ -305,6 +337,7 @@ export interface Experiment {
     tags?: string[];
     run_manifest?: Record<string, unknown>;
     is_baseline?: boolean;
+    regression_status?: RegressionStatus;
     regression_passed?: boolean | null;
 }
 
@@ -399,7 +432,57 @@ export interface RunSummary {
     failure_mode?: string;
     error_message?: string;
     agent_trace?: AgentTrace;
+    served_provider?: string;
     grader_results?: Record<string, {status: 'pass' | 'fail' | 'skip'; value?: unknown; threshold?: unknown; reason?: string}>;
+}
+
+export function getStoredCustomProviderCredentials(modelName?: string): {
+    customBaseUrl?: string;
+    customApiKey?: string;
+} {
+    if (typeof window === 'undefined') {
+        return {};
+    }
+
+    try {
+        const settings = JSON.parse(localStorage.getItem('customLLMSettings') || '{}') as Record<
+            string,
+            { baseUrl?: string; apiKey?: string }
+        >;
+
+        if (modelName && settings?.[modelName]?.baseUrl) {
+            return {
+                customBaseUrl: settings[modelName].baseUrl,
+                customApiKey: settings[modelName].apiKey,
+            };
+        }
+
+        if (modelName && localStorage.getItem('customModelId') === modelName) {
+            return {
+                customBaseUrl: localStorage.getItem('customBaseUrl') || undefined,
+                customApiKey: localStorage.getItem('customApiKey') || undefined,
+            };
+        }
+    } catch (error) {
+        console.error('Failed to load custom model settings', error);
+    }
+
+    return {};
+}
+
+export function resolveRunExperimentCredentials(config?: Pick<ExperimentConfig, 'provider' | 'model_name'>): {
+    customBaseUrl?: string;
+    customApiKey?: string;
+} {
+    const credentials = getStoredCustomProviderCredentials(config?.model_name);
+
+    if (config?.provider === 'custom' && !credentials.customBaseUrl) {
+        throw new Error(
+            `No saved custom endpoint settings were found for model "${config.model_name}". Update the custom provider settings and try again.`
+        );
+    }
+
+    return credentials;
 }
 
 export interface ModelOption {
@@ -902,8 +985,14 @@ export interface RegressionReport {
     violations: Array<{ rule: string; message: string; actual?: unknown; threshold?: unknown }>;
     sample_regressions_count: number;
     sample_improvements_count: number;
-    grader_summary: Record<string, unknown>;
-    statistical: Record<string, unknown>;
+    grader_summary: {
+        baseline?: Record<string, { pass: number; fail: number; skip: number }>;
+        candidate?: Record<string, { pass: number; fail: number; skip: number }>;
+    };
+    statistical: {
+        per_example_differences?: PerExampleDiff[];
+        [key: string]: unknown;
+    };
     config_diff: Record<string, unknown>;
 }
 

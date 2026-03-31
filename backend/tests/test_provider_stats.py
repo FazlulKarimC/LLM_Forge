@@ -274,6 +274,23 @@ class TestProviderRouter:
         assert len(results) == 3
         assert all(r.served_provider == "MockEngine" for r in results)
 
+    def test_batch_fallback_chain_uses_per_prompt_fallback_with_multiple_providers(self):
+        from app.services.inference.provider_router import ProviderRouter
+        from app.services.inference.base import GenerationConfig
+
+        primary = MockEngine(name="Primary", _fail_with_rate_limit=True)
+        secondary = MockEngine(name="Secondary")
+        router = ProviderRouter([primary, secondary], RoutingPolicy.FALLBACK_CHAIN)
+        router.load_model("test")
+
+        results = router.generate_batch(["a", "b", "c"], GenerationConfig())
+
+        assert len(results) == 3
+        assert all("Secondary" in result.text for result in results)
+        summary = router.stats_tracker.summary()
+        assert summary["MockEngine"]["total_requests"] == 6
+        assert summary["MockEngine"]["total_errors"] == 3
+
     def test_stats_summary_after_requests(self):
         from app.services.inference.provider_router import ProviderRouter
         from app.services.inference.base import GenerationConfig

@@ -59,6 +59,8 @@ class RunService:
         context_relevance_score: Optional[float] = None,
         failure_mode: Optional[FailureMode] = None,
         error_message: Optional[str] = None,
+        grader_results: Optional[dict] = None,
+        served_provider: Optional[str] = None,
         attempt: int = 1,
     ) -> Run:
         """
@@ -86,6 +88,8 @@ class RunService:
             faithfulness_score: RAG faithfulness evaluation (optional)
             retrieved_chunks: RAG retrieved documents (optional)
             context_relevance_score: CrossEncoder context relevance (optional)
+            grader_results: Deterministic grader verdicts (optional)
+            served_provider: Which routed provider served this run (optional)
             attempt: Attempt number for non-destructive re-runs
         
         Returns:
@@ -115,6 +119,8 @@ class RunService:
             context_relevance_score=context_relevance_score,
             failure_mode=failure_mode,
             error_message=error_message,
+            grader_results=grader_results,
+            served_provider=served_provider,
             attempt=attempt,
         )
         

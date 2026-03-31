@@ -6,7 +6,7 @@ Compares candidate experiments against pinned baselines to detect regressions.
 Key design decisions:
 - Baselines are immutable: pinned_attempt freezes the attempt at pin time
 - Runs are loaded at specific attempts, never "latest"
-- Candidate's grader config is applied to BOTH sides (baselines may predate graders)
+- Each side is graded with its own config and execution context
 - Overlap ratio below threshold → inconclusive (None) verdict
 - One baseline per (dataset_name, model_name) lineage
 """
@@ -16,13 +16,14 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 from uuid import UUID
 
-from sqlalchemy import select, and_
+import numpy as np
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.experiment import Experiment
 from app.models.run import Run
 from app.schemas.experiment import ExperimentConfig, RegressionConfig, GradersConfig
-from app.services.grader_service import GraderEngine, VerdictStatus
+from app.services.grader_service import GraderEngine
 from app.services.statistical_service import StatisticalService
 
 logger = logging.getLogger(__name__)
@@ -83,7 +84,8 @@ class RegressionService:
         
         Resolution order:
         1. Explicit baseline_id on the experiment → use it
-        2. Most recent is_baseline=True with same dataset_name AND dataset_hash
+        2. Most recent is_baseline=True with same dataset_name + model_name + dataset_hash
+        3. Fallback to same dataset_name + model_name lineage when dataset hashes are unavailable
         3. None if no match
         """
         # 1. Explicit baseline
@@ -97,27 +99,36 @@ class RegressionService:
             if baseline:
                 return baseline
         
-        # 2. Auto-detect by dataset_name + dataset_hash
-        if not experiment.dataset_hash:
-            logger.warning(
-                "Experiment %s has no dataset_hash — cannot auto-detect baseline",
-                experiment.id,
+        base_conditions = [
+            Experiment.is_baseline == True,
+            Experiment.deleted_at.is_(None),
+            Experiment.dataset_name == experiment.dataset_name,
+            Experiment.model_name == experiment.model_name,
+            Experiment.id != experiment.id,
+        ]
+
+        if experiment.dataset_hash:
+            exact_hash_query = (
+                select(Experiment)
+                .where(
+                    *base_conditions,
+                    Experiment.dataset_hash == experiment.dataset_hash,
+                )
+                .order_by(Experiment.created_at.desc())
+                .limit(1)
             )
-            return None
-        
-        query = (
+            exact_hash_result = await self.db.execute(exact_hash_query)
+            exact_hash_baseline = exact_hash_result.scalar_one_or_none()
+            if exact_hash_baseline:
+                return exact_hash_baseline
+
+        lineage_query = (
             select(Experiment)
-            .where(
-                Experiment.is_baseline == True,
-                Experiment.deleted_at.is_(None),
-                Experiment.dataset_name == experiment.dataset_name,
-                Experiment.dataset_hash == experiment.dataset_hash,
-                Experiment.id != experiment.id,
-            )
+            .where(*base_conditions)
             .order_by(Experiment.created_at.desc())
             .limit(1)
         )
-        result = await self.db.execute(query)
+        result = await self.db.execute(lineage_query)
         return result.scalar_one_or_none()
 
     async def run_regression_check(
@@ -152,16 +163,29 @@ class RegressionService:
         
         # Parse configs
         candidate_config = ExperimentConfig(**candidate_exp.config)
+        baseline_config = ExperimentConfig(**baseline_exp.config)
         regression_config = candidate_config.regression or RegressionConfig()
         
-        # Grade both sides with candidate's grader config
+        # Grade both sides with their own grader config and execution context.
         grader_summary = {}
-        if candidate_config.graders and candidate_config.graders.rules:
+        if (
+            baseline_config.graders and baseline_config.graders.rules
+        ) or (
+            candidate_config.graders and candidate_config.graders.rules
+        ):
             grader_summary = self._grade_both_sides(
-                baseline_runs, candidate_runs,
-                candidate_config.graders,
-                candidate_config.reasoning_method.value,
-                bool(candidate_config.rag and candidate_config.rag.retrieval_method != "none"),
+                baseline_runs=baseline_runs,
+                baseline_graders=baseline_config.graders,
+                baseline_reasoning_method=baseline_config.reasoning_method.value,
+                baseline_has_rag=bool(
+                    baseline_config.rag and baseline_config.rag.retrieval_method != "none"
+                ),
+                candidate_runs=candidate_runs,
+                candidate_graders=candidate_config.graders,
+                candidate_reasoning_method=candidate_config.reasoning_method.value,
+                candidate_has_rag=bool(
+                    candidate_config.rag and candidate_config.rag.retrieval_method != "none"
+                ),
             )
         
         # Statistical comparison on pre-filtered runs
@@ -179,6 +203,12 @@ class RegressionService:
             )
         
         overlap_ratio = stats.get("overlap_ratio", 0.0)
+        stats["baseline_latency_p95_ms"] = self._latency_p95_ms(baseline_runs)
+        stats["candidate_latency_p95_ms"] = self._latency_p95_ms(candidate_runs)
+        baseline_p95 = stats["baseline_latency_p95_ms"]
+        candidate_p95 = stats["candidate_latency_p95_ms"]
+        if baseline_p95 is not None and candidate_p95 is not None:
+            stats["latency_p95_delta_ms"] = candidate_p95 - baseline_p95
         
         # Check overlap threshold
         if overlap_ratio < regression_config.min_overlap_ratio:
@@ -322,31 +352,48 @@ class RegressionService:
     def _grade_both_sides(
         self,
         baseline_runs: List[Run],
+        baseline_graders: Optional[GradersConfig],
+        baseline_reasoning_method: str,
+        baseline_has_rag: bool,
         candidate_runs: List[Run],
-        graders_config: GradersConfig,
-        reasoning_method: str,
-        has_rag: bool,
+        candidate_graders: Optional[GradersConfig],
+        candidate_reasoning_method: str,
+        candidate_has_rag: bool,
     ) -> Dict[str, Any]:
-        """Grade both sides with candidate's grader config and summarize."""
+        """Grade both sides with their own grader configs and summarize."""
         engine = GraderEngine()
-        
-        baseline_results = engine.grade_all_runs(
-            baseline_runs, graders_config, reasoning_method, has_rag,
-        )
-        candidate_results = engine.grade_all_runs(
-            candidate_runs, graders_config, reasoning_method, has_rag,
-        )
-        
-        # Summarize: per-grader pass/fail/skip counts for both sides
+
         summary: Dict[str, Any] = {"baseline": {}, "candidate": {}}
-        
-        for side_name, side_results in [("baseline", baseline_results), ("candidate", candidate_results)]:
-            for run_id, verdicts in side_results.items():
-                for v in verdicts:
-                    if v.grader_name not in summary[side_name]:
-                        summary[side_name][v.grader_name] = {"pass": 0, "fail": 0, "skip": 0}
-                    summary[side_name][v.grader_name][v.status.value] += 1
-        
+
+        if baseline_graders and baseline_graders.rules:
+            baseline_results = engine.grade_all_runs(
+                baseline_runs,
+                baseline_graders,
+                baseline_reasoning_method,
+                baseline_has_rag,
+            )
+            summary["baseline"] = self._summarize_grader_verdicts(baseline_results)
+
+        if candidate_graders and candidate_graders.rules:
+            candidate_results = engine.grade_all_runs(
+                candidate_runs,
+                candidate_graders,
+                candidate_reasoning_method,
+                candidate_has_rag,
+            )
+            summary["candidate"] = self._summarize_grader_verdicts(candidate_results)
+
+        return summary
+
+    @staticmethod
+    def _summarize_grader_verdicts(results: Dict[Any, List[Any]]) -> Dict[str, Dict[str, int]]:
+        """Collapse per-run grader verdicts into pass/fail/skip counts."""
+        summary: Dict[str, Dict[str, int]] = {}
+        for verdicts in results.values():
+            for verdict in verdicts:
+                if verdict.grader_name not in summary:
+                    summary[verdict.grader_name] = {"pass": 0, "fail": 0, "skip": 0}
+                summary[verdict.grader_name][verdict.status.value] += 1
         return summary
 
     @staticmethod
@@ -380,8 +427,32 @@ class RegressionService:
                     "actual": f1_diff,
                     "threshold": config.f1_min_delta,
                 })
+
+        candidate_latency_p95_ms = stats.get("candidate_latency_p95_ms")
+        if (
+            config.latency_p95_max_ms is not None
+            and candidate_latency_p95_ms is not None
+            and candidate_latency_p95_ms > config.latency_p95_max_ms
+        ):
+            violations.append({
+                "rule": "latency_p95_max_ms",
+                "message": (
+                    f"Candidate p95 latency was {candidate_latency_p95_ms:.1f} ms "
+                    f"(threshold: {config.latency_p95_max_ms:.1f} ms)"
+                ),
+                "actual": candidate_latency_p95_ms,
+                "threshold": config.latency_p95_max_ms,
+            })
         
         return violations
+
+    @staticmethod
+    def _latency_p95_ms(runs: List[Run]) -> Optional[float]:
+        """Compute p95 latency from the compared run set."""
+        latencies = [run.latency_ms for run in runs if run.latency_ms is not None]
+        if not latencies:
+            return None
+        return float(np.percentile(np.array(latencies), 95))
 
     @staticmethod
     def _detect_sample_regressions(

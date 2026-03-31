@@ -151,3 +151,48 @@ class TestExperimentRunCustomHeaders:
         kwargs = mock_enqueue.call_args.kwargs
         assert kwargs.get("custom_base_url") == "http://mock-base.local/v1"
         assert kwargs.get("custom_api_key") == "mock-api-key"
+
+    @patch('app.api.experiments.ExperimentService.get')
+    def test_run_experiment_requires_custom_headers_for_custom_provider(self, mock_get, client):
+        """Custom-provider experiments should fail fast instead of falling back silently."""
+        class MockHyperParams:
+            temperature = 0.1
+            max_tokens = 10
+            top_p = 0.9
+            top_k = None
+            seed = 42
+
+        class MockProvider:
+            value = "custom"
+
+        class MockConfig:
+            model_name = "custom-model"
+            reasoning_method = "naive"
+            dataset_name = "sample"
+            num_samples = 2
+            provider = MockProvider()
+            rag = None
+            agent = None
+            optimization = None
+            hyperparameters = MockHyperParams()
+
+        class MockExperiment:
+            id = "00000000-0000-0000-0000-000000000000"
+            name = "Custom Run"
+            description = ""
+            status = "pending"
+            error_message = None
+            started_at = None
+            completed_at = None
+            created_at = "2025-01-01T00:00:00Z"
+            updated_at = "2025-01-01T00:00:00Z"
+            config = MockConfig()
+
+        mock_get.return_value = MockExperiment()
+
+        response = client.post(
+            f"{settings.API_V1_PREFIX}/experiments/00000000-0000-0000-0000-000000000000/run"
+        )
+
+        assert response.status_code == 400
+        assert "custom provider" in response.json()["message"].lower()

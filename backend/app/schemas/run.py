@@ -67,11 +67,16 @@ class RunResponse(BaseModel):
     
     # Agent-specific
     agent_trace: Optional[AgentTrace] = None
-    
+    grader_results: Optional[Dict[str, Any]] = None
+
     # RAG-specific
+    retrieved_chunks: Optional[Dict[str, Any]] = None
     retrieval_info: Optional[RetrievalInfo] = None
     faithfulness_score: Optional[float] = Field(None, ge=0, le=1)
     context_relevance_score: Optional[float] = Field(None, ge=0, le=1)
+
+    # Routing-specific
+    served_provider: Optional[str] = None
     
     # Attempt tracking
     attempt: Optional[int] = None

@@ -3,7 +3,17 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { use, useState } from "react";
-import { ArrowLeft, Download, FileText, LoaderCircle, Pin, PinOff, Play, ScanSearch, Shield, TriangleAlert } from "lucide-react";
+import {
+  ArrowLeft,
+  Download,
+  FileText,
+  LoaderCircle,
+  Pin,
+  PinOff,
+  Play,
+  ScanSearch,
+  TriangleAlert,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -14,6 +24,7 @@ import {
   getMetrics,
   getProfile,
   getRunSummaries,
+  resolveRunExperimentCredentials,
   runExperiment,
   setBaseline,
   unsetBaseline,
@@ -51,6 +62,19 @@ function formatDate(value?: string) {
 function formatDuration(ms?: number) {
   if (ms == null) return "--";
   return `${ms.toFixed(0)} ms`;
+}
+
+function regressionBadge(status?: "not_checked" | "pass" | "fail" | "inconclusive") {
+  switch (status) {
+    case "pass":
+      return <span className="status-pill status-completed">Pass</span>;
+    case "fail":
+      return <span className="status-pill status-failed">Fail</span>;
+    case "inconclusive":
+      return <span className="status-pill status-queued">Inconclusive</span>;
+    default:
+      return null;
+  }
 }
 
 function LatencyHistogram({ runs }: { runs: RunSummary[] }) {
@@ -92,6 +116,7 @@ function LatencyHistogram({ runs }: { runs: RunSummary[] }) {
 
 function RunFilmstrip({ runs }: { runs: RunSummary[] }) {
   const [selectedRun, setSelectedRun] = useState<RunSummary | null>(runs[0] ?? null);
+  const graderEntries = Object.entries(selectedRun?.grader_results ?? {});
 
   return (
     <div className="space-y-4">
@@ -153,6 +178,7 @@ function RunFilmstrip({ runs }: { runs: RunSummary[] }) {
                 <StatusPill status={selectedRun.failure_mode ? "failed" : selectedRun.is_correct ? "completed" : "failed"} />
                 <span className="chip">F1 {(selectedRun.score ?? 0).toFixed(3)}</span>
                 <span className="chip">Latency {formatDuration(selectedRun.latency_ms)}</span>
+                {selectedRun.served_provider ? <span className="chip">Provider {selectedRun.served_provider}</span> : null}
                 {selectedRun.failure_mode ? <span className="chip">Failure {selectedRun.failure_mode}</span> : null}
               </div>
               <div className="grid gap-4">
@@ -168,20 +194,30 @@ function RunFilmstrip({ runs }: { runs: RunSummary[] }) {
                   <div className="section-label">Expected answer</div>
                   <pre className="mt-3 whitespace-pre-wrap text-sm leading-7 text-(--muted-foreground)">{selectedRun.expected_output || "No expected answer recorded"}</pre>
                 </div>
-                {selectedRun.grader_results && Array.isArray(selectedRun.grader_results) && selectedRun.grader_results.length > 0 ? (
+                {graderEntries.length > 0 ? (
                   <div className="rounded-[18px] border border-(--border) bg-(--surface-2) p-4">
                     <div className="section-label">Grader verdicts</div>
                     <div className="mt-3 space-y-2">
-                      {selectedRun.grader_results.map((v: { grader_name: string; status: string; message?: string }, i: number) => (
-                        <div key={`${v.grader_name}-${i}`} className="flex items-center justify-between text-sm">
-                          <span className="font-mono text-xs">{v.grader_name}</span>
-                          <span className={`status-pill ${
-                            v.status === 'pass' ? 'status-completed' :
-                            v.status === 'fail' ? 'status-failed' :
-                            'status-pending'
-                          }`}>{v.status}</span>
-                        </div>
-                      ))}
+                      {graderEntries.map(([graderName, verdict]) => {
+                        const verdictData = verdict as { status: string; reason?: string };
+                        return (
+                          <div key={graderName} className="rounded-[16px] border border-(--border) bg-(--surface-1) p-3">
+                            <div className="flex items-center justify-between text-sm">
+                              <span className="font-mono text-xs">{graderName}</span>
+                              <span className={`status-pill ${
+                                verdictData.status === "pass"
+                                  ? "status-completed"
+                                  : verdictData.status === "fail"
+                                    ? "status-failed"
+                                    : "status-pending"
+                              }`}>{verdictData.status}</span>
+                            </div>
+                            {verdictData.reason ? (
+                              <p className="mt-2 text-sm leading-7 text-(--muted-foreground)">{verdictData.reason}</p>
+                            ) : null}
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 ) : null}
@@ -261,6 +297,8 @@ function ResultsDashboard({ experimentId, experimentName }: { experimentId: stri
 
   const metrics = metricsQuery.data;
   const runs = runsQuery.data ?? [];
+  const runsError = runsQuery.error;
+  const runsMissing = runsError instanceof ApiError && runsError.statusCode === 404;
 
   if (!metrics) {
     return (
@@ -376,8 +414,25 @@ function ResultsDashboard({ experimentId, experimentName }: { experimentId: stri
         </Panel>
       ) : null}
 
-      {runs.length ? <RunFilmstrip runs={runs} /> : <EmptyState icon={<ScanSearch className="size-5" />} title="No per-run logs" description="Metrics were saved, but no run summaries were returned for the latest attempt." />}
-      {runs.length ? <LatencyHistogram runs={runs} /> : null}
+      {runsError && !runsMissing ? (
+        <div className="alert alert-danger">
+          <TriangleAlert className="mt-0.5 size-4 shrink-0" />
+          <p className="text-sm leading-7">{runsError instanceof Error ? runsError.message : "Failed to load per-run logs."}</p>
+        </div>
+      ) : null}
+
+      {runs.length ? (
+        <>
+          <RunFilmstrip runs={runs} />
+          <LatencyHistogram runs={runs} />
+        </>
+      ) : (
+        <EmptyState
+          icon={<ScanSearch className="size-5" />}
+          title={runsMissing ? "No per-run logs" : "Per-run logs unavailable"}
+          description={runsMissing ? "Metrics were saved, but no run summaries were returned for the latest attempt." : "The aggregate metrics loaded, but the latest run logs could not be fetched."}
+        />
+      )}
     </div>
   );
 }
@@ -390,6 +445,19 @@ function ProfileDashboard({ experimentId }: { experimentId: string }) {
 
   if (profileQuery.isLoading) {
     return <SkeletonBlock className="h-[220px]" />;
+  }
+
+  if (profileQuery.error) {
+    const error = profileQuery.error;
+    if (error instanceof ApiError && error.statusCode === 404) {
+      return null;
+    }
+    return (
+      <div className="alert alert-danger">
+        <TriangleAlert className="mt-0.5 size-4 shrink-0" />
+        <p className="text-sm leading-7">{error instanceof Error ? error.message : "Failed to load optimization data."}</p>
+      </div>
+    );
   }
 
   const profile = profileQuery.data as ProfileData | undefined;
@@ -442,7 +510,6 @@ function ProfileDashboard({ experimentId }: { experimentId: string }) {
   );
 }
 
-
 export default function ExperimentDetailPage({ params }: Props) {
   const { id } = use(params);
   const queryClient = useQueryClient();
@@ -458,26 +525,8 @@ export default function ExperimentDetailPage({ params }: Props) {
 
   const runMutation = useMutation({
     mutationFn: () => {
-      let customBaseUrl: string | undefined;
-      let customApiKey: string | undefined;
-
-      if (experimentQuery.data?.config.model_name && typeof window !== "undefined") {
-        try {
-          const settings = JSON.parse(localStorage.getItem("customLLMSettings") || "{}");
-          const modelSettings = settings[experimentQuery.data.config.model_name];
-          if (modelSettings) {
-            customBaseUrl = modelSettings.baseUrl;
-            customApiKey = modelSettings.apiKey;
-          } else if (localStorage.getItem("customModelId") === experimentQuery.data.config.model_name) {
-            customBaseUrl = localStorage.getItem("customBaseUrl") || undefined;
-            customApiKey = localStorage.getItem("customApiKey") || undefined;
-          }
-        } catch (error) {
-          console.error("Failed to load custom model settings", error);
-        }
-      }
-
-      return runExperiment(id, customBaseUrl, customApiKey);
+      const credentials = resolveRunExperimentCredentials(experimentQuery.data?.config);
+      return runExperiment(id, credentials.customBaseUrl, credentials.customApiKey);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["experiment", id] });
@@ -521,17 +570,11 @@ export default function ExperimentDetailPage({ params }: Props) {
           <span className="chip">{experiment.config.model_name.split("/").pop()}</span>
           <span className="chip">{experiment.config.dataset_name}</span>
           {experiment.is_baseline ? (
-            <span className="chip" style={{ color: 'color-mix(in oklab, var(--primary) 84%, white 12%)' }}>
+            <span className="chip" style={{ color: "color-mix(in oklab, var(--primary) 84%, white 12%)" }}>
               <Pin className="size-3" /> Baseline
             </span>
           ) : null}
-          {experiment.regression_passed === true ? (
-            <span className="status-pill status-completed">✅ Pass</span>
-          ) : experiment.regression_passed === false ? (
-            <span className="status-pill status-failed">❌ Fail</span>
-          ) : experiment.regression_passed === null ? (
-            <span className="status-pill status-queued">⚠️ Inconclusive</span>
-          ) : null}
+          {regressionBadge(experiment.regression_status)}
           {isActive ? <span className="chip">Auto-refresh every 3s</span> : null}
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -550,7 +593,7 @@ export default function ExperimentDetailPage({ params }: Props) {
                     queryClient.invalidateQueries({ queryKey: ["experiment", id] });
                     queryClient.invalidateQueries({ queryKey: ["experiments"] });
                     toast.success("Baseline unpinned");
-                  }).catch((e: Error) => toast.error(`Failed to unpin: ${e.message}`));
+                  }).catch((error: Error) => toast.error(`Failed to unpin: ${error.message}`));
                 }}
               >
                 <PinOff className="size-4" />
@@ -565,7 +608,7 @@ export default function ExperimentDetailPage({ params }: Props) {
                     queryClient.invalidateQueries({ queryKey: ["experiment", id] });
                     queryClient.invalidateQueries({ queryKey: ["experiments"] });
                     toast.success("Pinned as baseline");
-                  }).catch((e: Error) => toast.error(`Failed to pin: ${e.message}`));
+                  }).catch((error: Error) => toast.error(`Failed to pin: ${error.message}`));
                 }}
               >
                 <Pin className="size-4" />
@@ -644,5 +687,3 @@ export default function ExperimentDetailPage({ params }: Props) {
     </div>
   );
 }
-
-

@@ -8,7 +8,14 @@ import { useState } from "react";
 import { AlertTriangle, ArrowRight, Database, Layers3, LoaderCircle, PlugZap, WandSparkles } from "lucide-react";
 import { toast } from "sonner";
 
-import { createExperiment, CreateExperimentRequest, ExperimentConfig, getAvailableModels, runExperiment } from "@/lib/api";
+import {
+  createExperiment,
+  CreateExperimentRequest,
+  ExperimentConfig,
+  getAvailableModels,
+  resolveRunExperimentCredentials,
+  runExperiment,
+} from "@/lib/api";
 import { MetricBar, PageHeader, Panel, PanelHeader } from "@/components/ui/primitives";
 
 const datasetGroups = [
@@ -57,6 +64,13 @@ const providerOptions = [
   { value: "openrouter", label: "OpenRouter", description: "Use free-tier models with provider-side routing" },
   { value: "groq", label: "Groq", description: "Very fast inference with stricter limits" },
   { value: "custom", label: "Custom endpoint", description: "Your own OpenAI-compatible endpoint" },
+] as const;
+
+const routingPolicyOptions = [
+  { value: "fallback_chain", label: "Fallback chain", description: "Try the primary provider first and fall back only on transient failures" },
+  { value: "cheapest_first", label: "Cheapest first", description: "Prefer the lowest-cost provider based on accumulated telemetry" },
+  { value: "fastest_first", label: "Fastest first", description: "Prefer the lowest-latency provider based on accumulated telemetry" },
+  { value: "adaptive", label: "Adaptive", description: "Explore early, then exploit the best-performing provider" },
 ] as const;
 
 const retrievalOptions = [
@@ -131,6 +145,18 @@ export default function NewExperimentPage() {
     batch_size: 8,
     enable_caching: false,
     cache_max_size: 256,
+    routing_policy: "fallback_chain" as "fallback_chain" | "cheapest_first" | "fastest_first" | "adaptive",
+    routing_epsilon: 0.15,
+    routing_exploration_window: 10,
+    enable_regression: false,
+    regression_accuracy_min_delta: -0.05,
+    regression_f1_min_delta: -0.05,
+    regression_latency_p95_max_ms: "" as number | "",
+    regression_no_sample_regressions: false,
+    regression_max_new_failures: "" as number | "",
+    regression_min_overlap_ratio: 0.8,
+    prompt_version_id: "",
+    graders_json: "",
     seed: "" as number | "",
   });
 
@@ -158,11 +184,8 @@ export default function NewExperimentPage() {
 
       if (variables.shouldRun) {
         try {
-          await runExperiment(
-            experiment.id,
-            formData.model_name === "custom_hosted" ? customBaseUrl : undefined,
-            formData.model_name === "custom_hosted" ? customApiKey : undefined
-          );
+          const credentials = resolveRunExperimentCredentials(variables.request.config);
+          await runExperiment(experiment.id, credentials.customBaseUrl, credentials.customApiKey);
         } catch (error) {
           const message = error instanceof Error
             ? `Experiment created but failed to start: ${error.message}`
@@ -211,6 +234,18 @@ export default function NewExperimentPage() {
     }
     if (formData.enable_caching && (formData.cache_max_size < 8 || formData.cache_max_size > 4096)) {
       setValidationError("Cache size must be between 8 and 4096.");
+      return;
+    }
+    if (formData.routing_epsilon < 0 || formData.routing_epsilon > 1) {
+      setValidationError("Adaptive router epsilon must be between 0 and 1.");
+      return;
+    }
+    if (formData.routing_exploration_window < 1 || formData.routing_exploration_window > 50) {
+      setValidationError("Adaptive router exploration window must be between 1 and 50.");
+      return;
+    }
+    if (formData.regression_min_overlap_ratio < 0 || formData.regression_min_overlap_ratio > 1) {
+      setValidationError("Minimum overlap ratio must be between 0 and 1.");
       return;
     }
     if (formData.model_name === "custom_hosted" && (!customBaseUrl.trim() || !customModelId.trim())) {
@@ -269,6 +304,38 @@ export default function NewExperimentPage() {
         cache_max_size: formData.cache_max_size,
         enable_profiling: true,
       };
+    }
+
+    if (formData.provider === "auto") {
+      config.routing = {
+        policy: formData.routing_policy,
+        epsilon: formData.routing_epsilon,
+        exploration_window: formData.routing_exploration_window,
+      };
+    }
+
+    if (formData.enable_regression) {
+      config.regression = {
+        accuracy_min_delta: formData.regression_accuracy_min_delta,
+        f1_min_delta: formData.regression_f1_min_delta,
+        no_sample_regressions: formData.regression_no_sample_regressions,
+        min_overlap_ratio: formData.regression_min_overlap_ratio,
+        ...(formData.regression_latency_p95_max_ms !== "" ? { latency_p95_max_ms: formData.regression_latency_p95_max_ms } : {}),
+        ...(formData.regression_max_new_failures !== "" ? { max_new_failures: formData.regression_max_new_failures } : {}),
+      };
+    }
+
+    if (formData.prompt_version_id.trim()) {
+      config.prompt_version_id = formData.prompt_version_id.trim();
+    }
+
+    if (formData.graders_json.trim()) {
+      try {
+        config.graders = JSON.parse(formData.graders_json);
+      } catch {
+        setValidationError("Deterministic graders JSON must be valid JSON.");
+        return;
+      }
     }
 
     const request: CreateExperimentRequest = {
@@ -397,6 +464,34 @@ export default function NewExperimentPage() {
                 <p className="field-help mt-2">{providerOptions.find((option) => option.value === formData.provider)?.description}</p>
               </div>
             </div>
+
+            {formData.provider === "auto" ? (
+              <div className="panel-body pt-0">
+                <div className="rounded-[18px] border border-(--border) bg-(--surface-2) p-4">
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                    <div>
+                      <label className="field-label" htmlFor="routing-policy">Routing policy</label>
+                      <select id="routing-policy" value={formData.routing_policy} onChange={(event) => updateField("routing_policy", event.target.value as typeof formData.routing_policy)} className="select-shell">
+                        {routingPolicyOptions.map((option) => (
+                          <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                      </select>
+                      <p className="field-help mt-2">{routingPolicyOptions.find((option) => option.value === formData.routing_policy)?.description}</p>
+                    </div>
+                    <div>
+                      <label className="field-label" htmlFor="routing-epsilon">Adaptive epsilon</label>
+                      <input id="routing-epsilon" type="number" step="0.05" min="0" max="1" value={formData.routing_epsilon} onChange={(event) => updateField("routing_epsilon", parseFloat(event.target.value) || 0)} className="input-shell" />
+                      <p className="field-help mt-2">Only used by the adaptive policy.</p>
+                    </div>
+                    <div>
+                      <label className="field-label" htmlFor="routing-exploration-window">Exploration window</label>
+                      <input id="routing-exploration-window" type="number" min="1" max="50" value={formData.routing_exploration_window} onChange={(event) => updateField("routing_exploration_window", parseInt(event.target.value, 10) || 1)} className="input-shell" />
+                      <p className="field-help mt-2">Initial requests to round-robin before exploiting telemetry.</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : null}
 
             {formData.model_name === "custom_hosted" ? (
               <div className="panel-body pt-0">
@@ -547,6 +642,67 @@ export default function NewExperimentPage() {
             </div>
           </Panel>
 
+          <Panel>
+            <PanelHeader label="Regression" title="Regression gates" description="Attach thresholds so new attempts can be checked against a pinned baseline automatically." />
+            <div className="panel-body space-y-4">
+              <div className="rounded-[18px] border border-(--border) bg-(--surface-2) p-4">
+                <label className="flex items-center gap-3 font-medium">
+                  <input type="checkbox" checked={formData.enable_regression} onChange={(event) => updateField("enable_regression", event.target.checked)} />
+                  Enable regression gates
+                </label>
+                <p className="field-help mt-3">Use these thresholds when comparing this experiment against a pinned baseline.</p>
+              </div>
+
+              {formData.enable_regression ? (
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <div>
+                    <label className="field-label" htmlFor="reg-accuracy-delta">Accuracy minimum delta</label>
+                    <input id="reg-accuracy-delta" type="number" step="0.01" value={formData.regression_accuracy_min_delta} onChange={(event) => updateField("regression_accuracy_min_delta", parseFloat(event.target.value) || 0)} className="input-shell" />
+                  </div>
+                  <div>
+                    <label className="field-label" htmlFor="reg-f1-delta">F1 minimum delta</label>
+                    <input id="reg-f1-delta" type="number" step="0.01" value={formData.regression_f1_min_delta} onChange={(event) => updateField("regression_f1_min_delta", parseFloat(event.target.value) || 0)} className="input-shell" />
+                  </div>
+                  <div>
+                    <label className="field-label" htmlFor="reg-latency-p95">Latency p95 max (ms)</label>
+                    <input id="reg-latency-p95" type="number" min="0" value={formData.regression_latency_p95_max_ms} onChange={(event) => updateField("regression_latency_p95_max_ms", event.target.value === "" ? "" : parseFloat(event.target.value))} className="input-shell" placeholder="Optional" />
+                  </div>
+                  <div>
+                    <label className="field-label" htmlFor="reg-new-failures">Max new failures</label>
+                    <input id="reg-new-failures" type="number" min="0" value={formData.regression_max_new_failures} onChange={(event) => updateField("regression_max_new_failures", event.target.value === "" ? "" : parseInt(event.target.value, 10))} className="input-shell" placeholder="Optional" />
+                  </div>
+                  <div>
+                    <label className="field-label" htmlFor="reg-overlap">Minimum overlap ratio</label>
+                    <input id="reg-overlap" type="number" step="0.05" min="0" max="1" value={formData.regression_min_overlap_ratio} onChange={(event) => updateField("regression_min_overlap_ratio", parseFloat(event.target.value) || 0)} className="input-shell" />
+                  </div>
+                  <div className="rounded-[18px] border border-(--border) bg-(--surface-2) p-4">
+                    <label className="flex items-center gap-3 font-medium">
+                      <input type="checkbox" checked={formData.regression_no_sample_regressions} onChange={(event) => updateField("regression_no_sample_regressions", event.target.checked)} />
+                      Fail on any sample regression
+                    </label>
+                    <p className="field-help mt-3">Treat any previously-correct sample becoming incorrect as a hard violation.</p>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </Panel>
+
+          <Panel>
+            <PanelHeader label="Advanced" title="Prompt lineage and graders" description="Optional metadata and deterministic graders for power users." />
+            <div className="panel-body grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div>
+                <label className="field-label" htmlFor="prompt-version-id">Prompt version ID</label>
+                <input id="prompt-version-id" type="text" value={formData.prompt_version_id} onChange={(event) => updateField("prompt_version_id", event.target.value)} className="input-shell font-mono text-sm" placeholder="Optional UUID" />
+                <p className="field-help mt-2">Attach this run to a saved prompt lineage if you are tracking prompt versions separately.</p>
+              </div>
+              <div>
+                <label className="field-label" htmlFor="graders-json">Deterministic graders JSON</label>
+                <textarea id="graders-json" value={formData.graders_json} onChange={(event) => updateField("graders_json", event.target.value)} className="textarea-shell font-mono text-sm" rows={8} placeholder={`{"rules":[{"name":"latency_budget","type":"latency_budget_ms","params":{"max":800}}]}`} />
+                <p className="field-help mt-2">Paste a backend-compatible graders config when you want deterministic checks without leaving the UI.</p>
+              </div>
+            </div>
+          </Panel>
+
           <div className="flex flex-wrap justify-end gap-3">
             <Link href="/experiments" className="btn-secondary">Cancel</Link>
             <button type="submit" className="btn-secondary" disabled={createMutation.isPending}>
@@ -620,6 +776,4 @@ export default function NewExperimentPage() {
     </div>
   );
 }
-
-
 

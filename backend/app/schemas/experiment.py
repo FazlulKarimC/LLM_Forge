@@ -33,6 +33,14 @@ class ExperimentStatus(str, Enum):
     FAILED = "failed"
 
 
+class RegressionStatus(str, Enum):
+    """Explicit regression state for list/detail badges."""
+    NOT_CHECKED = "not_checked"
+    PASS = "pass"
+    FAIL = "fail"
+    INCONCLUSIVE = "inconclusive"
+
+
 class ReasoningMethod(str, Enum):
     """Supported reasoning methods."""
     NAIVE = "naive"
@@ -353,6 +361,7 @@ class ExperimentResponse(BaseModel):
     tags: Optional[List[str]] = None
     run_manifest: Optional[Dict[str, Any]] = None
     is_baseline: Optional[bool] = None
+    regression_status: RegressionStatus = RegressionStatus.NOT_CHECKED
     regression_passed: Optional[bool] = None
     
     # Pydantic v2 style — replaces deprecated inner `class Config`
@@ -385,3 +394,12 @@ class RoutingConfig(BaseModel):
 
 # Rebuild forward refs for ExperimentConfig.routing
 ExperimentConfig.model_rebuild()
+
+
+def regression_status_from_verdict(passed: Optional[bool]) -> RegressionStatus:
+    """Convert legacy nullable verdicts into an explicit status enum."""
+    if passed is True:
+        return RegressionStatus.PASS
+    if passed is False:
+        return RegressionStatus.FAIL
+    return RegressionStatus.INCONCLUSIVE

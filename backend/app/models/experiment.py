@@ -14,7 +14,7 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
-from app.schemas.experiment import ExperimentStatus
+from app.schemas.experiment import ExperimentStatus, RegressionStatus
 
 
 class Experiment(Base):
@@ -78,6 +78,12 @@ class Experiment(Base):
     baseline_id = Column(UUID(as_uuid=True), ForeignKey("experiments.id"), nullable=True)
     pinned_attempt = Column(Integer, nullable=True)    # Frozen attempt when pinned as baseline
     prompt_version_id = Column(UUID(as_uuid=True), nullable=True)
+    regression_status = Column(
+        String(32),
+        default=RegressionStatus.NOT_CHECKED.value,
+        server_default=RegressionStatus.NOT_CHECKED.value,
+        nullable=False,
+    )
     regression_passed = Column(Boolean, nullable=True) # null=not checked, true=pass, false=fail
     
     # Soft delete

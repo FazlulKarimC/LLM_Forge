@@ -3,10 +3,10 @@ Multi-Provider Router
 
 Routes LLM inference requests across multiple providers with:
 - Configurable routing policies (fallback_chain, cheapest_first, fastest_first, adaptive)
-- Automatic fallback on rate limits (429) or connection errors
+- Automatic fallback on rate limits and transient provider failures
 - Per-request provider tracking for cost attribution
 - Thread-safe stats tracking for adaptive decisions
-- Batch-path routing guard: per-prompt routing when policy != fallback_chain
+- Batch-path routing guard: per-prompt routing when multiple providers are available
 
 Supported Providers:
 - hf_api: HuggingFace Inference Providers API (default)
@@ -20,15 +20,15 @@ import random
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from typing import List, Optional
+from typing import Dict, List, Optional
 
+from app.models.run import FailureMode
 from app.services.inference.base import (
-    InferenceEngine,
     GenerationConfig,
     GenerationResult,
+    InferenceEngine,
 )
 from app.services.inference.provider_stats import ProviderStatsTracker, RoutingPolicy
-from app.models.run import FailureMode
 
 logger = logging.getLogger(__name__)
 
@@ -47,16 +47,6 @@ class ProviderRouter(InferenceEngine):
         epsilon: float = 0.15,
         exploration_window: int = 10,
     ):
-        """
-        Initialize the router.
-
-        Args:
-            engines: Ordered list of inference engines to try
-            policy: Routing policy for provider selection
-            stats_tracker: Optional pre-populated stats tracker
-            epsilon: Exploration rate for ADAPTIVE policy (epsilon-greedy)
-            exploration_window: Round-robin for first N requests before exploiting
-        """
         if not engines:
             raise ValueError("At least one engine is required")
 
@@ -87,10 +77,12 @@ class ProviderRouter(InferenceEngine):
         for engine in self._engines:
             try:
                 engine.load_model(model_name)
-            except Exception as e:
+            except Exception as exc:
                 logger.warning(
                     "Failed to load model %s on %s: %s",
-                    model_name, type(engine).__name__, e,
+                    model_name,
+                    type(engine).__name__,
+                    exc,
                 )
 
     def _get_engine_name(self, engine: InferenceEngine) -> str:
@@ -99,60 +91,101 @@ class ProviderRouter(InferenceEngine):
 
     def _get_available_engines(self) -> List[InferenceEngine]:
         """Get engines that have a model loaded."""
-        return [e for e in self._engines if e.is_loaded]
+        return [engine for engine in self._engines if engine.is_loaded]
+
+    @staticmethod
+    def _is_retryable_result(result: GenerationResult) -> bool:
+        """Whether a returned result should trigger provider fallback."""
+        if result.failure_mode == FailureMode.TIMEOUT:
+            return True
+        if result.failure_mode != FailureMode.API_ERROR:
+            return False
+
+        err_lower = (result.error_message or "").lower()
+        return any(
+            keyword in err_lower
+            for keyword in (
+                "429",
+                "rate limit",
+                "too many requests",
+                "connection",
+                "timeout",
+                "unavailable",
+                "temporarily overloaded",
+                "server error",
+                "5xx",
+            )
+        )
+
+    @staticmethod
+    def _should_record_error(result: GenerationResult) -> bool:
+        """Count provider-side failures in routing telemetry."""
+        return result.failure_mode in {
+            FailureMode.API_ERROR,
+            FailureMode.TIMEOUT,
+            FailureMode.CONTEXT_EXCEEDED,
+        }
+
+    def _record_result_stats(self, engine_name: str, result: GenerationResult) -> None:
+        """Persist routing telemetry for a returned generation result."""
+        self._stats.record(
+            engine_name,
+            result.latency_ms or 0.0,
+            result.tokens_input or 0,
+            result.tokens_output or 0,
+            0.0,
+            self._should_record_error(result),
+        )
 
     def _select_engine(self) -> InferenceEngine:
         """
         Select an engine based on current routing policy.
-        
+
         Returns:
             Selected engine, falls back to first available on any issue.
         """
         available = self._get_available_engines()
         if not available:
-            return self._engines[0]  # Will fail at generate(), but that's expected
-        
+            return self._engines[0]
+
         if self._policy == RoutingPolicy.FALLBACK_CHAIN:
             return available[0]
-        
-        available_names = [self._get_engine_name(e) for e in available]
-        engine_map = {self._get_engine_name(e): e for e in available}
-        
+
+        available_names = [self._get_engine_name(engine) for engine in available]
+        engine_map: Dict[str, InferenceEngine] = {
+            self._get_engine_name(engine): engine for engine in available
+        }
+
         if self._policy == RoutingPolicy.ADAPTIVE:
             return self._select_adaptive(available, engine_map, available_names)
-        
-        # CHEAPEST_FIRST or FASTEST_FIRST
+
         recommended = self._stats.recommend(self._policy, available_names)
         if recommended and recommended in engine_map:
             return engine_map[recommended]
-        
+
         return available[0]
 
     def _select_adaptive(
         self,
         available: List[InferenceEngine],
-        engine_map: dict,
+        engine_map: Dict[str, InferenceEngine],
         available_names: List[str],
     ) -> InferenceEngine:
         """Epsilon-greedy adaptive selection with exploration window."""
         with self._request_count_lock:
             count = self._request_count
-        
-        # Exploration phase: round-robin
+
         if count < self._exploration_window:
             idx = count % len(available)
             return available[idx]
-        
-        # Exploitation with epsilon-greedy
+
         if random.random() < self._epsilon:
-            # Explore: random engine
             return random.choice(available)
-        
-        # Exploit: use cheapest (with tie-breaks)
+
         recommended = self._stats.recommend(RoutingPolicy.CHEAPEST_FIRST, available_names)
         if recommended and recommended in engine_map:
             return engine_map[recommended]
-        
+
         return available[0]
 
     def generate(
@@ -166,77 +199,72 @@ class ProviderRouter(InferenceEngine):
         Records stats for adaptive routing decisions.
         """
         selected = self._select_engine()
-        
+
         with self._request_count_lock:
             self._request_count += 1
-        
-        # Try selected engine first, then fallback to others
-        engines_to_try = [selected] + [e for e in self._engines if e is not selected and e.is_loaded]
+
+        engines_to_try = [selected] + [
+            engine for engine in self._engines if engine is not selected and engine.is_loaded
+        ]
         last_error = None
 
-        for i, engine in enumerate(engines_to_try):
+        for index, engine in enumerate(engines_to_try):
             engine_name = self._get_engine_name(engine)
             start_time = time.perf_counter()
-            
+
             try:
                 result = engine.generate(prompt, config)
-                elapsed_ms = (time.perf_counter() - start_time) * 1000
+                if not result.latency_ms:
+                    result.latency_ms = (time.perf_counter() - start_time) * 1000
 
-                # Check if the result indicates a rate limit
-                if result.failure_mode == FailureMode.API_ERROR and result.error_message:
-                    err_lower = result.error_message.lower()
-                    if "429" in err_lower or "rate limit" in err_lower:
-                        self._stats.record(
-                            engine_name, elapsed_ms,
-                            result.tokens_input, result.tokens_output,
-                            0.0, True,
-                        )
+                self._record_result_stats(engine_name, result)
+
+                if self._is_retryable_result(result):
+                    last_error = result.error_message or result.failure_mode.value
+                    if index < len(engines_to_try) - 1:
                         logger.warning(
-                            "Rate limited on %s, trying next provider...",
+                            "Provider %s returned retryable failure (%s), trying next provider...",
                             engine_name,
+                            result.error_message or result.failure_mode,
                         )
-                        last_error = result.error_message
                         continue
 
-                # Success — record stats
-                self._stats.record(
-                    engine_name, elapsed_ms,
-                    result.tokens_input, result.tokens_output,
-                    0.0,  # Cost computed per-run by pricing service
-                    False,
-                )
-                
-                # Tag result with routing info
                 result.served_provider = engine_name
-                reason = "selected" if engine is selected else f"fallback_{i}"
+                reason = "selected" if engine is selected else f"fallback_{index}"
                 if self._policy == RoutingPolicy.ADAPTIVE:
                     reason = f"adaptive_{reason}"
                 result.routing_reason = reason
-                
+                if self._is_retryable_result(result):
+                    break
                 return result
 
-            except Exception as e:
+            except Exception as exc:
                 elapsed_ms = (time.perf_counter() - start_time) * 1000
                 self._stats.record(engine_name, elapsed_ms, 0, 0, 0.0, True)
-                
-                last_error = str(e)
-                err_lower = str(e).lower()
 
-                is_retryable = any(kw in err_lower for kw in [
-                    "429", "rate limit", "too many requests",
-                    "connection", "timeout", "unavailable",
-                ])
+                last_error = str(exc)
+                err_lower = str(exc).lower()
+                is_retryable = any(
+                    keyword in err_lower
+                    for keyword in (
+                        "429",
+                        "rate limit",
+                        "too many requests",
+                        "connection",
+                        "timeout",
+                        "unavailable",
+                    )
+                )
 
-                if is_retryable and i < len(engines_to_try) - 1:
+                if is_retryable and index < len(engines_to_try) - 1:
                     logger.warning(
                         "Provider %s failed (%s), falling back...",
-                        engine_name, e,
+                        engine_name,
+                        exc,
                     )
                     continue
-                else:
-                    raise
+                raise
 
-        # All providers failed
         return GenerationResult(
             text="",
             tokens_input=len(prompt.split()),
@@ -255,36 +283,43 @@ class ProviderRouter(InferenceEngine):
     ) -> List[GenerationResult]:
         """
         Generate batch with routing-aware behavior.
-        
-        - FALLBACK_CHAIN: delegate entire batch to first available engine
+
+        - Single-provider fallback chains: delegate whole batch to the engine
+        - Multi-provider fallback chains: route each prompt through self.generate()
         - Other policies: per-prompt routing through self.generate()
         """
-        if self._policy == RoutingPolicy.FALLBACK_CHAIN:
-            # Existing behavior: delegate batch to first loaded engine
+        available = self._get_available_engines()
+
+        if self._policy == RoutingPolicy.FALLBACK_CHAIN and len(available) <= 1:
             for engine in self._engines:
                 if not engine.is_loaded:
                     continue
                 try:
                     results = engine.generate_batch(prompts, config, max_workers)
-                    # Tag results with provider info
                     engine_name = self._get_engine_name(engine)
-                    for r in results:
-                        r.served_provider = engine_name
-                        r.routing_reason = "batch_delegate"
+                    for result in results:
+                        result.served_provider = engine_name
+                        result.routing_reason = "batch_delegate"
+                        self._record_result_stats(engine_name, result)
                     return results
-                except Exception as e:
+                except Exception as exc:
                     logger.warning(
-                        "Batch generation failed on %s: %s", self._get_engine_name(engine), e,
+                        "Batch generation failed on %s: %s",
+                        self._get_engine_name(engine),
+                        exc,
                     )
-                    continue
 
-            # Fallback: sequential via router
             logger.warning("All engine batch methods failed, falling back to sequential")
-            return [self.generate(p, config) for p in prompts]
-        else:
-            # Per-prompt routing for adaptive/cheapest/fastest
-            with ThreadPoolExecutor(max_workers=max_workers) as pool:
-                return list(pool.map(lambda p: self.generate(p, config), prompts))
+            return [self.generate(prompt, config) for prompt in prompts]
+
+        if self._policy == RoutingPolicy.FALLBACK_CHAIN and len(available) > 1:
+            logger.info(
+                "Using per-prompt router fallback for batch generation across %d providers",
+                len(available),
+            )
+
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
+            return list(pool.map(lambda prompt: self.generate(prompt, config), prompts))
 
     def unload_model(self) -> None:
         """Unload model from all engines."""
@@ -303,15 +338,18 @@ class ProviderRouter(InferenceEngine):
     @property
     def is_loaded(self) -> bool:
         """True if at least one engine has a model loaded."""
-        return any(e.is_loaded for e in self._engines)
+        return any(engine.is_loaded for engine in self._engines)
 
     @property
     def active_engine_name(self) -> str:
         """Name of the engine that last served a request (from stats)."""
         summary = self._stats.summary()
         if summary:
-            # Return the provider with most requests
-            by_count = sorted(summary.items(), key=lambda x: x[1].get("total_requests", 0), reverse=True)
+            by_count = sorted(
+                summary.items(),
+                key=lambda item: item[1].get("total_requests", 0),
+                reverse=True,
+            )
             if by_count:
                 return by_count[0][0]
         return "none"

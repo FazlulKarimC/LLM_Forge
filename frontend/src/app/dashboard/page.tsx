@@ -23,7 +23,9 @@ import {
   getDashboardStats,
   getReadinessStatus,
   listExperiments,
+  resolveRunExperimentCredentials,
   runExperiment,
+  type Experiment,
 } from "@/lib/api";
 import {
   AnimatedNumber,
@@ -70,23 +72,24 @@ export default function DashboardPage() {
   });
 
   const runMutation = useMutation({
-    mutationFn: (id: string) => {
-      setRunningIds((prev) => new Set(prev).add(id));
-      return runExperiment(id);
+    mutationFn: (experiment: Experiment) => {
+      setRunningIds((prev) => new Set(prev).add(experiment.id));
+      const credentials = resolveRunExperimentCredentials(experiment.config);
+      return runExperiment(experiment.id, credentials.customBaseUrl, credentials.customApiKey);
     },
-    onSuccess: (_data, id) => {
+    onSuccess: (_data, experiment) => {
       setRunningIds((prev) => {
         const next = new Set(prev);
-        next.delete(id);
+        next.delete(experiment.id);
         return next;
       });
       queryClient.invalidateQueries({ queryKey: ["experiments"] });
       toast.success("Experiment started");
     },
-    onError: (error: Error, id) => {
+    onError: (error: Error, experiment) => {
       setRunningIds((prev) => {
         const next = new Set(prev);
-        next.delete(id);
+        next.delete(experiment.id);
         return next;
       });
       toast.error(`Failed to start experiment: ${error.message}`);
@@ -317,7 +320,7 @@ export default function DashboardPage() {
                         <button
                           type="button"
                           className="btn-secondary"
-                          onClick={() => runMutation.mutate(experiment.id)}
+                          onClick={() => runMutation.mutate(experiment)}
                           disabled={runningIds.has(experiment.id) || experiment.status === "running" || experiment.status === "queued"}
                         >
                           {runningIds.has(experiment.id) ? <LoaderCircle className="size-4 animate-spin" /> : <Play className="size-4" />}
@@ -403,4 +406,3 @@ export default function DashboardPage() {
 function cn(...values: Array<string | false | null | undefined>) {
   return values.filter(Boolean).join(" ");
 }
-

@@ -1,9 +1,9 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { Radio } from "lucide-react";
+import { AlertTriangle, Radio } from "lucide-react";
 
-import { getRoutingTelemetry, type ProviderStats } from "@/lib/api";
+import { ApiError, getRoutingTelemetry, type ProviderStats } from "@/lib/api";
 import {
   AnimatedNumber,
   MetricCard,
@@ -18,8 +18,6 @@ import {
  * Fetches per-provider stats from raw_metrics and displays:
  * - Aggregate KPIs (total requests, total errors, error rate)
  * - Per-provider data table (requests, errors, latency, tokens, cost)
- *
- * Renders nothing if the experiment has no routing data (404).
  */
 export function RoutingPanel({ experimentId }: { experimentId: string }) {
   const telemetryQuery = useQuery({
@@ -28,26 +26,37 @@ export function RoutingPanel({ experimentId }: { experimentId: string }) {
     retry: false,
   });
 
-  // No routing data → render nothing
-  if (telemetryQuery.error) return null;
   if (telemetryQuery.isLoading) return <SkeletonBlock className="h-[260px]" />;
+
+  if (telemetryQuery.error) {
+    const error = telemetryQuery.error;
+    if (error instanceof ApiError && error.statusCode === 404) {
+      return null;
+    }
+    return (
+      <Panel>
+        <PanelHeader
+          label="Routing"
+          title="Provider telemetry unavailable"
+          description="Per-provider performance metrics from the adaptive router."
+        />
+        <div className="panel-body">
+          <div className="alert alert-danger">
+            <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+            <p className="text-sm leading-7">{error instanceof Error ? error.message : "Failed to load routing telemetry."}</p>
+          </div>
+        </div>
+      </Panel>
+    );
+  }
 
   const data = telemetryQuery.data;
   if (!data || Object.keys(data).length === 0) return null;
 
   const providers = Object.entries(data);
-
-  // Aggregates
-  const totalRequests = providers.reduce(
-    (sum, [, s]) => sum + s.total_requests,
-    0
-  );
-  const totalErrors = providers.reduce(
-    (sum, [, s]) => sum + s.total_errors,
-    0
-  );
-  const overallErrorRate =
-    totalRequests > 0 ? (totalErrors / totalRequests) * 100 : 0;
+  const totalRequests = providers.reduce((sum, [, stats]) => sum + stats.total_requests, 0);
+  const totalErrors = providers.reduce((sum, [, stats]) => sum + stats.total_errors, 0);
+  const overallErrorRate = totalRequests > 0 ? (totalErrors / totalRequests) * 100 : 0;
 
   return (
     <Panel>
@@ -57,37 +66,24 @@ export function RoutingPanel({ experimentId }: { experimentId: string }) {
         description="Per-provider performance metrics from the adaptive router."
       />
       <div className="panel-body space-y-5">
-        {/* Aggregate KPIs */}
         <div className="grid gap-4 sm:grid-cols-3">
           <MetricCard
             label="Total requests"
-            value={
-              <AnimatedNumber value={totalRequests} className="text-3xl" />
-            }
+            value={<AnimatedNumber value={totalRequests} className="text-3xl" />}
             detail={`Across ${providers.length} provider${providers.length !== 1 ? "s" : ""}`}
           />
           <MetricCard
             label="Total errors"
             tone={totalErrors > 0 ? "danger" : "success"}
-            value={
-              <AnimatedNumber value={totalErrors} className="text-3xl" />
-            }
+            value={<AnimatedNumber value={totalErrors} className="text-3xl" />}
           />
           <MetricCard
             label="Error rate"
             tone={overallErrorRate > 5 ? "danger" : "success"}
-            value={
-              <AnimatedNumber
-                value={overallErrorRate}
-                suffix="%"
-                decimals={1}
-                className="text-3xl"
-              />
-            }
+            value={<AnimatedNumber value={overallErrorRate} suffix="%" decimals={1} className="text-3xl" />}
           />
         </div>
 
-        {/* Per-provider table */}
         <div className="overflow-x-auto rounded-[18px] border border-(--border) bg-(--surface-2)">
           <table className="data-table min-w-[720px]">
             <thead>

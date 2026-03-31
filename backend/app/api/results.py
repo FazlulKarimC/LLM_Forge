@@ -30,6 +30,7 @@ from app.core.database import async_session_maker, get_db
 from app.models.result import Result
 from app.models.run import Run
 from app.models.experiment import Experiment
+from app.schemas.experiment import regression_status_from_verdict
 from app.schemas.result import (
     ResultResponse,
     MetricsResponse,
@@ -49,8 +50,11 @@ router = APIRouter()
 
 def _result_to_metrics_response(result: Result) -> MetricsResponse:
     """Convert a Result model instance to MetricsResponse schema."""
+    raw_metrics = result.raw_metrics or {}
+    cost_metrics = raw_metrics.get("cost", {})
     return MetricsResponse(
         experiment_id=result.experiment_id,
+        summary_text=raw_metrics.get("summary_text"),
         quality=QualityMetrics(
             accuracy_exact=result.accuracy_exact,
             accuracy_f1=result.accuracy_f1,
@@ -70,7 +74,11 @@ def _result_to_metrics_response(result: Result) -> MetricsResponse:
             total_tokens_output=result.total_tokens_output or 0,
             total_runs=result.total_runs or 0,
             gpu_time_seconds=result.gpu_time_seconds,
+            total_cost_usd=cost_metrics.get("total_cost_usd"),
+            cost_per_correct_answer=cost_metrics.get("cost_per_correct_answer"),
+            provider=cost_metrics.get("provider"),
         ),
+        failure_modes=raw_metrics.get("failure_modes"),
         computed_at=result.computed_at,
     )
 
@@ -655,7 +663,19 @@ async def rerun_regression(
     
     if experiment.status != "completed":
         raise HTTPException(status_code=400, detail="Only completed experiments can be regression-checked")
-    
+
+    # Clear any previous regression badge/report before re-running.
+    experiment.regression_status = "not_checked"
+    experiment.regression_passed = None
+    res_query = select(Result).where(Result.experiment_id == experiment_id)
+    res_result = await db.execute(res_query)
+    result_obj = res_result.scalar_one_or_none()
+    if result_obj:
+        existing_raw = dict(result_obj.raw_metrics or {})
+        existing_raw.pop("regression", None)
+        result_obj.raw_metrics = existing_raw
+        flag_modified(result_obj, "raw_metrics")
+
     # Find baseline
     if baseline_id:
         bl_query = select(Experiment).where(
@@ -668,6 +688,7 @@ async def rerun_regression(
         baseline = await reg_svc.find_baseline(experiment)
     
     if not baseline:
+        await db.commit()
         raise HTTPException(status_code=404, detail="No baseline found for comparison")
     
     if baseline.id == experiment_id:
@@ -677,10 +698,6 @@ async def rerun_regression(
     verdict = await reg_svc.run_regression_check(experiment_id, baseline.id)
     
     # Persist verdict
-    res_query = select(Result).where(Result.experiment_id == experiment_id)
-    res_result = await db.execute(res_query)
-    result_obj = res_result.scalar_one_or_none()
-    
     if result_obj:
         existing_raw = dict(result_obj.raw_metrics or {})
         existing_raw["regression"] = verdict.to_dict()
@@ -688,7 +705,8 @@ async def rerun_regression(
         flag_modified(result_obj, "raw_metrics")
     
     experiment.regression_passed = verdict.passed
-    
+    experiment.regression_status = regression_status_from_verdict(verdict.passed).value
+
     await db.commit()
     
     return verdict.to_dict()
@@ -722,4 +740,3 @@ async def get_routing_telemetry(
         raise HTTPException(status_code=404, detail="No routing telemetry for this experiment")
     
     return routing
-
