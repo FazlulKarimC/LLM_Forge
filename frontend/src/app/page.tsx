@@ -26,32 +26,62 @@ const FRAGMENT_SRC = `
   precision mediump float;
   uniform float u_time;
   uniform vec2  u_resolution;
+  uniform vec3  u_color_a;
+  uniform vec3  u_color_b;
+  uniform vec3  u_bg;
 
   void main() {
-    // Center and correct aspect ratio
     vec2 p = (gl_FragCoord.xy / u_resolution.xy) - 0.5;
     p.x *= u_resolution.x / u_resolution.y;
 
     float t = u_time * 0.15;
-    
-    // Minimal soft fluid math
     float v = 0.0;
-    vec2 c = p * 2.0; 
-    
+    vec2 c = p * 2.0;
+
     for (float i = 1.0; i < 4.0; i++) {
         c.x += sin(t * 0.5 * i + c.y * i + t) * 0.5;
         c.y += cos(t * 0.4 * i + c.x * i - t) * 0.5;
         v += sin(c.x + t) * cos(c.y + t);
     }
-    
-    // Map smoothly to roughly 0..1 grayscale
+
     v = smoothstep(-1.5, 1.5, v);
-    
-    // Output pure black-and-white (alpha 1)
-    // CSS mix-blend-mode will handle coloring appropriately over the background
-    gl_FragColor = vec4(vec3(v), 1.0);
+
+    // Blend between two theme-aware accent colors over the background
+    vec3 color = mix(u_color_a, u_color_b, v);
+    // Mix with background so the effect is subtle — 18% color, 82% bg
+    color = mix(u_bg, color, 0.18);
+    gl_FragColor = vec4(color, 1.0);
   }
 `;
+
+/**
+ * Parse a CSS color value (oklch, hex, rgb) into [r, g, b] floats 0..1.
+ * Falls back to a neutral gray on failure.
+ */
+function cssColorToGL(cssValue: string): [number, number, number] {
+  if (typeof document === "undefined") return [0.5, 0.5, 0.5];
+  const el = document.createElement("div");
+  el.style.color = cssValue;
+  el.style.display = "none";
+  document.body.appendChild(el);
+  const computed = getComputedStyle(el).color;
+  document.body.removeChild(el);
+  const m = computed.match(/[\d.]+/g);
+  if (!m || m.length < 3) return [0.5, 0.5, 0.5];
+  return [parseFloat(m[0]) / 255, parseFloat(m[1]) / 255, parseFloat(m[2]) / 255];
+}
+
+function getThemeColors() {
+  const style = getComputedStyle(document.documentElement);
+  const primary = style.getPropertyValue("--primary").trim();
+  const accent = style.getPropertyValue("--accent").trim();
+  const bg = style.getPropertyValue("--background").trim();
+  return {
+    colorA: cssColorToGL(primary || "oklch(0.79 0.09 84)"),
+    colorB: cssColorToGL(accent || "oklch(0.74 0.08 182)"),
+    bg: cssColorToGL(bg || "oklch(0.145 0.008 255)"),
+  };
+}
 
 function useShader(canvasRef: React.RefObject<HTMLCanvasElement | null>) {
   useEffect(() => {
@@ -91,9 +121,19 @@ function useShader(canvasRef: React.RefObject<HTMLCanvasElement | null>) {
 
     const uTime = gl.getUniformLocation(program, "u_time");
     const uRes = gl.getUniformLocation(program, "u_resolution");
+    const uColorA = gl.getUniformLocation(program, "u_color_a");
+    const uColorB = gl.getUniformLocation(program, "u_color_b");
+    const uBg = gl.getUniformLocation(program, "u_bg");
+
+    // Push current theme colors into the shader
+    const syncThemeColors = () => {
+      const { colorA, colorB, bg } = getThemeColors();
+      gl.uniform3f(uColorA, colorA[0], colorA[1], colorA[2]);
+      gl.uniform3f(uColorB, colorB[0], colorB[1], colorB[2]);
+      gl.uniform3f(uBg, bg[0], bg[1], bg[2]);
+    };
 
     const resize = () => {
-      // Intentionally low-res for softer blurs and vastly better performance
       const dpr = Math.min(window.devicePixelRatio, 1.0);
       canvas.width = canvas.clientWidth * dpr;
       canvas.height = canvas.clientHeight * dpr;
@@ -102,7 +142,15 @@ function useShader(canvasRef: React.RefObject<HTMLCanvasElement | null>) {
     };
 
     resize();
+    syncThemeColors();
     window.addEventListener("resize", resize);
+
+    // Re-sync colors when theme toggles (observed via attribute change)
+    const observer = new MutationObserver(() => syncThemeColors());
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["data-theme"],
+    });
 
     let frameId: number;
     const start = performance.now();
@@ -117,10 +165,12 @@ function useShader(canvasRef: React.RefObject<HTMLCanvasElement | null>) {
 
     return () => {
       cancelAnimationFrame(frameId);
+      observer.disconnect();
       window.removeEventListener("resize", resize);
       gl.getExtension("WEBGL_lose_context")?.loseContext();
     };
-  }, [canvasRef]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 }
 
 /* ─── animation variants ─── */
@@ -208,15 +258,13 @@ export default function LandingPage() {
           ref={canvasRef}
           className="absolute inset-0 h-full w-full"
           style={{ 
-            opacity: 0.85, 
-            mixBlendMode: "overlay", 
-            filter: "blur(20px) saturate(2.0)"
+            filter: "blur(30px) saturate(1.4)",
           }}
           aria-hidden="true"
         />
         {/* gradient overlays for blending into page */}
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-[var(--background)] via-transparent to-[var(--background)]" style={{ opacity: 0.5 }} />
-        <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-[var(--background)] to-transparent" />
+        <div className="pointer-events-none absolute inset-0 bg-linear-to-b from-background via-transparent to-background" style={{ opacity: 0.5 }} />
+        <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-32 bg-linear-to-t from-background to-transparent" />
 
         <div className="relative z-10 page-width w-full px-4 py-20 sm:px-6 lg:py-28">
           <div className="mx-auto max-w-4xl text-center space-y-8">

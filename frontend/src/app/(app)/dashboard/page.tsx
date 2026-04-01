@@ -3,7 +3,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import {
   Activity,
@@ -50,7 +49,6 @@ function formatDate(dateStr: string) {
 }
 
 export default function DashboardPage() {
-  const router = useRouter();
   const queryClient = useQueryClient();
   const [runningIds, setRunningIds] = useState<Set<string>>(new Set());
   const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
@@ -69,7 +67,7 @@ export default function DashboardPage() {
   const readinessQuery = useQuery({
     queryKey: ["readiness"],
     queryFn: ({ signal }) => getReadinessStatus({ signal }),
-    refetchInterval: 30000,
+    staleTime: 5 * 60_000,
     retry: (failureCount, error) => !(error instanceof ApiError && error.statusCode === 408) && failureCount < 1,
   });
 
@@ -266,6 +264,17 @@ export default function DashboardPage() {
             label="System state"
             title="Readiness checks"
             description="Live status of API, database, and model provider connections."
+            actions={
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => readinessQuery.refetch()}
+                disabled={readinessQuery.isFetching}
+              >
+                <RefreshCcw className={cn("size-4", readinessQuery.isFetching ? "animate-spin" : "")} />
+                Re-check
+              </button>
+            }
           />
           <div className="panel-body">
             {readinessQuery.isLoading ? (
@@ -338,13 +347,10 @@ export default function DashboardPage() {
             ) : (
               <div className="space-y-3">
                 {experiments.map((experiment) => (
-                  <div
+                  <Link
                     key={experiment.id}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => router.push(`/experiments/${experiment.id}`)}
-                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); router.push(`/experiments/${experiment.id}`); } }}
-                    className="w-full cursor-pointer rounded-[20px] border border-(--border) bg-(--surface-2) p-4 text-left transition-all hover:border-(--border-strong) hover:bg-(--surface-3)"
+                    href={`/experiments/${experiment.id}`}
+                    className="block w-full rounded-[20px] border border-(--border) bg-(--surface-2) p-4 text-left transition-all hover:border-(--border-strong) hover:bg-(--surface-3)"
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0 flex-1 space-y-2">
@@ -361,11 +367,11 @@ export default function DashboardPage() {
                           <p className="line-clamp-2 max-w-2xl text-sm leading-7 text-(--muted-foreground)">{experiment.description}</p>
                         ) : null}
                       </div>
-                      <div className="flex shrink-0 items-center gap-2" onClick={(event) => event.stopPropagation()}>
+                      <div className="flex shrink-0 items-center gap-2" onClick={(event) => event.preventDefault()}>
                         <button
                           type="button"
                           className="btn-secondary"
-                          onClick={() => runMutation.mutate(experiment)}
+                          onClick={(event) => { event.preventDefault(); runMutation.mutate(experiment); }}
                           disabled={runningIds.has(experiment.id) || experiment.status === "running" || experiment.status === "queued"}
                         >
                           {runningIds.has(experiment.id) ? <LoaderCircle className="size-4 animate-spin" /> : <Play className="size-4" />}
@@ -374,7 +380,7 @@ export default function DashboardPage() {
                         <button
                           type="button"
                           className="btn-danger"
-                          onClick={() => setExperimentToDelete({ id: experiment.id, name: experiment.name })}
+                          onClick={(event) => { event.preventDefault(); setExperimentToDelete({ id: experiment.id, name: experiment.name }); }}
                           disabled={deletingIds.has(experiment.id)}
                         >
                           {deletingIds.has(experiment.id) ? <LoaderCircle className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
@@ -386,7 +392,7 @@ export default function DashboardPage() {
                       <span className="mono-caption">Created {formatDate(experiment.created_at)}</span>
                       {experiment.completed_at ? <span className="mono-caption">Completed {formatDate(experiment.completed_at)}</span> : null}
                     </div>
-                  </div>
+                  </Link>
                 ))}
               </div>
             )}

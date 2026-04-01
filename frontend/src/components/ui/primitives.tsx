@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect, useState, type HTMLAttributes, type ReactNode } from "react";
+import { useEffect, useRef, useState, type HTMLAttributes, type ReactNode } from "react";
 import Link from "next/link";
-import { animate, motion, useMotionValue, useTransform } from "framer-motion";
 import { AlertTriangle, ArrowLeft, CheckCircle2, CircleDashed, LoaderCircle, PauseCircle } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -121,12 +120,16 @@ export function MetricCard({
   return (
     <div className={cn("metric-card", toneClass, className)}>
       <div className="metric-label">{label}</div>
-      <div className="text-3xl font-semibold tracking-[-0.06em] text-[var(--foreground)]">{value}</div>
+      <div className="text-3xl font-semibold tracking-[-0.06em] text-foreground">{value}</div>
       {detail ? <div className="metric-caption">{detail}</div> : null}
     </div>
   );
 }
 
+/**
+ * AnimatedNumber — uses requestAnimationFrame instead of framer-motion.
+ * Animates from 0 → value with an ease-out curve over 700ms.
+ */
 export function AnimatedNumber({
   value,
   decimals = 0,
@@ -140,23 +143,36 @@ export function AnimatedNumber({
   suffix?: string;
   className?: string;
 }) {
-  const motionValue = useMotionValue(0);
-  const rounded = useTransform(motionValue, (latest) => latest.toFixed(decimals));
-  const [formatted, setFormatted] = useState(`${prefix}${value.toFixed(decimals)}${suffix}`);
+  const [display, setDisplay] = useState(`${prefix}${value.toFixed(decimals)}${suffix}`);
+  const rafRef = useRef<number>(0);
 
   useEffect(() => {
-    const controls = animate(motionValue, value, {
-      duration: 0.7,
-      ease: [0.16, 1, 0.3, 1] as const,
-      onUpdate: () => {
-        setFormatted(`${prefix}${rounded.get()}${suffix}`);
-      },
-    });
+    const duration = 700;
+    const startTime = performance.now();
+    const from = 0;
 
-    return () => controls.stop();
-  }, [decimals, motionValue, prefix, rounded, suffix, value]);
+    function easeOut(t: number): number {
+      // Same bezier feel as [0.16, 1, 0.3, 1] — fast start, decelerate
+      return 1 - Math.pow(1 - t, 3);
+    }
 
-  return <span className={cn("metric-value", className)}>{formatted}</span>;
+    function tick(now: number) {
+      const elapsed = now - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      const eased = easeOut(progress);
+      const current = from + (value - from) * eased;
+      setDisplay(`${prefix}${current.toFixed(decimals)}${suffix}`);
+
+      if (progress < 1) {
+        rafRef.current = requestAnimationFrame(tick);
+      }
+    }
+
+    rafRef.current = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafRef.current);
+  }, [value, decimals, prefix, suffix]);
+
+  return <span className={cn("metric-value", className)}>{display}</span>;
 }
 
 export function EmptyState({
@@ -188,6 +204,10 @@ export function SkeletonBlock({ className }: { className?: string }) {
   return <div className={cn("skeleton rounded-[16px]", className)} aria-hidden="true" />;
 }
 
+/**
+ * MetricBar — uses CSS transition instead of framer-motion.
+ * The bar width animates via `transition: width 700ms`.
+ */
 export function MetricBar({
   value,
   className,
@@ -195,13 +215,24 @@ export function MetricBar({
   value: number;
   className?: string;
 }) {
+  const [width, setWidth] = useState(0);
+
+  useEffect(() => {
+    // Trigger the CSS transition by setting width on next frame
+    const raf = requestAnimationFrame(() => {
+      setWidth(Math.max(0, Math.min(100, value)));
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [value]);
+
   return (
-    <div className={cn("h-2 rounded-full bg-[var(--muted)]", className)}>
-      <motion.div
-        initial={{ width: 0 }}
-        animate={{ width: `${Math.max(0, Math.min(100, value))}%` }}
-        transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] as const }}
-        className="h-full rounded-full bg-[var(--accent)]"
+    <div className={cn("h-2 rounded-full bg-(--muted)", className)}>
+      <div
+        className="h-full rounded-full bg-(--accent)"
+        style={{
+          width: `${width}%`,
+          transition: "width 700ms cubic-bezier(0.16, 1, 0.3, 1)",
+        }}
       />
     </div>
   );
@@ -209,9 +240,8 @@ export function MetricBar({
 
 export function Keycap({ children }: { children: ReactNode }) {
   return (
-    <kbd className="inline-flex min-w-7 items-center justify-center rounded-[10px] border border-[var(--border)] bg-[var(--surface-2)] px-2 py-1 font-mono text-[11px] text-[var(--muted-foreground)]">
+    <kbd className="inline-flex min-w-7 items-center justify-center rounded-[10px] border border-(--border) bg-(--surface-2) px-2 py-1 font-mono text-[11px] text-(--muted-foreground)">
       {children}
     </kbd>
   );
 }
-

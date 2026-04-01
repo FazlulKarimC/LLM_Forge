@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { motion } from "framer-motion";
+
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -120,7 +120,7 @@ export default function NewExperimentPage() {
   const modelsQuery = useQuery({
     queryKey: ["available-models"],
     queryFn: ({ signal }) => getAvailableModels({ signal }),
-    staleTime: 1000 * 60 * 5,
+    staleTime: Infinity,
   });
 
   const availableModels = modelsQuery.data?.models ?? [
@@ -377,12 +377,9 @@ export default function NewExperimentPage() {
       ) : null}
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
-        <motion.form
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] as const }}
+        <form
           onSubmit={(event) => handleSubmit(event, false)}
-          className="space-y-6"
+          className="space-y-6 route-enter"
         >
           <Panel>
             <PanelHeader label="Basics" title="Name the experiment" description="Choose a clear title that reads well in tables, exports, and comparisons." />
@@ -716,7 +713,7 @@ export default function NewExperimentPage() {
               <ArrowRight className="size-4" />
             </button>
           </div>
-        </motion.form>
+        </form>
 
         <div className="space-y-4 xl:sticky xl:top-24 xl:self-start">
           <Panel>

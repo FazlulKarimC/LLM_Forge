@@ -3,7 +3,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import {
   AlertTriangle,
@@ -64,7 +63,6 @@ function regressionBadge(status?: Experiment["regression_status"]) {
 }
 
 export default function ExperimentsPage() {
-  const router = useRouter();
   const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState("");
   const [methodFilter, setMethodFilter] = useState("");
@@ -262,18 +260,10 @@ export default function ExperimentsPage() {
             ) : (
               <div className="space-y-3">
                 {experiments.map((experiment) => (
-                  <div
+                  <Link
                     key={experiment.id}
-                    role="button"
-                    tabIndex={0}
-                    className="w-full cursor-pointer rounded-[20px] border border-(--border) bg-(--surface-2) p-4 text-left transition-all hover:border-(--border-strong) hover:bg-(--surface-3)"
-                    onClick={() => router.push(`/experiments/${experiment.id}`)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" || event.key === " ") {
-                        event.preventDefault();
-                        router.push(`/experiments/${experiment.id}`);
-                      }
-                    }}
+                    href={`/experiments/${experiment.id}`}
+                    className="block w-full rounded-[20px] border border-(--border) bg-(--surface-2) p-4 text-left transition-all hover:border-(--border-strong) hover:bg-(--surface-3)"
                   >
                     <div className="flex flex-col items-start justify-between gap-4 sm:flex-row">
                       <div className="min-w-0 w-full flex-1 space-y-3">
@@ -297,11 +287,11 @@ export default function ExperimentsPage() {
                           <span className="chip">Samples {experiment.config.num_samples ?? "N/A"}</span>
                         </div>
                       </div>
-                      <div className="flex w-full shrink-0 flex-wrap items-center gap-2 sm:w-auto" onClick={(event) => event.stopPropagation()}>
+                      <div className="flex w-full shrink-0 flex-wrap items-center gap-2 sm:w-auto" onClick={(event) => event.preventDefault()}>
                         <button
                           type="button"
                           className="btn-secondary flex-1 justify-center sm:flex-none"
-                          onClick={() => runMutation.mutate(experiment)}
+                          onClick={(event) => { event.preventDefault(); runMutation.mutate(experiment); }}
                           disabled={runningIds.has(experiment.id) || experiment.status === "running" || experiment.status === "queued"}
                         >
                           {runningIds.has(experiment.id) ? <LoaderCircle className="size-4 animate-spin" /> : <Play className="size-4" />}
@@ -310,7 +300,7 @@ export default function ExperimentsPage() {
                         <button
                           type="button"
                           className="btn-danger flex-1 justify-center sm:flex-none"
-                          onClick={() => setExperimentToDelete({ id: experiment.id, name: experiment.name })}
+                          onClick={(event) => { event.preventDefault(); setExperimentToDelete({ id: experiment.id, name: experiment.name }); }}
                           disabled={deletingIds.has(experiment.id)}
                         >
                           {deletingIds.has(experiment.id) ? <LoaderCircle className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
@@ -322,7 +312,7 @@ export default function ExperimentsPage() {
                       <span className="mono-caption">Created {formatDate(experiment.created_at)}</span>
                       {experiment.completed_at ? <span className="mono-caption">Completed {formatDate(experiment.completed_at)}</span> : null}
                     </div>
-                  </div>
+                  </Link>
                 ))}
               </div>
             )}

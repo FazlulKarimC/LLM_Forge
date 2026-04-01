@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { Providers } from "./providers";
 import { Toaster } from "sonner";
-import { AppShell } from "@/components/app-shell";
 
 export const metadata: Metadata = {
   title: {
@@ -21,7 +20,7 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning data-theme="dark">
       <body className="antialiased">
         <Providers>
-          <AppShell>{children}</AppShell>
+          {children}
           <Toaster
             position="bottom-right"
             richColors
