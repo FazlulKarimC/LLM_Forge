@@ -40,6 +40,7 @@ from app.schemas.result import (
     PerformanceMetrics,
     CostMetrics,
     RunSummary,
+    RunGridSummary,
 )
 from app.services.metrics_service import MetricsService
 
@@ -399,16 +400,19 @@ async def get_metrics(
     return _result_to_metrics_response(db_result)
 
 
-@router.get("/{experiment_id}/runs", response_model=List[RunSummary])
+@router.get("/{experiment_id}/runs")
 async def get_run_summaries(
     experiment_id: UUID,
+    sparse: bool = Query(False, description="Return sparse grid summaries (no prompt/output text)"),
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Get lightweight run summaries for the correctness grid view.
-    
-    Returns all runs with: id, example_id, is_correct, score, latency_ms,
-    input_text, output_text, expected_output.
+    Get run summaries for the correctness grid view.
+
+    Set ``sparse=true`` to receive only grid-level fields (id, example_id,
+    is_correct, score, latency_ms, failure_mode, served_provider,
+    grader_results).  Full text fields (prompt, raw_output, expected_output)
+    are omitted in sparse mode.
     """
     runs = await _latest_runs_for_experiment(db, experiment_id)
     
@@ -418,7 +422,8 @@ async def get_run_summaries(
             detail=f"No runs found for experiment {experiment_id}"
         )
     
-    return [RunSummary.model_validate(r) for r in runs]
+    schema = RunGridSummary if sparse else RunSummary
+    return [schema.model_validate(r) for r in runs]
 
 
 @router.get("/{experiment_id}/profile")

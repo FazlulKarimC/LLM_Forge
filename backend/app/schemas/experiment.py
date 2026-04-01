@@ -376,6 +376,38 @@ class ExperimentListResponse(BaseModel):
     limit: int
 
 
+class ExperimentListItem(BaseModel):
+    """Slim schema for list/catalog/picker views.
+
+    Carries only the fields the frontend list pages actually render.
+    Omits the full nested ``config``, ``run_manifest``, ``tags``, and
+    ``error_message`` to keep list payloads small.
+    """
+    id: UUID
+    name: str
+    description: Optional[str] = None
+    status: ExperimentStatus
+    created_at: datetime
+    completed_at: Optional[datetime] = None
+    is_baseline: Optional[bool] = None
+    regression_status: RegressionStatus = RegressionStatus.NOT_CHECKED
+    # Flattened config subset — what list views actually render
+    reasoning_method: str
+    model_name: str
+    dataset_name: str
+    num_samples: Optional[int] = None
+
+    model_config = ConfigDict(from_attributes=False)
+
+
+class ExperimentSlimListResponse(BaseModel):
+    """Paginated response using the slim list schema."""
+    total: int
+    experiments: List[ExperimentListItem]
+    skip: int
+    limit: int
+
+
 class RoutingConfig(BaseModel):
     """Adaptive router configuration."""
     policy: str = Field(

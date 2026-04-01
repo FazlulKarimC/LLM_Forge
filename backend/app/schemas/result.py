@@ -75,6 +75,25 @@ class RunSummary(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class RunGridSummary(BaseModel):
+    """Sparse per-run data for filmstrip/grid views.
+
+    Omits heavy text fields (prompt, raw_output, expected_output) and
+    large nested objects (agent_trace, retrieved_chunks) to reduce
+    payload size on initial detail page load.
+    """
+    id: Optional[UUID] = None
+    example_id: Optional[str] = None
+    is_correct: Optional[bool] = None
+    score: Optional[float] = None
+    latency_ms: Optional[float] = None
+    failure_mode: Optional[str] = None
+    served_provider: Optional[str] = None
+    grader_results: Optional[Dict[str, Any]] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class MetricsResponse(BaseModel):
     """Complete metrics for an experiment."""
     experiment_id: UUID

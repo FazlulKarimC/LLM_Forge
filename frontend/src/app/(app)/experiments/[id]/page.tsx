@@ -24,12 +24,14 @@ import {
   getMetrics,
   getProfile,
   getRunSummaries,
+  getRunGridSummaries,
   resolveRunExperimentCredentials,
   runExperiment,
   setBaseline,
   unsetBaseline,
   type ProfileData,
   type RunSummary,
+  type RunGridSummary,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
@@ -78,7 +80,7 @@ function regressionBadge(status?: "not_checked" | "pass" | "fail" | "inconclusiv
   }
 }
 
-function LatencyHistogram({ runs }: { runs: RunSummary[] }) {
+function LatencyHistogram({ runs }: { runs: RunGridSummary[] }) {
   const latencies = runs.map((run) => run.latency_ms).filter((value): value is number => value != null);
   if (!latencies.length) return null;
 
@@ -115,9 +117,19 @@ function LatencyHistogram({ runs }: { runs: RunSummary[] }) {
   );
 }
 
-function RunFilmstrip({ runs }: { runs: RunSummary[] }) {
-  const [selectedRun, setSelectedRun] = useState<RunSummary | null>(runs[0] ?? null);
-  const graderEntries = Object.entries(selectedRun?.grader_results ?? {});
+function RunFilmstrip({ runs, experimentId }: { runs: RunGridSummary[]; experimentId: string }) {
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(runs[0]?.id ?? null);
+
+  // Only fetch full runs when we need the detail pane (lazy)
+  const fullRunsQuery = useQuery({
+    queryKey: ["runs-full", experimentId],
+    queryFn: ({ signal }) => getRunSummaries(experimentId, { signal }),
+    enabled: selectedRunId !== null,
+    staleTime: Infinity,
+  });
+
+  const selectedFullRun = fullRunsQuery.data?.find((r) => r.id === selectedRunId) ?? null;
+  const graderEntries = Object.entries(selectedFullRun?.grader_results ?? {});
 
   return (
     <div className="space-y-4">
@@ -140,8 +152,8 @@ function RunFilmstrip({ runs }: { runs: RunSummary[] }) {
                 <button
                   key={run.id}
                   type="button"
-                  className={`min-w-0 rounded-[12px] border p-2 text-left transition-all hover:border-(--border-strong) ${selectedRun?.id === run.id ? "border-(--accent) bg-[color-mix(in_oklab,var(--accent)_14%,transparent)]" : "border-(--border) bg-(--surface-2)"}`}
-                  onClick={() => setSelectedRun(run)}
+                  className={`min-w-0 rounded-[12px] border p-2 text-left transition-all hover:border-(--border-strong) ${selectedRunId === run.id ? "border-(--accent) bg-[color-mix(in_oklab,var(--accent)_14%,transparent)]" : "border-(--border) bg-(--surface-2)"}`}
+                  onClick={() => setSelectedRunId(run.id)}
                   title={run.example_id ?? "Run"}
                 >
                   <span className={`status-pill ${statusClass} w-full! justify-center truncate overflow-hidden px-0!`}>{run.example_id ?? "run"}</span>
@@ -169,31 +181,37 @@ function RunFilmstrip({ runs }: { runs: RunSummary[] }) {
       <Panel>
         <PanelHeader
           label="Selected example"
-          title={selectedRun?.example_id || "Pick a run"}
+          title={selectedFullRun?.example_id || runs.find((r) => r.id === selectedRunId)?.example_id || "Pick a run"}
           description="Inspect the prompt, model output, and expected answer for this sample."
         />
         <div className="panel-body">
-          {selectedRun ? (
+          {fullRunsQuery.isLoading ? (
+            <div className="space-y-3">
+              <SkeletonBlock className="h-[100px]" />
+              <SkeletonBlock className="h-[140px]" />
+              <SkeletonBlock className="h-[100px]" />
+            </div>
+          ) : selectedFullRun ? (
             <div className="space-y-4">
               <div className="flex flex-wrap gap-2">
-                <StatusPill status={selectedRun.failure_mode ? "failed" : selectedRun.is_correct ? "completed" : "failed"} />
-                <span className="chip">F1 {(selectedRun.score ?? 0).toFixed(3)}</span>
-                <span className="chip">Latency {formatDuration(selectedRun.latency_ms)}</span>
-                {selectedRun.served_provider ? <span className="chip">Provider {selectedRun.served_provider}</span> : null}
-                {selectedRun.failure_mode ? <span className="chip">Failure {selectedRun.failure_mode}</span> : null}
+                <StatusPill status={selectedFullRun.failure_mode ? "failed" : selectedFullRun.is_correct ? "completed" : "failed"} />
+                <span className="chip">F1 {(selectedFullRun.score ?? 0).toFixed(3)}</span>
+                <span className="chip">Latency {formatDuration(selectedFullRun.latency_ms)}</span>
+                {selectedFullRun.served_provider ? <span className="chip">Provider {selectedFullRun.served_provider}</span> : null}
+                {selectedFullRun.failure_mode ? <span className="chip">Failure {selectedFullRun.failure_mode}</span> : null}
               </div>
               <div className="grid gap-4">
                 <div className="rounded-[18px] border border-(--border) bg-(--surface-2) p-4">
                   <div className="section-label">Prompt</div>
-                  <pre className="mt-3 whitespace-pre-wrap text-sm leading-7 text-(--muted-foreground)">{selectedRun.prompt || "No prompt recorded"}</pre>
+                  <pre className="mt-3 whitespace-pre-wrap text-sm leading-7 text-(--muted-foreground)">{selectedFullRun.prompt || "No prompt recorded"}</pre>
                 </div>
                 <div className="rounded-[18px] border border-(--border) bg-(--surface-2) p-4">
                   <div className="section-label">Model output</div>
-                  <pre className="mt-3 whitespace-pre-wrap text-sm leading-7 text-(--muted-foreground)">{selectedRun.raw_output || "No output recorded"}</pre>
+                  <pre className="mt-3 whitespace-pre-wrap text-sm leading-7 text-(--muted-foreground)">{selectedFullRun.raw_output || "No output recorded"}</pre>
                 </div>
                 <div className="rounded-[18px] border border-(--border) bg-(--surface-2) p-4">
                   <div className="section-label">Expected answer</div>
-                  <pre className="mt-3 whitespace-pre-wrap text-sm leading-7 text-(--muted-foreground)">{selectedRun.expected_output || "No expected answer recorded"}</pre>
+                  <pre className="mt-3 whitespace-pre-wrap text-sm leading-7 text-(--muted-foreground)">{selectedFullRun.expected_output || "No expected answer recorded"}</pre>
                 </div>
                 {graderEntries.length > 0 ? (
                   <div className="rounded-[18px] border border-(--border) bg-(--surface-2) p-4">
@@ -222,12 +240,12 @@ function RunFilmstrip({ runs }: { runs: RunSummary[] }) {
                     </div>
                   </div>
                 ) : null}
-                {selectedRun.retrieved_chunks?.chunks?.length ? (
+                {selectedFullRun.retrieved_chunks?.chunks?.length ? (
                   <div className="rounded-[18px] border border-(--border) bg-(--surface-2) p-4">
                     <div className="section-label">Retrieved context</div>
                     <div className="mt-3 space-y-3 text-sm leading-7 text-(--muted-foreground)">
-                      {selectedRun.retrieved_chunks.chunks.map((chunk, index) => (
-                        <div key={`${selectedRun.id}-${index}`} className="rounded-[16px] border border-(--border) bg-(--surface-1) p-3">
+                      {selectedFullRun.retrieved_chunks.chunks.map((chunk, index) => (
+                        <div key={`${selectedFullRun.id}-${index}`} className="rounded-[16px] border border-(--border) bg-(--surface-1) p-3">
                           <div className="font-mono text-[11px] text-(--muted-foreground)">Chunk {index + 1}</div>
                           <p className="mt-2 whitespace-pre-wrap">{chunk.text || chunk.page_content || JSON.stringify(chunk)}</p>
                         </div>
@@ -235,12 +253,12 @@ function RunFilmstrip({ runs }: { runs: RunSummary[] }) {
                     </div>
                   </div>
                 ) : null}
-                {selectedRun.agent_trace?.steps?.length ? (
+                {selectedFullRun.agent_trace?.steps?.length ? (
                   <div className="rounded-[18px] border border-(--border) bg-(--surface-2) p-4">
                     <div className="section-label">Agent trace</div>
                     <div className="mt-3 space-y-3 text-sm leading-7 text-(--muted-foreground)">
-                      {selectedRun.agent_trace.steps.map((step, index) => (
-                        <div key={`${selectedRun.id}-trace-${index}`} className="rounded-[16px] border border-(--border) bg-(--surface-1) p-3">
+                      {selectedFullRun.agent_trace.steps.map((step, index) => (
+                        <div key={`${selectedFullRun.id}-trace-${index}`} className="rounded-[16px] border border-(--border) bg-(--surface-1) p-3">
                           <div className="font-semibold text-foreground">Step {index + 1}</div>
                           <p className="mt-2 whitespace-pre-wrap"><span className="font-semibold">Thought:</span> {step.thought}</p>
                           {step.action ? <p className="mt-2 whitespace-pre-wrap"><span className="font-semibold">Action:</span> {step.action} {step.action_input ? `- ${step.action_input}` : ""}</p> : null}
@@ -261,24 +279,29 @@ function RunFilmstrip({ runs }: { runs: RunSummary[] }) {
   );
 }
 
-function ResultsDashboard({ experimentId, experimentName }: { experimentId: string; experimentName: string }) {
+function ResultsDashboard({ experimentId, experimentName, experimentStatus }: { experimentId: string; experimentName: string; experimentStatus: string }) {
+  const isCompleted = experimentStatus === 'completed';
+  const immutableStaleTime = isCompleted ? Infinity : 0;
+
   const metricsQuery = useQuery({
     queryKey: ["metrics", experimentId],
     queryFn: ({ signal }) => getMetrics(experimentId, { signal }),
+    staleTime: immutableStaleTime,
   });
   const runsQuery = useQuery({
-    queryKey: ["runs", experimentId],
-    queryFn: ({ signal }) => getRunSummaries(experimentId, { signal }),
+    queryKey: ["runs-grid", experimentId],
+    queryFn: ({ signal }) => getRunGridSummaries(experimentId, { signal }),
+    staleTime: immutableStaleTime,
   });
 
-  if (metricsQuery.isLoading || runsQuery.isLoading) {
+  // Metrics loading — render skeleton only for metrics section
+  if (metricsQuery.isLoading) {
     return (
       <div className="space-y-4">
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           {Array.from({ length: 4 }).map((_, index) => <SkeletonBlock key={index} className="h-[146px]" />)}
         </div>
         <SkeletonBlock className="h-[320px]" />
-        <SkeletonBlock className="h-[420px]" />
       </div>
     );
   }
@@ -422,9 +445,11 @@ function ResultsDashboard({ experimentId, experimentName }: { experimentId: stri
         </div>
       ) : null}
 
-      {runs.length ? (
+      {runsQuery.isLoading ? (
+        <SkeletonBlock className="h-[420px]" />
+      ) : runs.length ? (
         <>
-          <RunFilmstrip runs={runs} />
+          <RunFilmstrip runs={runs} experimentId={experimentId} />
           <LatencyHistogram runs={runs} />
         </>
       ) : (
@@ -686,7 +711,7 @@ export default function ExperimentDetailPage({ params }: Props) {
 
       {experiment.status === "completed" ? (
         <>
-          <ResultsDashboard experimentId={id} experimentName={experiment.name} />
+          <ResultsDashboard experimentId={id} experimentName={experiment.name} experimentStatus={experiment.status} />
           <ProfileDashboard experimentId={id} />
           <section>
             <RegressionPanel experimentId={id} />

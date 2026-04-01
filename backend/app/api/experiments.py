@@ -22,6 +22,7 @@ from app.schemas.experiment import (
     ExperimentCreate,
     ExperimentResponse,
     ExperimentListResponse,
+    ExperimentSlimListResponse,
     ExperimentStatus,
 )
 from app.core.custom_exceptions import ResourceNotFoundException, ValidationException
@@ -153,19 +154,26 @@ async def create_experiment(
     return await service.create(experiment)
 
 
-@router.get("", response_model=ExperimentListResponse)
+@router.get("", response_model=ExperimentListResponse | ExperimentSlimListResponse)
 async def list_experiments(
     status: Optional[ExperimentStatus] = None,
     method: Optional[str] = None,
     model: Optional[str] = None,
     tag: Optional[str] = None,
+    slim: bool = Query(False, description="Return slim list items (no full config/run_manifest)"),
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
 ):
-    """List experiments with optional filtering and pagination."""
+    """List experiments with optional filtering and pagination.
+
+    Set ``slim=true`` to receive a lighter response that omits the full
+    nested ``config``, ``run_manifest``, ``tags``, and ``error_message``
+    fields.  Dashboard and catalog views should use slim mode.
+    """
     service = ExperimentService(db)
-    return await service.list(
+    handler = service.list_slim if slim else service.list
+    return await handler(
         status=status,
         method=method,
         model=model,

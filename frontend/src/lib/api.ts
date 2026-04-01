@@ -348,6 +348,29 @@ export interface ExperimentList {
     limit: number;
 }
 
+/** Slim experiment item for list/catalog views (no full config or run_manifest). */
+export interface ExperimentListItem {
+    id: string;
+    name: string;
+    description?: string;
+    status: 'pending' | 'queued' | 'running' | 'completed' | 'failed';
+    created_at: string;
+    completed_at?: string;
+    is_baseline?: boolean;
+    regression_status?: RegressionStatus;
+    reasoning_method: string;
+    model_name: string;
+    dataset_name: string;
+    num_samples?: number;
+}
+
+export interface ExperimentSlimList {
+    total: number;
+    experiments: ExperimentListItem[];
+    skip: number;
+    limit: number;
+}
+
 export interface CreateExperimentRequest {
     name: string;
     description?: string;
@@ -432,6 +455,18 @@ export interface RunSummary {
     failure_mode?: string;
     error_message?: string;
     agent_trace?: AgentTrace;
+    served_provider?: string;
+    grader_results?: Record<string, {status: 'pass' | 'fail' | 'skip'; value?: unknown; threshold?: unknown; reason?: string}>;
+}
+
+/** Sparse per-run data for filmstrip/grid views (no prompt/output text). */
+export interface RunGridSummary {
+    id: string;
+    example_id?: string;
+    is_correct?: boolean;
+    score?: number;
+    latency_ms?: number;
+    failure_mode?: string;
     served_provider?: string;
     grader_results?: Record<string, {status: 'pass' | 'fail' | 'skip'; value?: unknown; threshold?: unknown; reason?: string}>;
 }
@@ -569,6 +604,23 @@ export async function listExperiments(params?: ListExperimentsParams, options: R
 }
 
 /**
+ * List experiments with slim payloads (no full config or run_manifest).
+ */
+export async function listExperimentsSlim(params?: ListExperimentsParams, options: RequestInit = {}): Promise<ExperimentSlimList> {
+    const searchParams = new URLSearchParams();
+    searchParams.set('slim', 'true');
+
+    if (params?.status) searchParams.set('status', params.status);
+    if (params?.method) searchParams.set('method', params.method);
+    if (params?.model) searchParams.set('model', params.model);
+    if (params?.skip !== undefined) searchParams.set('skip', String(params.skip));
+    if (params?.limit !== undefined) searchParams.set('limit', String(params.limit));
+
+    const query = searchParams.toString();
+    return fetchAPI<ExperimentSlimList>(`/experiments?${query}`, options);
+}
+
+/**
  * Get experiment by ID.
  */
 export async function getExperiment(id: string, options: RequestInit = {}): Promise<Experiment> {
@@ -615,6 +667,13 @@ export async function getRunSummaries(experimentId: string, options: RequestInit
 }
 
 /**
+ * Get sparse run grid summaries (no prompt/output text — for filmstrip).
+ */
+export async function getRunGridSummaries(experimentId: string, options: RequestInit = {}): Promise<RunGridSummary[]> {
+    return fetchAPI<RunGridSummary[]>(`/results/${experimentId}/runs?sparse=true`, options);
+}
+
+/**
  * Get optimization profiling data for an experiment.
  */
 export async function getProfile(experimentId: string, options: RequestInit = {}): Promise<ProfileData> {
@@ -648,7 +707,7 @@ export async function exportMarkdownReport(
     experimentId: string,
     experimentName?: string,
     metrics?: Metrics,
-    runs?: RunSummary[],
+    runs?: RunGridSummary[],
 ): Promise<void> {
     const url = `${API_BASE_URL}/results/${experimentId}/export`;
     const response = await fetchWithHandling(url, {}, { timeoutMs: SAFE_METHOD_TIMEOUT_MS, maxRetries: SAFE_METHOD_MAX_RETRIES });

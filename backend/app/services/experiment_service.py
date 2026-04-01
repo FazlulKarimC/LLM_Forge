@@ -28,6 +28,8 @@ from app.schemas.experiment import (
     ExperimentCreate,
     ExperimentResponse,
     ExperimentListResponse,
+    ExperimentListItem,
+    ExperimentSlimListResponse,
     ExperimentStatus,
     ExperimentConfig,
     OptimizationConfig,
@@ -111,6 +113,26 @@ class ExperimentService:
                 getattr(experiment, 'regression_status', None) or RegressionStatus.NOT_CHECKED.value
             ),
             regression_passed=getattr(experiment, 'regression_passed', None),
+        )
+
+    def _to_list_item(self, experiment: Experiment) -> ExperimentListItem:
+        """Convert database model to slim list item schema."""
+        config = experiment.config or {}
+        return ExperimentListItem(
+            id=experiment.id,
+            name=experiment.name,
+            description=experiment.description,
+            status=experiment.status,
+            created_at=experiment.created_at,
+            completed_at=experiment.completed_at,
+            is_baseline=getattr(experiment, 'is_baseline', False),
+            regression_status=RegressionStatus(
+                getattr(experiment, 'regression_status', None) or RegressionStatus.NOT_CHECKED.value
+            ),
+            reasoning_method=config.get('reasoning_method', 'naive'),
+            model_name=config.get('model_name', ''),
+            dataset_name=config.get('dataset_name', ''),
+            num_samples=config.get('num_samples'),
         )
     
     async def create(self, data: ExperimentCreate) -> ExperimentResponse:
@@ -243,6 +265,49 @@ class ExperimentService:
         return ExperimentListResponse(
             total=total,
             experiments=[self._to_response(exp) for exp in experiments],
+            skip=skip,
+            limit=limit,
+        )
+    
+    async def list_slim(
+        self,
+        status: Optional[ExperimentStatus] = None,
+        method: Optional[str] = None,
+        model: Optional[str] = None,
+        tag: Optional[str] = None,
+        skip: int = 0,
+        limit: int = 20,
+    ) -> ExperimentSlimListResponse:
+        """List experiments as slim list items (no full config, run_manifest, etc.)."""
+        conditions = [Experiment.deleted_at.is_(None)]
+
+        if status:
+            conditions.append(Experiment.status == status)
+        if method:
+            conditions.append(Experiment.method == method)
+        if model:
+            conditions.append(Experiment.model_name.ilike(f"%{model}%"))
+        if tag:
+            from sqlalchemy.dialects.postgresql import JSONB
+            conditions.append(Experiment.tags.cast(JSONB).contains([tag]))
+
+        count_query = select(func.count(Experiment.id)).where(and_(*conditions))
+        total_result = await self.db.execute(count_query)
+        total = total_result.scalar() or 0
+
+        query = (
+            select(Experiment)
+            .where(and_(*conditions))
+            .order_by(Experiment.created_at.desc())
+            .offset(skip)
+            .limit(limit)
+        )
+        result = await self.db.execute(query)
+        experiments = result.scalars().all()
+
+        return ExperimentSlimListResponse(
+            total=total,
+            experiments=[self._to_list_item(exp) for exp in experiments],
             skip=skip,
             limit=limit,
         )
