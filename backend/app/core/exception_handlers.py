@@ -87,6 +87,13 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
         f"[RequestID: {request_id}]\n"
         f"{traceback.format_exc()}"
     )
+
+    # Forward to Sentry if configured
+    try:
+        import sentry_sdk
+        sentry_sdk.capture_exception(exc)
+    except ImportError:
+        pass
     
     # Return a generic, safe response to the client
     return JSONResponse(

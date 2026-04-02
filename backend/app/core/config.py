@@ -102,6 +102,9 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
     LOG_FORMAT: str = "json"  # json | text
 
+    # ----- Observability (Sentry) -----
+    SENTRY_DSN: str = ""  # Optional: Sentry DSN for error reporting
+
 
 # Global settings instance
 settings = Settings()

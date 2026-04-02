@@ -36,6 +36,21 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     datefmt="%Y-%m-%dT%H:%M:%S",
 )
+
+# ── Sentry error monitoring (optional) ─────────────────────────────────
+# Enabled only when SENTRY_DSN is set. Captures unhandled exceptions.
+# No performance tracing, no PII collection.
+if settings.SENTRY_DSN:
+    import sentry_sdk
+    sentry_sdk.init(
+        dsn=settings.SENTRY_DSN,
+        traces_sample_rate=0.0,
+        enable_tracing=False,
+        send_default_pii=False,
+        environment=settings.ENVIRONMENT,
+        release=settings.VERSION,
+    )
+
 logger = logging.getLogger(__name__)
 
 

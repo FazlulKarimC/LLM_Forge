@@ -34,3 +34,6 @@ redis>=5.0.0
 # --- RAG Pipeline (lightweight — all models via HF API) ---
 qdrant-client>=1.7.0
 rank-bm25>=0.2.2
+
+# --- Observability ---
+sentry-sdk[fastapi]>=2.0.0

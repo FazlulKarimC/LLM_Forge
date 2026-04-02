@@ -5,6 +5,8 @@
  * Handles error handling and response parsing.
  */
 
+import * as Sentry from "@sentry/nextjs";
+
 export class ApiError extends Error {
     public statusCode: number;
     public requestId?: string;
@@ -161,6 +163,7 @@ async function fetchWithHandling(
     const externalSignal = options.signal;
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        const start = Date.now();
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), timeoutMs);
         const combinedSignal = combineAbortSignals(controller.signal, externalSignal);
@@ -198,6 +201,16 @@ async function fetchWithHandling(
             clearTimeout(timeout);
 
             if (err instanceof ApiError) {
+                Sentry.addBreadcrumb({
+                    category: 'api',
+                    message: `${options.method ?? 'GET'} ${url}`,
+                    level: 'error',
+                    data: {
+                        status: err.statusCode,
+                        duration_ms: Date.now() - start,
+                        request_id: err.requestId,
+                    },
+                });
                 throw err;
             }
 
