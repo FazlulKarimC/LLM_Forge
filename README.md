@@ -36,8 +36,11 @@ Built to answer a core question: *How do different LLM reasoning strategies trad
 - **RAG** -- Dense, hybrid, or reranked retrieval-augmented generation over indexed knowledge bases
 - **ReAct Agent** -- Dynamic multi-step tool calling (Wikipedia search, Calculator, Retrieval) with observation-action traces
 
-### Multi-Provider Inference
-Route experiments through **HuggingFace Inference API**, **OpenRouter**, **Groq**, or any **OpenAI-compatible endpoint**. An auto-router picks the best available provider and falls back automatically on failure.
+### Adaptive Multi-Provider Routing
+Route experiments through **HuggingFace Inference API**, **OpenRouter**, **Groq**, or any **OpenAI-compatible endpoint**. An epsilon-greedy **Adaptive Provider Router** handles provider selection based on active policies (`cheapest_first`, `fastest_first`, or `adaptive` via composite score) and tracks routing telemetry.
+
+### Trajectory Regression Gates
+Pin completed experiments as **Baselines**. New candidate runs are automatically evaluated against pinned baselines using a deterministic 7-rule **Grader Engine** (max turns, required tools, token/latency budgets, F1 score). Prevent prompt or model regressions before they happen with clear pass/fail/skip verdicts and inline configuration diffing.
 
 ### Comprehensive Metrics and Evaluation
 
@@ -86,14 +89,14 @@ Backend (FastAPI)
   +----------------+  +---------------+  +----------------------+
   | Experiment     |  | Inference     |  | Evaluation Pipeline  |
   | Service        |  | Engines       |  |                      |
-  |                |  |               |  | Metrics, LLM Judge   |
-  | CRUD, Queue    |  | HFAPIEngine   |  | Robustness, Stats    |
-  | Batch/Cache    |  | OpenAIEngine  |  | Safety, Synthetic    |
-  | Profiling      |  | MockEngine    |  | Cost, Failure Modes  |
+  |                |  | Adaptive Route|  | Metrics, LLM Judge   |
+  | CRUD, Jobs     |  | HFAPIEngine   |  | Regression Gates     |
+  | Batch/Cache    |  | OpenAIEngine  |  | Robustness, Stats    |
+  | Profiling      |  | MockEngine    |  | Cost, Safety         |
   +-------+--------+  +------+--------+  +--------+-------------+
           |                   |                    |
   +-------v-------------------v--------------------v-------------+
-  | Rate Limit, Retry, Pricing, Background Jobs, Middleware      |
+  | Rate Limit, Retry, Pricing, Background Jobs, Sentry          |
   +------+----------+----------+--------------+----------+-------+
          |          |          |              |           |
          v          v          v              v           v
@@ -111,8 +114,9 @@ Backend (FastAPI)
 | **Frontend** | Next.js 16, TypeScript, React 19, Tailwind CSS v4, Framer Motion, TanStack Query, Sonner, Lucide |
 | **Database** | PostgreSQL via NeonDB (serverless) |
 | **Vector Store** | Qdrant Cloud (RAG document retrieval) |
-| **Task Queue** | Upstash Redis + RQ (production), FastAPI BackgroundTasks (dev fallback) |
+| **Task Queue** | Durable Postgres-backed background jobs, Upstash Redis + RQ |
 | **Inference** | HuggingFace Inference API, OpenRouter, Groq, OpenAI-compatible endpoints |
+| **Observability**| Sentry (Full-stack distributed error tracking) |
 | **Embeddings** | sentence-transformers (CPU-friendly) |
 | **CI/CD** | GitHub Actions |
 
@@ -124,9 +128,9 @@ Backend (FastAPI)
 |-------|-------------|
 | `/` | Landing page -- animated hero, live comparison preview, feature overview |
 | `/dashboard` | Operational dashboard -- KPI cards, system readiness checks, experiment queue with inline actions |
-| `/experiments` | Experiment catalog -- filterable list with status pills, run/delete controls |
+| `/experiments` | Experiment catalog -- filterable list with baseline pinning, regression status pills, and run/delete controls |
 | `/experiments/new` | Experiment builder -- model/dataset/provider selectors, preset templates, complexity indicator |
-| `/experiments/[id]` | Experiment detail -- lifecycle metadata, metrics dashboard, filmstrip evaluator, latency histogram, optimization profiler, export |
+| `/experiments/[id]` | Experiment detail -- lifecycle metadata, progressively-loaded metrics, regression/routing panels, filmstrip evaluator, latency histogram, run profiler, export |
 | `/experiments/compare` | Comparison workspace -- metric deltas, statistical significance, agreement bars, per-example diffs |
 
 ---

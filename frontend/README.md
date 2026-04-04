@@ -12,7 +12,8 @@ This directory contains the frontend web application built to interface with the
 - **UI Library:** [React 19](https://react.dev/)
 - **Styling:** [Tailwind CSS v4](https://tailwindcss.com/)
 - **Components:** [shadcn/ui](https://ui.shadcn.com/)
-- **Data Fetching:** [TanStack React Query](https://tanstack.com/query/latest) (for real-time auto-polling & caching)
+- **Data Fetching:** [TanStack React Query](https://tanstack.com/query/latest) (progressively loaded fetching & state)
+- **Observability:** Sentry (Next.js Edge/Server/Client tracking)
 - **Icons:** [Lucide React](https://lucide.dev/)
 
 ---
@@ -30,17 +31,17 @@ All frontend code strictly adheres to the unified 4-color palette and typography
 ```text
 src/
 ├── app/                  # Next.js App Router Pages
+│   ├── (app)/            # Authenticated/Main App Routes Group
+│   │   ├── dashboard/    # Operational Dashboard
+│   │   └── experiments/  # Experiment views (List, Detail, Compare)
 │   ├── globals.css       # Tailwind configuration & core variables
 │   ├── layout.tsx        # Root layout, font definitions, Navbars
-│   ├── page.tsx          # Landing / Home Page
-│   └── experiments/      # Experiment routes
-│       ├── page.tsx      # Dashboard / List View
-│       ├── new/          # Create Experiment Form
-│       └── [id]/         # Experiment Details / Metrics Grid
+│   ├── providers.tsx     # Context Providers (Query, Sentry, Theme)
+│   └── page.tsx          # Landing / Home Page
 ├── components/           # Reusable React components
-│   └── ui/               # shadcn/ui primitives (Buttons, Cards, Badges)
+│   └── ui/               # shadcn/ui & domain components (RoutingPanel, RegressionPanel)
 └── lib/                  # Utilities
-    ├── api.ts            # Typed API client routing to localhost:8000
+    ├── api.ts            # Typed API client routing to NEXT_PUBLIC_API_URL
     └── utils.ts          # clsx + tailwind-merge utilities
 ```
 
@@ -83,4 +84,4 @@ npm run start
 
 ## 📡 API Routing Note
 
-By default, the `api.ts` client expects the backend API to be available on `http://localhost:8000`. If you deploy the backend elsewhere, ensure any fetch URLs in `src/lib/api.ts` point to the correct production domain.
+By default, the `api.ts` client expects the backend API to be available on `http://localhost:8000`. This can be configured by setting `NEXT_PUBLIC_API_URL` to your production backend domain in the `.env` file or hosting environment.
