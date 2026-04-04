@@ -62,7 +62,7 @@ class ProviderRouter(InferenceEngine):
         logger.info(
             "ProviderRouter initialized (policy=%s, engines=%s, epsilon=%.2f)",
             policy.value,
-            [type(e).__name__ for e in engines],
+            [self._get_engine_name(e) for e in engines],
             epsilon,
         )
 
@@ -87,7 +87,7 @@ class ProviderRouter(InferenceEngine):
 
     def _get_engine_name(self, engine: InferenceEngine) -> str:
         """Get a consistent name for an engine."""
-        return type(engine).__name__
+        return getattr(engine, "provider_id", type(engine).__name__)
 
     def _get_available_engines(self) -> List[InferenceEngine]:
         """Get engines that have a model loaded."""
@@ -133,7 +133,7 @@ class ProviderRouter(InferenceEngine):
             result.latency_ms or 0.0,
             result.tokens_input or 0,
             result.tokens_output or 0,
-            0.0,
+            result.cost_usd or 0.0,
             self._should_record_error(result),
         )
 
@@ -182,7 +182,7 @@ class ProviderRouter(InferenceEngine):
         if random.random() < self._epsilon:
             return random.choice(available)
 
-        recommended = self._stats.recommend(RoutingPolicy.CHEAPEST_FIRST, available_names)
+        recommended = self._stats.recommend(RoutingPolicy.ADAPTIVE, available_names)
         if recommended and recommended in engine_map:
             return engine_map[recommended]
 

@@ -288,12 +288,14 @@ class QdrantStore:
 
         return chunks_with_scores
 
-    def count(self) -> int:
+    def count(self, strict: bool = False) -> int:
         """Get the number of vectors in the collection."""
         try:
             info = self._client.get_collection(self._collection)
             return info.points_count
         except Exception:
+            if strict:
+                raise
             return 0
 
     def delete_collection(self):
@@ -524,6 +526,25 @@ class RAGPipeline:
         chunks = ChunkingService.chunk_articles(articles, chunk_size=chunk_size)
         self.bm25.build(chunks)
         self._chunks = chunks
+        try:
+            vector_count = self.qdrant.count(strict=True)
+        except Exception as exc:
+            message = str(exc).lower()
+            if "not found" in message or "does not exist" in message or "doesn't exist" in message:
+                raise RuntimeError(
+                    f"Qdrant collection '{self.qdrant._collection}' does not exist. "
+                    "Run `python scripts/build_index.py` before using RAG."
+                ) from exc
+            raise RuntimeError(
+                f"Failed to access Qdrant collection '{self.qdrant._collection}'. "
+                "Check QDRANT_URL/QDRANT_API_KEY and ensure the cluster is reachable."
+            ) from exc
+
+        if vector_count <= 0:
+            raise RuntimeError(
+                f"Qdrant collection '{self.qdrant._collection}' is empty. "
+                "Run `python scripts/build_index.py` before using RAG."
+            )
         logger.info(f"Knowledge base loaded: {len(chunks)} chunks")
 
     def retrieve(

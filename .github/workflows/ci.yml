@@ -67,14 +67,20 @@ jobs:
       working-directory: ./frontend
       run: npm ci
 
-    - name: Type Check & Lint
+    - name: Lint
       working-directory: ./frontend
-      run: |
-        npm run lint || echo "Linting failed (continuing for now)"
-        npx tsc --noEmit || echo "Type check failed (continuing for now)"
+      run: npm run lint
+
+    - name: Type Check
+      working-directory: ./frontend
+      run: npx tsc --noEmit
+
+    - name: Frontend Tests
+      working-directory: ./frontend
+      run: npm test
         
     - name: Build Next.js app
       working-directory: ./frontend
       env:
-        NEXT_PUBLIC_API_URL: http://localhost:8000
+        NEXT_PUBLIC_API_URL: http://localhost:8000/api/v1
       run: npm run build

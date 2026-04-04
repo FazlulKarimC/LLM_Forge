@@ -44,6 +44,7 @@ class GenerationResult:
     tokens_output: int
     latency_ms: float
     finish_reason: str  # "stop", "length", "error"
+    cost_usd: Optional[float] = None
     gpu_memory_mb: Optional[float] = None
     failure_mode: Optional[FailureMode] = None
     error_message: Optional[str] = None
@@ -139,3 +140,8 @@ class InferenceEngine(ABC):
     def is_loaded(self) -> bool:
         """Whether a model is currently loaded."""
         pass
+
+    @property
+    def provider_id(self) -> str:
+        """Stable provider identifier used in routing telemetry."""
+        return type(self).__name__

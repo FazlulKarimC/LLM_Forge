@@ -124,6 +124,26 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error("Failed to reset stuck experiments on startup: %s", e)
 
+    try:
+        from app.core.database import async_session_maker
+        from sqlalchemy import update
+        from app.models.background_job import BackgroundJobRecord
+
+        async with async_session_maker() as session:
+            job_result = await session.execute(
+                update(BackgroundJobRecord)
+                .where(BackgroundJobRecord.status.in_(("queued", "running")))
+                .values(
+                    status="failed",
+                    error="Interrupted by server restart"
+                )
+            )
+            await session.commit()
+            if job_result.rowcount > 0:
+                logger.warning("Reset %d interrupted background jobs to FAILED on startup", job_result.rowcount)
+    except Exception as e:
+        logger.error("Failed to reset interrupted background jobs on startup: %s", e)
+
     yield
 
     # Shutdown

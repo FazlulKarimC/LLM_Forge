@@ -13,7 +13,7 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.core.config import settings
-from unittest.mock import patch, MagicMock
+from unittest.mock import AsyncMock, patch, MagicMock
 @pytest.fixture
 def client():
     """Create test client."""
@@ -98,7 +98,8 @@ class TestExperimentRunCustomHeaders:
     @patch('app.api.experiments.ExperimentService.get')
     @patch('app.api.experiments.ExperimentService.update_status')
     @patch('app.api.experiments._enqueue_or_fallback')
-    def test_run_experiment_with_custom_headers(self, mock_enqueue, mock_update, mock_get, client):
+    @patch('app.api.experiments._active_run_count', new_callable=AsyncMock, return_value=0)
+    def test_run_experiment_with_custom_headers(self, mock_active_count, mock_enqueue, mock_update, mock_get, client):
         """Test /run endpoint parses the custom headers correctly."""
         class MockHyperParams:
             temperature = 0.1
@@ -153,7 +154,8 @@ class TestExperimentRunCustomHeaders:
         assert kwargs.get("custom_api_key") == "mock-api-key"
 
     @patch('app.api.experiments.ExperimentService.get')
-    def test_run_experiment_requires_custom_headers_for_custom_provider(self, mock_get, client):
+    @patch('app.api.experiments._active_run_count', new_callable=AsyncMock, return_value=0)
+    def test_run_experiment_requires_custom_headers_for_custom_provider(self, mock_active_count, mock_get, client):
         """Custom-provider experiments should fail fast instead of falling back silently."""
         class MockHyperParams:
             temperature = 0.1

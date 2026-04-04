@@ -65,7 +65,7 @@ class ProviderSnapshot:
 class ProviderStatsTracker:
     """
     Thread-safe tracker for per-provider performance metrics.
-    
+
     Used by ProviderRouter to make policy-driven routing decisions.
     All mutable state is guarded by a threading.Lock.
     """
@@ -87,7 +87,7 @@ class ProviderStatsTracker:
         with self._lock:
             if provider_name not in self._stats:
                 self._stats[provider_name] = ProviderSnapshot(name=provider_name)
-            
+
             snap = self._stats[provider_name]
             snap.total_requests += 1
             if is_error:
@@ -99,39 +99,34 @@ class ProviderStatsTracker:
     def recommend(self, policy: RoutingPolicy, available: List[str]) -> Optional[str]:
         """
         Recommend a provider based on policy and collected stats.
-        
+
         Args:
             policy: The routing policy to use
             available: List of available provider names
-            
+
         Returns:
             Recommended provider name, or None if no data
         """
         with self._lock:
             if not available:
                 return None
-            
-            # Only consider providers we have stats for
+
             known = {name for name in available if name in self._stats}
-            
-            # If we have no stats yet, return first available
             if not known:
                 return available[0]
-            
+
             if policy == RoutingPolicy.CHEAPEST_FIRST:
                 return self._select_cheapest(known)
-            elif policy == RoutingPolicy.FASTEST_FIRST:
+            if policy == RoutingPolicy.FASTEST_FIRST:
                 return self._select_fastest(known)
-            elif policy == RoutingPolicy.ADAPTIVE:
-                # Shouldn't reach here — adaptive uses epsilon-greedy in router
-                return self._select_cheapest(known)
-            else:
-                return available[0]
+            if policy == RoutingPolicy.ADAPTIVE:
+                return self._select_adaptive_best(known)
+            return available[0]
 
     def _select_cheapest(self, candidates: set) -> str:
         """
         Select cheapest provider. Tie-break: latency, then error rate.
-        
+
         On free tier, all costs are often $0.00, so tie-breaking is critical.
         """
         scored = []
@@ -159,6 +154,45 @@ class ProviderStatsTracker:
         scored.sort()
         return scored[0][2]
 
+    def _select_adaptive_best(self, candidates: set) -> str:
+        """
+        Select the best provider using a documented composite score.
+
+        Lower is better. We weight normalized latency at 0.5,
+        normalized cost-per-request at 0.3, and raw error rate at 0.2.
+        """
+        candidate_names = sorted(candidates)
+        latencies = {name: self._stats[name].mean_latency_ms for name in candidate_names}
+        costs = {name: self._stats[name].cost_per_request for name in candidate_names}
+        error_rates = {name: self._stats[name].error_rate for name in candidate_names}
+
+        def normalize(value: float, values: List[float]) -> float:
+            finite_values = [item for item in values if item != float("inf")]
+            if not finite_values:
+                return 0.0
+            if value == float("inf"):
+                return 1.0
+            low = min(finite_values)
+            high = max(finite_values)
+            if high == low:
+                return 0.0
+            return (value - low) / (high - low)
+
+        latency_values = list(latencies.values())
+        cost_values = list(costs.values())
+        scored = []
+
+        for name in candidate_names:
+            composite = (
+                0.5 * normalize(latencies[name], latency_values)
+                + 0.3 * normalize(costs[name], cost_values)
+                + 0.2 * error_rates[name]
+            )
+            scored.append((composite, latencies[name], costs[name], error_rates[name], name))
+
+        scored.sort()
+        return scored[0][4]
+
     def summary(self) -> Dict[str, Any]:
         """Produce a serializable summary for raw_metrics storage."""
         with self._lock:
@@ -184,11 +218,11 @@ class ProviderStatsTracker:
     ) -> "ProviderStatsTracker":
         """
         Warm-start from a previous experiment's raw_metrics["routing"].
-        
+
         Args:
             routing_data: Dict with provider names as keys, snapshot dicts as values
             bucket_key: Optional bucket filter (unused in v1, reserved for v2)
-            
+
         Returns:
             Pre-populated ProviderStatsTracker
         """
@@ -201,7 +235,6 @@ class ProviderStatsTracker:
             snap.total_errors = data.get("total_errors", 0)
             snap.total_tokens = data.get("total_tokens", 0)
             snap.total_cost_usd = data.get("total_cost_usd", 0.0)
-            # Reconstruct approximate latencies from mean
             mean_lat = data.get("mean_latency_ms")
             if mean_lat and snap.total_requests > 0:
                 snap.latencies = [mean_lat] * snap.total_requests

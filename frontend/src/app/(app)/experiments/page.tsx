@@ -19,10 +19,10 @@ import { toast } from "sonner";
 
 import {
   deleteExperiment,
-  listExperiments,
+  listExperimentsSlim,
   resolveRunExperimentCredentials,
   runExperiment,
-  type Experiment,
+  type ExperimentListItem,
   type ListExperimentsParams,
 } from "@/lib/api";
 import {
@@ -49,7 +49,7 @@ function formatDate(dateStr: string) {
   });
 }
 
-function regressionBadge(status?: Experiment["regression_status"]) {
+function regressionBadge(status?: ExperimentListItem["regression_status"]) {
   switch (status) {
     case "pass":
       return <span className="status-pill status-completed">Pass</span>;
@@ -79,13 +79,13 @@ export default function ExperimentsPage() {
 
   const experimentsQuery = useQuery({
     queryKey: ["experiments", params],
-    queryFn: ({ signal }) => listExperiments(params, { signal }),
+    queryFn: ({ signal }) => listExperimentsSlim(params, { signal }),
   });
 
   const runMutation = useMutation({
-    mutationFn: (experiment: Experiment) => {
+    mutationFn: (experiment: ExperimentListItem) => {
       setRunningIds((prev) => new Set(prev).add(experiment.id));
-      const credentials = resolveRunExperimentCredentials(experiment.config);
+      const credentials = resolveRunExperimentCredentials(experiment);
       return runExperiment(experiment.id, credentials.customBaseUrl, credentials.customApiKey);
     },
     onSuccess: (_data, experiment) => {
@@ -281,10 +281,10 @@ export default function ExperimentsPage() {
                           <p className="line-clamp-2 max-w-3xl text-sm leading-7 text-(--muted-foreground)">{experiment.description}</p>
                         ) : null}
                         <div className="flex flex-wrap gap-2 text-xs text-(--muted-foreground)">
-                          <span className="chip">{methodLabels[experiment.config.reasoning_method] ?? experiment.config.reasoning_method}</span>
-                          <span className="chip">{experiment.config.model_name.split("/").pop()}</span>
-                          <span className="chip">{experiment.config.dataset_name}</span>
-                          <span className="chip">Samples {experiment.config.num_samples ?? "N/A"}</span>
+                          <span className="chip">{methodLabels[experiment.reasoning_method] ?? experiment.reasoning_method}</span>
+                          <span className="chip">{experiment.model_name.split("/").pop()}</span>
+                          <span className="chip">{experiment.dataset_name}</span>
+                          <span className="chip">Samples {experiment.num_samples ?? "N/A"}</span>
                         </div>
                       </div>
                       <div className="flex w-full shrink-0 flex-wrap items-center gap-2 sm:w-auto" onClick={(event) => event.preventDefault()}>

@@ -392,6 +392,7 @@ class ExperimentListItem(BaseModel):
     is_baseline: Optional[bool] = None
     regression_status: RegressionStatus = RegressionStatus.NOT_CHECKED
     # Flattened config subset — what list views actually render
+    provider: InferenceProvider = InferenceProvider.AUTO
     reasoning_method: str
     model_name: str
     dataset_name: str

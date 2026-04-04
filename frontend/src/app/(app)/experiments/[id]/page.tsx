@@ -30,10 +30,8 @@ import {
   setBaseline,
   unsetBaseline,
   type ProfileData,
-  type RunSummary,
   type RunGridSummary,
 } from "@/lib/api";
-import { cn } from "@/lib/utils";
 import {
   AnimatedNumber,
   EmptyState,
@@ -557,6 +555,12 @@ export default function ExperimentDetailPage({ params }: Props) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["experiment", id] });
       queryClient.invalidateQueries({ queryKey: ["experiments"] });
+      queryClient.invalidateQueries({ queryKey: ["metrics", id] });
+      queryClient.invalidateQueries({ queryKey: ["runs-grid", id] });
+      queryClient.invalidateQueries({ queryKey: ["runs-full", id] });
+      queryClient.invalidateQueries({ queryKey: ["profile", id] });
+      queryClient.invalidateQueries({ queryKey: ["routing", id] });
+      queryClient.invalidateQueries({ queryKey: ["regression", id] });
       toast.success("Experiment started");
     },
     onError: (error: Error) => {

@@ -1,6 +1,6 @@
 /**
- * API Client for LLM Research Platform Backend
- * 
+ * API Client for LlmForge backend.
+ *
  * Centralized HTTP client for all API calls.
  * Handles error handling and response parsing.
  */
@@ -50,6 +50,10 @@ const UNSAFE_METHOD_MAX_RETRIES = 0;
 const RETRY_BACKOFF_BASE_MS = 2000;
 const BACKGROUND_JOB_POLL_INTERVAL_MS = 2500;
 const BACKGROUND_JOB_TIMEOUT_MS = 5 * 60_000;
+const CUSTOM_LLM_SETTINGS_KEY = "customLLMSettings";
+const CUSTOM_BASE_URL_KEY = "customBaseUrl";
+const CUSTOM_API_KEY_KEY = "customApiKey";
+const CUSTOM_MODEL_ID_KEY = "customModelId";
 
 function isSafeRetryMethod(method?: string): boolean {
     const normalizedMethod = (method || 'GET').toUpperCase();
@@ -58,6 +62,13 @@ function isSafeRetryMethod(method?: string): boolean {
 
 function getAbortError(): DOMException {
     return new DOMException('The operation was aborted.', 'AbortError');
+}
+
+function getCustomProviderStorage(): Storage | null {
+    if (typeof window === "undefined") {
+        return null;
+    }
+    return window.sessionStorage;
 }
 
 function sleep(ms: number, signal?: AbortSignal | null): Promise<void> {
@@ -255,11 +266,7 @@ async function fetchAPI<T>(
 }
 
 function getApiRootUrl(): string {
-    return (
-        process.env.NEXT_PUBLIC_API_BASE_URL ||
-        API_BASE_URL.replace(/\/api\/v1\/?$/, '') ||
-        'http://localhost:8000'
-    );
+    return API_BASE_URL.replace(/\/api\/v1\/?$/, "") || "http://localhost:8000";
 }
 
 // =============================================================================
@@ -371,6 +378,7 @@ export interface ExperimentListItem {
     completed_at?: string;
     is_baseline?: boolean;
     regression_status?: RegressionStatus;
+    provider?: 'auto' | 'hf_api' | 'openrouter' | 'groq' | 'custom';
     reasoning_method: string;
     model_name: string;
     dataset_name: string;
@@ -488,12 +496,13 @@ export function getStoredCustomProviderCredentials(modelName?: string): {
     customBaseUrl?: string;
     customApiKey?: string;
 } {
-    if (typeof window === 'undefined') {
+    const storage = getCustomProviderStorage();
+    if (!storage) {
         return {};
     }
 
     try {
-        const settings = JSON.parse(localStorage.getItem('customLLMSettings') || '{}') as Record<
+        const settings = JSON.parse(storage.getItem(CUSTOM_LLM_SETTINGS_KEY) || '{}') as Record<
             string,
             { baseUrl?: string; apiKey?: string }
         >;
@@ -505,10 +514,10 @@ export function getStoredCustomProviderCredentials(modelName?: string): {
             };
         }
 
-        if (modelName && localStorage.getItem('customModelId') === modelName) {
+        if (modelName && storage.getItem(CUSTOM_MODEL_ID_KEY) === modelName) {
             return {
-                customBaseUrl: localStorage.getItem('customBaseUrl') || undefined,
-                customApiKey: localStorage.getItem('customApiKey') || undefined,
+                customBaseUrl: storage.getItem(CUSTOM_BASE_URL_KEY) || undefined,
+                customApiKey: storage.getItem(CUSTOM_API_KEY_KEY) || undefined,
             };
         }
     } catch (error) {
@@ -516,6 +525,31 @@ export function getStoredCustomProviderCredentials(modelName?: string): {
     }
 
     return {};
+}
+
+export function persistCustomProviderCredentials(
+    modelName: string,
+    customBaseUrl: string,
+    customApiKey: string,
+): void {
+    const storage = getCustomProviderStorage();
+    if (!storage || !modelName.trim()) {
+        return;
+    }
+
+    try {
+        const settings = JSON.parse(storage.getItem(CUSTOM_LLM_SETTINGS_KEY) || "{}") as Record<
+            string,
+            { baseUrl?: string; apiKey?: string }
+        >;
+        settings[modelName] = { baseUrl: customBaseUrl, apiKey: customApiKey };
+        storage.setItem(CUSTOM_LLM_SETTINGS_KEY, JSON.stringify(settings));
+        storage.setItem(CUSTOM_BASE_URL_KEY, customBaseUrl);
+        storage.setItem(CUSTOM_API_KEY_KEY, customApiKey);
+        storage.setItem(CUSTOM_MODEL_ID_KEY, modelName);
+    } catch (error) {
+        console.error("Failed to persist custom model settings", error);
+    }
 }
 
 export function resolveRunExperimentCredentials(config?: Pick<ExperimentConfig, 'provider' | 'model_name'>): {

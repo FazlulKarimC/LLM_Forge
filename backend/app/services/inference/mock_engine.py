@@ -162,3 +162,7 @@ class MockEngine(InferenceEngine):
     def is_loaded(self) -> bool:
         """Whether fake model is loaded."""
         return self._is_loaded
+
+    @property
+    def provider_id(self) -> str:
+        return "mock"

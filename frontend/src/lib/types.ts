@@ -1,6 +1,6 @@
 /**
- * Type definitions for LLM Research Platform
- * 
+ * Type definitions for LlmForge.
+ *
  * Shared types used across the frontend application.
  */
 

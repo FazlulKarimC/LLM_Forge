@@ -147,17 +147,17 @@ async def _run_llm_judge_job(job_id: str, experiment_id: UUID, sample_size: int)
     """Execute judge evaluation in the background and persist the result."""
     from app.services.llm_judge_service import LLMJudgeService
 
-    mark_job_running(job_id)
+    await mark_job_running(job_id)
 
     try:
         async with async_session_maker() as session:
             judge = LLMJudgeService(session, sample_size=sample_size)
             result = await judge.evaluate_experiment(experiment_id)
             await _save_llm_judge_result(session, experiment_id, result)
-        mark_job_completed(job_id, result)
+        await mark_job_completed(job_id, result)
     except Exception as exc:  # pragma: no cover - best-effort background execution
         logger.exception("Judge background job failed for %s", experiment_id)
-        mark_job_failed(job_id, f"Judge evaluation failed: {str(exc)[:200]}")
+        await mark_job_failed(job_id, f"Judge evaluation failed: {str(exc)[:200]}")
 
 
 async def _run_synthetic_generation_job(
@@ -169,7 +169,7 @@ async def _run_synthetic_generation_job(
     """Execute synthetic dataset generation in the background."""
     from app.services.synthetic_data_service import SyntheticDatasetService
 
-    mark_job_running(job_id)
+    await mark_job_running(job_id)
 
     try:
         chunks = _load_knowledge_base_chunks(max_chunks)
@@ -180,10 +180,10 @@ async def _run_synthetic_generation_job(
             max_chunks=max_chunks,
             seed=seed,
         )
-        mark_job_completed(job_id, result)
+        await mark_job_completed(job_id, result)
     except Exception as exc:  # pragma: no cover - best-effort background execution
         logger.exception("Synthetic generation background job failed")
-        mark_job_failed(job_id, str(exc)[:200])
+        await mark_job_failed(job_id, str(exc)[:200])
 
 
 
@@ -304,7 +304,7 @@ async def statistical_comparison(
 @router.get("/jobs/{job_id}")
 async def get_background_job(job_id: str):
     """Return the current status for an asynchronous background job."""
-    job = get_job(job_id)
+    job = await get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found or has expired")
     return JSONResponse(content=job)
@@ -568,7 +568,7 @@ async def run_llm_judge(
     if experiment_result.scalar_one_or_none() is None:
         raise HTTPException(status_code=404, detail="Experiment not found")
 
-    job = create_job(
+    job = await create_job(
         "llm_judge",
         {
             "experiment_id": str(experiment_id),
@@ -589,7 +589,7 @@ async def generate_synthetic_dataset(
     """
     Queue synthetic dataset generation and return a pollable job id immediately.
     """
-    job = create_job(
+    job = await create_job(
         "synthetic_generation",
         {
             "pairs_per_chunk": pairs_per_chunk,

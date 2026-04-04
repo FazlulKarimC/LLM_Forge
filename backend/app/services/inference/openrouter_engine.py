@@ -61,6 +61,7 @@ class OpenRouterEngine(OpenAIEngine):
             base_url=OPENROUTER_BASE_URL,
             api_key=resolved_key,
             model_name=model_name,
+            provider_id="openrouter",
         )
         logger.info(
             "OpenRouterEngine initialized (model=%s, base_url=%s)",

@@ -8,7 +8,8 @@ Database models for:
 """
 
 from app.models.experiment import Experiment
+from app.models.background_job import BackgroundJobRecord
 from app.models.result import Result
 from app.models.run import Run
 
-__all__ = ["Experiment", "Result", "Run"]
+__all__ = ["BackgroundJobRecord", "Experiment", "Result", "Run"]

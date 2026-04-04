@@ -129,6 +129,7 @@ class ExperimentService:
             regression_status=RegressionStatus(
                 getattr(experiment, 'regression_status', None) or RegressionStatus.NOT_CHECKED.value
             ),
+            provider=config.get('provider', 'auto'),
             reasoning_method=config.get('reasoning_method', 'naive'),
             model_name=config.get('model_name', ''),
             dataset_name=config.get('dataset_name', ''),
@@ -487,9 +488,6 @@ class ExperimentService:
                 exp_obj.current_attempt = current_attempt
                 exp_obj.regression_status = RegressionStatus.NOT_CHECKED.value
                 exp_obj.regression_passed = None
-            
-            # Clear old results (will be recomputed from latest attempt)
-            await metrics_svc.clear_results(experiment_id)
             
             # Step 2b: Update status to RUNNING
             await self.update_status(experiment_id, ExperimentStatus.RUNNING, error_message="")

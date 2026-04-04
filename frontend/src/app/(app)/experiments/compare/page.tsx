@@ -14,8 +14,8 @@ import {
 import {
   compareExperiments,
   getStatisticalComparison,
-  listExperiments,
-  type Experiment,
+  listExperimentsSlim,
+  type ExperimentListItem,
   type StatisticalComparison,
 } from "@/lib/api";
 import { EmptyState, MetricBar, PageHeader, Panel, PanelHeader, SkeletonBlock } from "@/components/ui/primitives";
@@ -238,7 +238,7 @@ function ComparePageInner() {
 
   const experimentsQuery = useQuery({
     queryKey: ["experiments", "completed"],
-    queryFn: ({ signal }) => listExperiments({ status: "completed", limit: 50 }, { signal }),
+    queryFn: ({ signal }) => listExperimentsSlim({ status: "completed", limit: 50 }, { signal }),
   });
 
   const experiments = useMemo(() => experimentsQuery.data?.experiments ?? [], [experimentsQuery.data?.experiments]);
@@ -321,9 +321,9 @@ function ComparePageInner() {
                     onChange={(e) => setSlotA(e.target.value)}
                   >
                     <option value="">Select experiment…</option>
-                    {experiments.map((exp: Experiment) => (
+                    {experiments.map((exp: ExperimentListItem) => (
                       <option key={exp.id} value={exp.id} disabled={exp.id === effectiveSelectedIds[1]}>
-                        {exp.name} — {exp.config.reasoning_method.toUpperCase()} · {exp.config.model_name.split("/").pop()}
+                        {exp.name} — {exp.reasoning_method.toUpperCase()} · {exp.model_name.split("/").pop()}
                       </option>
                     ))}
                   </select>
@@ -337,9 +337,9 @@ function ComparePageInner() {
                     onChange={(e) => setSlotB(e.target.value)}
                   >
                     <option value="">Select experiment…</option>
-                    {experiments.map((exp: Experiment) => (
+                    {experiments.map((exp: ExperimentListItem) => (
                       <option key={exp.id} value={exp.id} disabled={exp.id === effectiveSelectedIds[0]}>
-                        {exp.name} — {exp.config.reasoning_method.toUpperCase()} · {exp.config.model_name.split("/").pop()}
+                        {exp.name} — {exp.reasoning_method.toUpperCase()} · {exp.model_name.split("/").pop()}
                       </option>
                     ))}
                   </select>
@@ -398,9 +398,9 @@ function ComparePageInner() {
                   <div className="section-label">Experiment {index === 0 ? "A" : "B"}</div>
                   <div className="mt-2 text-xl font-semibold tracking-[-0.04em]">{experiment?.name}</div>
                   <div className="mt-3 flex flex-wrap gap-2 text-xs text-(--muted-foreground)">
-                    <span className="chip">{experiment?.config.reasoning_method.toUpperCase()}</span>
-                    <span className="chip">{experiment?.config.model_name.split("/").pop()}</span>
-                    <span className="chip">{experiment?.config.dataset_name}</span>
+                    <span className="chip">{experiment?.reasoning_method.toUpperCase()}</span>
+                    <span className="chip">{experiment?.model_name.split("/").pop()}</span>
+                    <span className="chip">{experiment?.dataset_name}</span>
                   </div>
                 </div>
               ))}
@@ -448,4 +448,3 @@ export default function ComparePage() {
     </Suspense>
   );
 }
-

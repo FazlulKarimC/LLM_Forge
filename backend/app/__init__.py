@@ -1,5 +1,5 @@
 """
-LLM Research Platform - Backend Application
+LlmForge - Backend Application
 
 A config-driven experimentation platform for studying LLM reasoning,
 retrieval, alignment, and inference optimization.

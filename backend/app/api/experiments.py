@@ -35,21 +35,23 @@ router = APIRouter()
 
 async def _active_run_count(service: ExperimentService) -> int:
     """Best-effort queued/running count used for global concurrency gating."""
+    from app.core.rate_limit import MAX_CONCURRENT_RUNS
+
     try:
         stats = await service.get_stats()
     except (SQLAlchemyError, Exception) as exc:
-        logger.warning("Skipping concurrency check because stats query failed: %s", exc)
-        return 0
+        logger.warning("Failing closed on concurrency check because stats query failed: %s", exc)
+        return MAX_CONCURRENT_RUNS
 
     if not isinstance(stats, dict):
-        logger.warning("Skipping concurrency check because stats payload was not a dict: %s", type(stats).__name__)
-        return 0
+        logger.warning("Failing closed because stats payload was not a dict: %s", type(stats).__name__)
+        return MAX_CONCURRENT_RUNS
 
     running = stats.get("running", 0)
     queued = stats.get("queued", 0)
     if not isinstance(running, int) or not isinstance(queued, int):
-        logger.warning("Skipping concurrency check because stats payload was malformed: %s", stats)
-        return 0
+        logger.warning("Failing closed because stats payload was malformed: %s", stats)
+        return MAX_CONCURRENT_RUNS
 
     return running + queued
 

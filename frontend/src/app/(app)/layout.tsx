@@ -1,4 +1,3 @@
-import { Toaster } from "sonner";
 import { AppShell } from "@/components/app-shell";
 
 /**

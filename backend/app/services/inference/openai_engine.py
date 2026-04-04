@@ -10,6 +10,7 @@ from app.services.inference.base import (
     GenerationConfig,
     GenerationResult,
 )
+from app.core.pricing import estimate_cost
 from app.models.run import FailureMode
 
 logger = logging.getLogger(__name__)
@@ -25,7 +26,13 @@ class OpenAIEngine(InferenceEngine):
     saving API keys in the backend database.
     """
 
-    def __init__(self, base_url: str, api_key: Optional[str] = "dummy_key", model_name: str = "custom-model"):
+    def __init__(
+        self,
+        base_url: str,
+        api_key: Optional[str] = "dummy_key",
+        model_name: str = "custom-model",
+        provider_id: str = "custom",
+    ):
         """
         Initialize the OpenAI-compatible engine.
 
@@ -40,6 +47,7 @@ class OpenAIEngine(InferenceEngine):
         self._base_url = base_url
         self._api_key = api_key or "dummy_key"
         self._model_name = model_name
+        self._provider_id = provider_id
         self._client = self._make_client()
         self._is_loaded = True
         logger.info(f"OpenAIEngine initialized: base_url={self._base_url}, model={self._model_name}")
@@ -93,6 +101,7 @@ class OpenAIEngine(InferenceEngine):
             tokens_input = response.usage.prompt_tokens if response.usage else len(prompt.split())
             tokens_output = response.usage.completion_tokens if response.usage else len(generated_text.split())
             finish_reason = str(response.choices[0].finish_reason if response.choices else "stop")
+            pricing = estimate_cost(self._model_name, tokens_input=tokens_input, tokens_output=tokens_output)
             
             failure_mode = None
             if finish_reason == "length":
@@ -104,6 +113,7 @@ class OpenAIEngine(InferenceEngine):
                 tokens_output=tokens_output,
                 latency_ms=latency_ms,
                 finish_reason=finish_reason,
+                cost_usd=pricing["total_cost_usd"],
                 gpu_memory_mb=None,
                 failure_mode=failure_mode,
             )
@@ -121,6 +131,7 @@ class OpenAIEngine(InferenceEngine):
                 tokens_output=0,
                 latency_ms=latency_ms,
                 finish_reason="error",
+                cost_usd=0.0,
                 gpu_memory_mb=None,
                 failure_mode=FailureMode.API_ERROR,
                 error_message=f"Rate limit exceeded: {str(e)}",
@@ -134,6 +145,7 @@ class OpenAIEngine(InferenceEngine):
                 tokens_output=0,
                 latency_ms=latency_ms,
                 finish_reason="error",
+                cost_usd=0.0,
                 gpu_memory_mb=None,
                 failure_mode=FailureMode.API_ERROR,
                 error_message=f"API Error from custom endpoint: {str(e)}",
@@ -155,6 +167,7 @@ class OpenAIEngine(InferenceEngine):
                 tokens_output=0,
                 latency_ms=latency_ms,
                 finish_reason="error",
+                cost_usd=0.0,
                 gpu_memory_mb=None,
                 failure_mode=failure_mode,
                 error_message=str(e),
@@ -207,3 +220,7 @@ class OpenAIEngine(InferenceEngine):
     @property
     def is_loaded(self) -> bool:
         return self._is_loaded
+
+    @property
+    def provider_id(self) -> str:
+        return self._provider_id

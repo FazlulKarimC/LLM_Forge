@@ -13,6 +13,7 @@ import {
   CreateExperimentRequest,
   ExperimentConfig,
   getAvailableModels,
+  persistCustomProviderCredentials,
   resolveRunExperimentCredentials,
   runExperiment,
 } from "@/lib/api";
@@ -63,14 +64,14 @@ const providerOptions = [
   { value: "hf_api", label: "Hugging Face API", description: "Serverless and free, but often slower" },
   { value: "openrouter", label: "OpenRouter", description: "Use free-tier models with provider-side routing" },
   { value: "groq", label: "Groq", description: "Very fast inference with stricter limits" },
-  { value: "custom", label: "Custom endpoint", description: "Your own OpenAI-compatible endpoint" },
+  { value: "custom", label: "Custom endpoint (dev only)", description: "Your own OpenAI-compatible endpoint for local or development-only testing" },
 ] as const;
 
 const routingPolicyOptions = [
   { value: "fallback_chain", label: "Fallback chain", description: "Try the primary provider first and fall back only on transient failures" },
-  { value: "cheapest_first", label: "Cheapest first", description: "Prefer the lowest-cost provider based on accumulated telemetry" },
+  { value: "cheapest_first", label: "Cheapest first", description: "Prefer the lowest-cost provider based on per-request cost tracking" },
   { value: "fastest_first", label: "Fastest first", description: "Prefer the lowest-latency provider based on accumulated telemetry" },
-  { value: "adaptive", label: "Adaptive", description: "Explore early, then exploit the best-performing provider" },
+  { value: "adaptive", label: "Adaptive", description: "Explore early, then exploit the best composite score for latency, cost, and error rate" },
 ] as const;
 
 const retrievalOptions = [
@@ -164,15 +165,15 @@ export default function NewExperimentPage() {
   const [runError, setRunError] = useState<string | null>(null);
 
   const [customBaseUrl, setCustomBaseUrl] = useState(() => {
-    if (typeof window !== "undefined") return localStorage.getItem("customBaseUrl") || "http://localhost:8000/v1";
+    if (typeof window !== "undefined") return sessionStorage.getItem("customBaseUrl") || "http://localhost:8000/v1";
     return "http://localhost:8000/v1";
   });
   const [customApiKey, setCustomApiKey] = useState(() => {
-    if (typeof window !== "undefined") return localStorage.getItem("customApiKey") || "";
+    if (typeof window !== "undefined") return sessionStorage.getItem("customApiKey") || "";
     return "";
   });
   const [customModelId, setCustomModelId] = useState(() => {
-    if (typeof window !== "undefined") return localStorage.getItem("customModelId") || "";
+    if (typeof window !== "undefined") return sessionStorage.getItem("customModelId") || "";
     return "";
   });
 
@@ -232,8 +233,8 @@ export default function NewExperimentPage() {
       setValidationError("Batch size must be between 1 and 32.");
       return;
     }
-    if (formData.enable_caching && (formData.cache_max_size < 8 || formData.cache_max_size > 4096)) {
-      setValidationError("Cache size must be between 8 and 4096.");
+    if (formData.enable_caching && (formData.cache_max_size < 16 || formData.cache_max_size > 2048)) {
+      setValidationError("Cache size must be between 16 and 2,048.");
       return;
     }
     if (formData.routing_epsilon < 0 || formData.routing_epsilon > 1) {
@@ -256,17 +257,8 @@ export default function NewExperimentPage() {
     setValidationError(null);
     setRunError(null);
 
-    if (formData.model_name === "custom_hosted" && typeof window !== "undefined") {
-      try {
-        const settings = JSON.parse(localStorage.getItem("customLLMSettings") || "{}");
-        settings[customModelId] = { baseUrl: customBaseUrl, apiKey: customApiKey };
-        localStorage.setItem("customLLMSettings", JSON.stringify(settings));
-        localStorage.setItem("customBaseUrl", customBaseUrl);
-        localStorage.setItem("customApiKey", customApiKey);
-        localStorage.setItem("customModelId", customModelId);
-      } catch (error) {
-        console.error("Failed to store custom model settings", error);
-      }
+    if (formData.model_name === "custom_hosted") {
+      persistCustomProviderCredentials(customModelId, customBaseUrl, customApiKey);
     }
 
     const config: ExperimentConfig = {
@@ -633,7 +625,7 @@ export default function NewExperimentPage() {
                 {formData.enable_caching ? (
                   <div className="mt-4">
                     <label className="field-label" htmlFor="cache-size">Cache size</label>
-                    <input id="cache-size" type="number" min="8" max="4096" value={formData.cache_max_size} onChange={(event) => updateField("cache_max_size", parseInt(event.target.value, 10) || 8)} className="input-shell" />
+                    <input id="cache-size" type="number" min="16" max="2048" value={formData.cache_max_size} onChange={(event) => updateField("cache_max_size", parseInt(event.target.value, 10) || 16)} className="input-shell" />
                   </div>
                 ) : null}
               </div>
@@ -774,4 +766,3 @@ export default function NewExperimentPage() {
     </div>
   );
 }
-

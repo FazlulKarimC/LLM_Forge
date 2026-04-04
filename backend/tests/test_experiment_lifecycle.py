@@ -9,7 +9,7 @@ Verifies critical fixes from Milestone 1 & 2:
 import pytest
 from uuid import uuid4
 from fastapi.testclient import TestClient
-from unittest.mock import patch, AsyncMock, MagicMock
+from unittest.mock import AsyncMock, patch, MagicMock
 
 from app.main import app
 from app.core.config import settings
@@ -27,7 +27,8 @@ class TestEnqueueFailureRollback:
 
     @patch('app.api.experiments.ExperimentService')
     @patch('app.api.experiments._enqueue_or_fallback')
-    def test_enqueue_failure_rollback(self, mock_enqueue, MockServiceClass, client):
+    @patch('app.api.experiments._active_run_count', new_callable=AsyncMock, return_value=0)
+    def test_enqueue_failure_rollback(self, mock_active_count, mock_enqueue, MockServiceClass, client):
         """
         Test that if enqueueing an experiment fails, the status is properly
         rolled back to FAILED from QUEUED, rather than getting stuck.

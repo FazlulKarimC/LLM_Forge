@@ -23,10 +23,10 @@ import {
   deleteExperiment,
   getDashboardStats,
   getReadinessStatus,
-  listExperiments,
+  listExperimentsSlim,
   resolveRunExperimentCredentials,
   runExperiment,
-  type Experiment,
+  type ExperimentListItem,
 } from "@/lib/api";
 import {
   AnimatedNumber,
@@ -61,7 +61,7 @@ export default function DashboardPage() {
 
   const experimentsQuery = useQuery({
     queryKey: ["experiments", "recent"],
-    queryFn: ({ signal }) => listExperiments({ limit: 6 }, { signal }),
+    queryFn: ({ signal }) => listExperimentsSlim({ limit: 6 }, { signal }),
   });
 
   const readinessQuery = useQuery({
@@ -72,9 +72,9 @@ export default function DashboardPage() {
   });
 
   const runMutation = useMutation({
-    mutationFn: (experiment: Experiment) => {
+    mutationFn: (experiment: ExperimentListItem) => {
       setRunningIds((prev) => new Set(prev).add(experiment.id));
-      const credentials = resolveRunExperimentCredentials(experiment.config);
+      const credentials = resolveRunExperimentCredentials(experiment);
       return runExperiment(experiment.id, credentials.customBaseUrl, credentials.customApiKey);
     },
     onSuccess: (_data, experiment) => {
@@ -359,9 +359,9 @@ export default function DashboardPage() {
                           <StatusPill status={experiment.status} />
                         </div>
                         <div className="flex flex-wrap gap-2 text-xs text-(--muted-foreground)">
-                          <span className="chip">{experiment.config.reasoning_method.toUpperCase()}</span>
-                          <span className="chip">{experiment.config.model_name.split("/").pop()}</span>
-                          <span className="chip">{experiment.config.dataset_name}</span>
+                          <span className="chip">{experiment.reasoning_method.toUpperCase()}</span>
+                          <span className="chip">{experiment.model_name.split("/").pop()}</span>
+                          <span className="chip">{experiment.dataset_name}</span>
                         </div>
                         {experiment.description ? (
                           <p className="line-clamp-2 max-w-2xl text-sm leading-7 text-(--muted-foreground)">{experiment.description}</p>

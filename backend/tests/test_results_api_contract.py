@@ -62,11 +62,11 @@ class TestRunSummaryContract:
             attempt=2,
             retrieved_chunks={"chunks": [{"text": "chunk text", "score": 0.9}]},
             grader_results={"latency_budget": {"status": "pass", "reason": "ok"}},
-            served_provider="OpenRouterEngine",
+            served_provider="openrouter",
         )
 
         summary = RunSummary.model_validate(run)
 
         assert summary.retrieved_chunks["chunks"][0]["text"] == "chunk text"
         assert summary.grader_results["latency_budget"]["status"] == "pass"
-        assert summary.served_provider == "OpenRouterEngine"
+        assert summary.served_provider == "openrouter"
