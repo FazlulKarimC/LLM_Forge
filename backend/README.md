@@ -77,3 +77,41 @@ Prepare local or dev DB tables and run the server:
 alembic upgrade head
 uvicorn app.main:app --reload --port 8000
 ```
+
+---
+
+## 🔄 Task Dispatch & Queue Architecture
+
+LlmForge uses a resilient task dispatch system designed for free-tier hosting:
+
+- **Neon/Postgres is required** — all durable state (experiments, results, jobs) lives here
+- **Upstash Redis + RQ worker is optional** — provides background job acceleration
+- **`QUEUE_BACKEND_MODE=auto`** is the recommended production setting
+
+### How `auto` mode works
+
+1. If `REDIS_URL` is not set → inline execution
+2. If the Upstash circuit breaker is open → inline execution
+3. If Redis health probe fails → circuit opens for 30 minutes, inline execution
+4. If no RQ worker heartbeat exists (within 90s) → inline execution
+5. Otherwise → enqueue via RQ for background processing
+
+### Circuit Breaker
+
+The circuit breaker protects against repeated calls to archived/dead Upstash instances:
+
+- **Opens for 30 minutes** on: `ConnectionError`, `TimeoutError`, `AuthenticationError`, or "archived/gone" style responses
+- **Does NOT open** for application bugs (bad arguments, serialization errors)
+- **Half-open probe** after 30 minutes: one test request allowed; success closes the circuit
+
+### Worker Heartbeat
+
+The RQ worker writes a heartbeat to the `worker_heartbeats` table every 30 seconds. The API checks this before enqueuing work. If no fresh heartbeat exists, dispatch goes inline immediately — avoiding the silent failure where Redis is up but no worker is processing jobs.
+
+### Running the Worker (optional)
+
+```bash
+python worker.py
+```
+
+The worker is optional. Without it, experiments run inline via FastAPI BackgroundTasks.

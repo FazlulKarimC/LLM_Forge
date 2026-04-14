@@ -2,7 +2,7 @@
 Experiment Lifecycle Regression Tests
 
 Verifies critical fixes from Milestone 1 & 2:
-1. Enqueue failure rolls back status to FAILED
+1. Dispatch failure rolls back status to FAILED
 2. Dashboard stats endpoint correctness
 """
 
@@ -23,14 +23,14 @@ def client():
 
 
 class TestEnqueueFailureRollback:
-    """Test that enqueue failures properly roll back experiment status."""
+    """Test that dispatch failures properly roll back experiment status."""
 
     @patch('app.api.experiments.ExperimentService')
-    @patch('app.api.experiments._enqueue_or_fallback')
+    @patch('app.core.task_dispatch.dispatch_experiment')
     @patch('app.api.experiments._active_run_count', new_callable=AsyncMock, return_value=0)
-    def test_enqueue_failure_rollback(self, mock_active_count, mock_enqueue, MockServiceClass, client):
+    def test_enqueue_failure_rollback(self, mock_active_count, mock_dispatch, MockServiceClass, client):
         """
-        Test that if enqueueing an experiment fails, the status is properly
+        Test that if dispatching an experiment fails, the status is properly
         rolled back to FAILED from QUEUED, rather than getting stuck.
 
         We mock the entire service layer to avoid asyncpg connection pool
@@ -76,8 +76,8 @@ class TestEnqueueFailureRollback:
         mock_service.get.return_value = exp_response
         mock_service.update_status.return_value = failed_response
 
-        # Make the enqueuer raise an exception to simulate Redis/task queue failure
-        mock_enqueue.side_effect = Exception("Simulated queue failure")
+        # Make dispatch raise an exception to simulate queue failure
+        mock_dispatch.side_effect = Exception("Simulated queue failure")
 
         # 1. Create a dummy experiment
         create_payload = {
@@ -94,8 +94,7 @@ class TestEnqueueFailureRollback:
         create_resp = client.post(f"{settings.API_V1_PREFIX}/experiments", json=create_payload)
         assert create_resp.status_code == 201
 
-        # 2. Try to run it — should trigger enqueue failure
-        # The endpoint will re-raise the exception after rolling back status
+        # 2. Try to run it — should trigger dispatch failure
         try:
             client.post(f"{settings.API_V1_PREFIX}/experiments/{exp_id}/run")
         except Exception:
@@ -103,7 +102,6 @@ class TestEnqueueFailureRollback:
 
         # 3. Verify update_status was called — should include a call to FAILED
         assert mock_service.update_status.called, "Expected update_status to be called"
-        # Check that at least one call set status to FAILED  
         calls_str = str(mock_service.update_status.call_args_list).lower()
         assert "failed" in calls_str, (
             f"Expected update_status to be called with FAILED status, got: "

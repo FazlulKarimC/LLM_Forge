@@ -96,45 +96,6 @@ async def _execute_inline(
             logger.error(f"[INLINE] Safety-net commit also failed: {fallback_err}")
 
 
-def _enqueue_or_fallback(
-    background_tasks: BackgroundTasks,
-    experiment_id: UUID,
-    custom_base_url: Optional[str] = None,
-    custom_api_key: Optional[str] = None,
-) -> str:
-    """
-    Try to enqueue via RQ (Redis). If Redis is unavailable or
-    we are in development mode, fall back to FastAPI BackgroundTasks
-    (async inline execution).
-    
-    Returns:
-        'rq' if enqueued to Redis, 'inline' if using BackgroundTasks
-    """
-    from app.core.config import settings
-    
-    # In development, always use inline execution (no RQ worker running)
-    if settings.ENVIRONMENT == "development":
-        logger.info("Development mode: using inline execution (no RQ worker)")
-        background_tasks.add_task(_execute_inline, experiment_id, custom_base_url, custom_api_key)
-        return "inline"
-    
-    try:
-        from app.core.redis import get_queue
-        from app.tasks.experiment_tasks import run_experiment_task
-        queue = get_queue()
-        queue.enqueue(
-            run_experiment_task, 
-            str(experiment_id), 
-            custom_base_url=custom_base_url, 
-            custom_api_key=custom_api_key
-        )
-        return "rq"
-    except Exception as e:
-        logger.warning(f"Redis enqueue failed ({e}), falling back to inline execution")
-        background_tasks.add_task(_execute_inline, experiment_id, custom_base_url, custom_api_key)
-        return "inline_fallback"
-
-
 @router.get("/stats")
 async def get_experiment_stats(db: AsyncSession = Depends(get_db)):
     """Get aggregated experiment counts by status."""
@@ -246,8 +207,9 @@ async def run_experiment(
     """
     Trigger experiment execution.
     
-    Tries RQ (Redis) first for production-grade background processing.
-    Falls back to FastAPI BackgroundTasks if Redis is unavailable.
+    Uses the task dispatch abstraction to decide between RQ (Upstash)
+    and inline (BackgroundTasks) execution based on health, circuit
+    breaker state, and worker liveness.
     """
     service = ExperimentService(db)
     experiment = await service.get(experiment_id)
@@ -294,14 +256,19 @@ async def run_experiment(
     await db.commit()
     
     try:
-        _enqueue_or_fallback(
+        from app.core.task_dispatch import dispatch_experiment
+        result = dispatch_experiment(
             background_tasks, 
             experiment_id, 
             custom_base_url=x_custom_llm_base, 
             custom_api_key=x_custom_llm_key
         )
+        logger.info(
+            "Experiment %s → %s (reason=%s)",
+            experiment_id, result.backend_used, result.fallback_reason,
+        )
     except Exception as e:
-        logger.error("Enqueue failed, rolling back to FAILED: %s", e)
+        logger.error("Dispatch failed, rolling back to FAILED: %s", e)
         await service.update_status(
             experiment_id, ExperimentStatus.FAILED,
             error_message="Failed to start execution: task queue unavailable"
@@ -310,7 +277,6 @@ async def run_experiment(
         raise
     
     return await service.get(experiment_id)
-
 
 
 @router.delete("/{experiment_id}", status_code=204)
@@ -370,4 +336,3 @@ async def unset_baseline(
     
     exp_service = ExperimentService(db)
     return exp_service._to_response(experiment)
-

@@ -854,11 +854,7 @@ export async function healthCheck(options: RequestInit = {}): Promise<{ status: 
 
 export interface ReadinessStatus {
     status: string;
-    checks: {
-        database: string;
-        vector_db: string;
-        models: string;
-    };
+    checks: Record<string, string>;
 }
 
 /**

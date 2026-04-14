@@ -27,6 +27,7 @@ from app.models.background_job import BackgroundJobRecord
 from app.models.result import Result
 from app.models.run import Run
 from app.models.prompt_version import PromptVersion
+from app.models.worker_heartbeat import WorkerHeartbeatRecord
 
 # Alembic Config object
 config = context.config

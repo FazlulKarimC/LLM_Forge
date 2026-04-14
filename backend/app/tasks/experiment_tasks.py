@@ -9,6 +9,9 @@ Architecture:
 - RQ worker picks up job
 - Task creates own DB session
 - ExperimentService.execute() owns all commits/rollbacks
+
+Note: The RQ worker is an *optional acceleration backend*.
+When it is not running, the API falls back to inline execution.
 """
 
 import asyncio
@@ -39,7 +42,7 @@ def run_experiment_task(
         RQ doesn't support async functions directly, so we use
         asyncio.run() to execute the async code.
     """
-    logger.info(f"[RQ TASK] Starting experiment: {experiment_id}")
+    logger.info(f"[RQ TASK] Starting experiment: {experiment_id} (RQ-dispatched)")
     print(f"[RQ TASK] Starting experiment: {experiment_id}")
     
     try:

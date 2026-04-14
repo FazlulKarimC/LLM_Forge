@@ -97,6 +97,17 @@ class Settings(BaseSettings):
     # Optional: Only required when using RQ background tasks
     # Validated at runtime in redis.py when connection is requested
     REDIS_URL: str = ""
+
+    # ----- Task Dispatch / Queue -----
+    # auto: use RQ if Upstash healthy + worker alive, else inline
+    # upstash: always try RQ (fail hard if unavailable)
+    # inline: always run inline via BackgroundTasks
+    QUEUE_BACKEND_MODE: str = "auto"
+    UPSTASH_CIRCUIT_OPEN_MINUTES: int = 30
+    UPSTASH_HEALTHCHECK_TIMEOUT_MS: int = 1500
+    UPSTASH_HEALTHCHECK_CACHE_SECONDS: int = 60
+    RQ_WORKER_HEARTBEAT_INTERVAL_SECONDS: int = 30
+    RQ_WORKER_HEARTBEAT_TTL_SECONDS: int = 90
     
     # ----- Logging -----
     LOG_LEVEL: str = "INFO"

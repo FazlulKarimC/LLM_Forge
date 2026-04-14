@@ -14,11 +14,14 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.core.config import settings
 from unittest.mock import AsyncMock, patch, MagicMock
+
+
 @pytest.fixture
 def client():
     """Create test client."""
     with TestClient(app) as c:
         yield c
+
 
 class TestHealthEndpoints:
     """Tests for health check endpoints."""
@@ -28,6 +31,7 @@ class TestHealthEndpoints:
         response = client.get("/health")
         assert response.status_code == 200
         assert response.json()["status"] == "healthy"
+
 
 class TestExperimentCoreEndpoints:
     """Tests for critical experiment features and error handling."""
@@ -70,8 +74,6 @@ class TestExperimentCoreEndpoints:
         errors into standardized JSON with context and `request_id`.
         """
         fake_uuid = str(uuid4())
-        # Mock the service to raise ResourceNotFound instead of hitting the DB
-        from unittest.mock import AsyncMock
         mock_get.return_value = None
         response = client.get(f"{settings.API_V1_PREFIX}/experiments/{fake_uuid}")
         
@@ -90,17 +92,17 @@ class TestExperimentCoreEndpoints:
         assert response.status_code == 404
 
 
-
-
 class TestExperimentRunCustomHeaders:
     """Tests for starting an experiment with custom headers."""
 
     @patch('app.api.experiments.ExperimentService.get')
     @patch('app.api.experiments.ExperimentService.update_status')
-    @patch('app.api.experiments._enqueue_or_fallback')
+    @patch('app.core.task_dispatch.dispatch_experiment')
     @patch('app.api.experiments._active_run_count', new_callable=AsyncMock, return_value=0)
-    def test_run_experiment_with_custom_headers(self, mock_active_count, mock_enqueue, mock_update, mock_get, client):
+    def test_run_experiment_with_custom_headers(self, mock_active_count, mock_dispatch, mock_update, mock_get, client):
         """Test /run endpoint parses the custom headers correctly."""
+        from app.core.task_dispatch import DispatchResult
+
         class MockHyperParams:
             temperature = 0.1
             max_tokens = 10
@@ -131,11 +133,9 @@ class TestExperimentRunCustomHeaders:
             config = MockConfig()
 
         mock_exp = MockExperiment()
-        
-        # When run_experiment calls service.get() it returns our mock
         mock_get.return_value = mock_exp
+        mock_dispatch.return_value = DispatchResult(backend_used="inline")
 
-        # 2. Run the experiment with headers
         headers = {
             "X-Custom-LLM-Base": "http://mock-base.local/v1",
             "X-Custom-LLM-Key": "mock-api-key"
@@ -147,11 +147,11 @@ class TestExperimentRunCustomHeaders:
         )
         assert run_resp.status_code == 200, run_resp.text
         
-        # Verify enqueue was called with custom headers
-        mock_enqueue.assert_called_once()
-        kwargs = mock_enqueue.call_args.kwargs
-        assert kwargs.get("custom_base_url") == "http://mock-base.local/v1"
-        assert kwargs.get("custom_api_key") == "mock-api-key"
+        # Verify dispatch was called with custom headers
+        mock_dispatch.assert_called_once()
+        call_kwargs = mock_dispatch.call_args
+        assert call_kwargs.kwargs.get("custom_base_url") == "http://mock-base.local/v1"
+        assert call_kwargs.kwargs.get("custom_api_key") == "mock-api-key"
 
     @patch('app.api.experiments.ExperimentService.get')
     @patch('app.api.experiments._active_run_count', new_callable=AsyncMock, return_value=0)

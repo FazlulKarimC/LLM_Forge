@@ -76,6 +76,7 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info(f"Starting {settings.PROJECT_NAME} v{settings.VERSION} (env={settings.ENVIRONMENT})")
     logger.info(f"Inference engine: {settings.INFERENCE_ENGINE}")
+    logger.info(f"Queue backend mode: {settings.QUEUE_BACKEND_MODE}")
     logger.info(f"Data directory: {settings.data_dir}")
 
     # Preflight checks
@@ -123,6 +124,18 @@ async def lifespan(app: FastAPI):
                 logger.warning("Reset %d stuck experiments to FAILED on startup", result.rowcount)
     except Exception as e:
         logger.error("Failed to reset stuck experiments on startup: %s", e)
+
+    # Clean up stale worker heartbeats
+    try:
+        from app.core.database import async_session_maker as _session_maker2
+        from app.core.worker_heartbeat import cleanup_stale_worker_heartbeats
+
+        async with _session_maker2() as session:
+            deleted = await cleanup_stale_worker_heartbeats(session)
+            if deleted:
+                logger.info("Cleaned up %d stale worker heartbeats on startup", deleted)
+    except Exception as e:
+        logger.error("Failed to clean up stale worker heartbeats: %s", e)
 
     try:
         from app.core.database import async_session_maker

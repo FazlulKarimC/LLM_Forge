@@ -263,7 +263,7 @@ export default function DashboardPage() {
           <PanelHeader
             label="System state"
             title="Readiness checks"
-            description="Live status of API, database, and model provider connections."
+            description="Live status of API, database, model providers, and task dispatch queue."
             actions={
               <button
                 type="button"
@@ -295,11 +295,31 @@ export default function DashboardPage() {
                   const tone =
                     status === "healthy"
                       ? "status-completed"
-                      : status === "not_configured"
+                      : status === "not_configured" || status === "inline_only"
                         ? "status-pending"
                         : status.startsWith("archived")
                           ? "status-queued"
-                          : "status-failed";
+                          : status === "fallback_inline" ||
+                              status === "circuit_open" ||
+                              status === "worker_missing" ||
+                              status === "half_open"
+                            ? "status-queued"
+                            : "status-failed";
+
+                  const displayLabel =
+                    status === "fallback_inline"
+                      ? "Inline fallback"
+                      : status === "circuit_open"
+                        ? "Circuit open"
+                        : status === "worker_missing"
+                          ? "Worker missing"
+                          : status === "half_open"
+                            ? "Probing"
+                            : status === "inline_only"
+                              ? "Inline only"
+                              : status === "healthy"
+                                ? "ready"
+                                : status;
 
                   return (
                     <div key={key} className="rounded-[18px] border border-(--border) bg-(--surface-2) p-4">
@@ -310,7 +330,7 @@ export default function DashboardPage() {
                         </div>
                         <span className={cn("status-pill", tone)}>
                           <span className="status-dot" />
-                          {status === "healthy" ? "ready" : status}
+                          {displayLabel}
                         </span>
                       </div>
                     </div>
