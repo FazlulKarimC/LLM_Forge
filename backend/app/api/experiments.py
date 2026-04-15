@@ -257,9 +257,10 @@ async def run_experiment(
     
     try:
         from app.core.task_dispatch import dispatch_experiment
-        result = dispatch_experiment(
+        result = await dispatch_experiment(
             background_tasks, 
-            experiment_id, 
+            experiment_id,
+            db=db,
             custom_base_url=x_custom_llm_base, 
             custom_api_key=x_custom_llm_key
         )

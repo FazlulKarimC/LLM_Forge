@@ -12,8 +12,9 @@ Covers:
 - Half-open failure reopens circuit
 """
 
+import asyncio
 import time
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, AsyncMock, patch, PropertyMock
 from uuid import uuid4
 
 import pytest
@@ -35,6 +36,14 @@ from app.core.task_dispatch import (
     dispatch_experiment,
     DispatchResult,
 )
+
+
+# ── Helpers ─────────────────────────────────────────────────────────────
+
+
+def _run(coro):
+    """Run an async coroutine in a fresh event loop for sync tests."""
+    return asyncio.run(coro)
 
 
 # ── Fixtures ────────────────────────────────────────────────────────────
@@ -242,12 +251,12 @@ class TestAutoDispatch:
         mock_settings.QUEUE_BACKEND_MODE = "auto"
 
         backend = self._make_backend()
-        result = backend.dispatch(mock_background_tasks, uuid4())
+        result = _run(backend.dispatch(mock_background_tasks, uuid4()))
 
         assert result.backend_used == "inline"
         assert "not configured" in result.fallback_reason.lower()
 
-    @patch("app.core.task_dispatch._check_worker_heartbeat", return_value=False)
+    @patch("app.core.task_dispatch._check_worker_heartbeat_async", new_callable=AsyncMock, return_value=False)
     @patch("app.core.redis.probe_redis")
     @patch("app.core.task_dispatch.settings")
     def test_missing_worker_heartbeat_falls_back_inline(
@@ -262,13 +271,13 @@ class TestAutoDispatch:
         mock_probe.return_value = RedisProbeResult(healthy=True, latency_ms=5.0)
 
         backend = self._make_backend()
-        result = backend.dispatch(mock_background_tasks, uuid4())
+        result = _run(backend.dispatch(mock_background_tasks, uuid4()))
 
         assert result.backend_used == "inline"
         assert result.worker_available is False
         assert "heartbeat" in result.fallback_reason.lower()
 
-    @patch("app.core.task_dispatch._check_worker_heartbeat", return_value=True)
+    @patch("app.core.task_dispatch._check_worker_heartbeat_async", new_callable=AsyncMock, return_value=True)
     @patch("app.core.redis.probe_redis")
     @patch("app.core.task_dispatch.settings")
     def test_auto_dispatch_uses_rq_when_healthy(
@@ -283,10 +292,10 @@ class TestAutoDispatch:
         mock_probe.return_value = RedisProbeResult(healthy=True, latency_ms=5.0)
 
         # Mock the actual RQ enqueue
-        with patch("app.core.task_dispatch.UpstashRQDispatchBackend.dispatch") as mock_rq:
+        with patch("app.core.task_dispatch.UpstashRQDispatchBackend.dispatch", new_callable=AsyncMock) as mock_rq:
             mock_rq.return_value = DispatchResult(backend_used="rq")
             backend = self._make_backend()
-            result = backend.dispatch(mock_background_tasks, uuid4())
+            result = _run(backend.dispatch(mock_background_tasks, uuid4()))
 
         assert result.backend_used == "rq"
         assert result.worker_available is True
@@ -305,7 +314,7 @@ class TestAutoDispatch:
         assert is_open()
 
         backend = self._make_backend()
-        result = backend.dispatch(mock_background_tasks, uuid4())
+        result = _run(backend.dispatch(mock_background_tasks, uuid4()))
 
         assert result.backend_used == "inline"
         assert result.circuit_state == "open"
@@ -327,7 +336,7 @@ class TestAutoDispatch:
         )
 
         backend = self._make_backend()
-        result = backend.dispatch(mock_background_tasks, uuid4())
+        result = _run(backend.dispatch(mock_background_tasks, uuid4()))
 
         assert result.backend_used == "inline"
         assert result.circuit_state == "open"
@@ -340,7 +349,7 @@ class TestAutoDispatch:
 class TestInlineDispatch:
     def test_inline_dispatches_to_background_tasks(self, mock_background_tasks):
         backend = InlineDispatchBackend()
-        result = backend.dispatch(mock_background_tasks, uuid4())
+        result = _run(backend.dispatch(mock_background_tasks, uuid4()))
         assert result.backend_used == "inline"
         mock_background_tasks.add_task.assert_called_once()
 
@@ -354,7 +363,7 @@ class TestDispatchExperiment:
     def test_inline_mode_always_inline(self, mock_settings, mock_background_tasks):
         mock_settings.QUEUE_BACKEND_MODE = "inline"
 
-        result = dispatch_experiment(mock_background_tasks, uuid4())
+        result = _run(dispatch_experiment(mock_background_tasks, uuid4()))
         assert result.backend_used == "inline"
 
     @patch("app.core.task_dispatch.settings")
@@ -362,5 +371,5 @@ class TestDispatchExperiment:
         mock_settings.QUEUE_BACKEND_MODE = "auto"
         mock_settings.REDIS_URL = ""
 
-        result = dispatch_experiment(mock_background_tasks, uuid4())
+        result = _run(dispatch_experiment(mock_background_tasks, uuid4()))
         assert result.backend_used == "inline"
