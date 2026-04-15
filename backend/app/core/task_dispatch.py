@@ -16,6 +16,7 @@ from typing import Optional, Protocol, runtime_checkable
 from uuid import UUID
 
 from fastapi import BackgroundTasks
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 
@@ -39,10 +40,11 @@ class DispatchResult:
 
 @runtime_checkable
 class DispatchBackend(Protocol):
-    def dispatch(
+    async def dispatch(
         self,
         background_tasks: BackgroundTasks,
         experiment_id: UUID,
+        db: Optional[AsyncSession] = None,
         custom_base_url: Optional[str] = None,
         custom_api_key: Optional[str] = None,
     ) -> DispatchResult: ...
@@ -54,10 +56,11 @@ class DispatchBackend(Protocol):
 class InlineDispatchBackend:
     """Always run inline via FastAPI BackgroundTasks."""
 
-    def dispatch(
+    async def dispatch(
         self,
         background_tasks: BackgroundTasks,
         experiment_id: UUID,
+        db: Optional[AsyncSession] = None,
         custom_base_url: Optional[str] = None,
         custom_api_key: Optional[str] = None,
     ) -> DispatchResult:
@@ -75,10 +78,11 @@ class InlineDispatchBackend:
 class UpstashRQDispatchBackend:
     """Always enqueue via RQ — fails hard if Redis is unavailable."""
 
-    def dispatch(
+    async def dispatch(
         self,
         background_tasks: BackgroundTasks,
         experiment_id: UUID,
+        db: Optional[AsyncSession] = None,
         custom_base_url: Optional[str] = None,
         custom_api_key: Optional[str] = None,
     ) -> DispatchResult:
@@ -110,18 +114,17 @@ class AutoDispatchBackend:
        5a. Enqueue throws avail. error   → open circuit, inline fallback
     """
 
-    def dispatch(
+    async def dispatch(
         self,
         background_tasks: BackgroundTasks,
         experiment_id: UUID,
+        db: Optional[AsyncSession] = None,
         custom_base_url: Optional[str] = None,
         custom_api_key: Optional[str] = None,
     ) -> DispatchResult:
         from app.core import upstash_circuit
         from app.core.redis import probe_redis
         from app.api.experiments import _execute_inline
-
-        inline = InlineDispatchBackend()
 
         # 1. No Redis URL
         if not settings.REDIS_URL:
@@ -136,6 +139,9 @@ class AutoDispatchBackend:
         if upstash_circuit.is_open():
             reason = upstash_circuit.get_circuit_snapshot()["last_failure_reason"]
             logger.info("Auto dispatch → inline (circuit open: %s)", reason)
+            background_tasks.add_task(
+                _execute_inline, experiment_id, custom_base_url, custom_api_key
+            )
             return DispatchResult(
                 backend_used="inline",
                 fallback_reason=f"Circuit open: {reason}",
@@ -152,6 +158,9 @@ class AutoDispatchBackend:
                 logger.warning(
                     "Auto dispatch → inline (probe failed: %s)", probe.error
                 )
+                background_tasks.add_task(
+                    _execute_inline, experiment_id, custom_base_url, custom_api_key
+                )
                 return DispatchResult(
                     backend_used="inline",
                     fallback_reason=f"Redis probe failed: {probe.error}",
@@ -159,10 +168,13 @@ class AutoDispatchBackend:
                 )
             upstash_circuit.record_success()
 
-        # 4. Worker heartbeat check
-        worker_alive = _check_worker_heartbeat()
+        # 4. Worker heartbeat check (async — uses the route's DB session)
+        worker_alive = await _check_worker_heartbeat_async(db)
         if not worker_alive:
             logger.info("Auto dispatch → inline (no recent worker heartbeat)")
+            background_tasks.add_task(
+                _execute_inline, experiment_id, custom_base_url, custom_api_key
+            )
             return DispatchResult(
                 backend_used="inline",
                 fallback_reason="No recent worker heartbeat",
@@ -172,8 +184,8 @@ class AutoDispatchBackend:
 
         # 5. Enqueue via RQ
         try:
-            result = UpstashRQDispatchBackend().dispatch(
-                background_tasks, experiment_id, custom_base_url, custom_api_key
+            result = await UpstashRQDispatchBackend().dispatch(
+                background_tasks, experiment_id, db, custom_base_url, custom_api_key
             )
             result.circuit_state = upstash_circuit.get_circuit_snapshot()["state"]
             result.worker_available = True
@@ -195,36 +207,25 @@ class AutoDispatchBackend:
             )
 
 
-def _check_worker_heartbeat() -> bool:
+async def _check_worker_heartbeat_async(db: Optional[AsyncSession] = None) -> bool:
     """
-    Sync-compatible check against the worker_heartbeats table.
+    Check the worker_heartbeats table using the provided async session.
 
-    Uses a quick asyncio call. If the DB is unreachable, assumes no worker
-    (fail-safe: go inline rather than enqueue into the void).
+    If no session is provided, creates a fresh one. If the DB is
+    unreachable, assumes no worker (fail-safe: go inline).
     """
-    import asyncio
-
-    async def _inner() -> bool:
-        from app.core.database import async_session_maker
-        from app.core.worker_heartbeat import has_recent_worker_heartbeat
-
-        try:
-            async with async_session_maker() as session:
-                return await has_recent_worker_heartbeat(session)
-        except Exception as exc:
-            logger.warning("Worker heartbeat check failed: %s", exc)
-            return False
+    from app.core.worker_heartbeat import has_recent_worker_heartbeat
 
     try:
-        return asyncio.run(_inner())
-    except RuntimeError:
-        # Already inside an event loop (e.g., during testing with pytest-asyncio)
-        # Fall back to assuming no worker
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            import concurrent.futures
-            with concurrent.futures.ThreadPoolExecutor() as pool:
-                return pool.submit(asyncio.run, _inner()).result(timeout=3)
+        if db is not None:
+            return await has_recent_worker_heartbeat(db)
+        else:
+            # Fallback: create own session (used from readiness checks)
+            from app.core.database import async_session_maker
+            async with async_session_maker() as session:
+                return await has_recent_worker_heartbeat(session)
+    except Exception as exc:
+        logger.warning("Worker heartbeat check failed: %s", exc)
         return False
 
 
@@ -241,9 +242,10 @@ def _get_backend() -> DispatchBackend:
     return AutoDispatchBackend()
 
 
-def dispatch_experiment(
+async def dispatch_experiment(
     background_tasks: BackgroundTasks,
     experiment_id: UUID,
+    db: Optional[AsyncSession] = None,
     custom_base_url: Optional[str] = None,
     custom_api_key: Optional[str] = None,
 ) -> DispatchResult:
@@ -252,8 +254,8 @@ def dispatch_experiment(
     Delegates to the configured backend.
     """
     backend = _get_backend()
-    result = backend.dispatch(
-        background_tasks, experiment_id, custom_base_url, custom_api_key
+    result = await backend.dispatch(
+        background_tasks, experiment_id, db, custom_base_url, custom_api_key
     )
     logger.info(
         "Experiment %s dispatched via %s (reason=%s, circuit=%s, worker=%s)",
@@ -269,7 +271,7 @@ def dispatch_experiment(
 # ── Readiness snapshot ──────────────────────────────────────────────────
 
 
-def get_dispatch_readiness_snapshot() -> dict:
+async def get_dispatch_readiness_snapshot() -> dict:
     """
     Return a structured readiness snapshot for the /ready endpoint.
     Checks all three conditions: Redis config, circuit state, worker liveness.
@@ -297,7 +299,7 @@ def get_dispatch_readiness_snapshot() -> dict:
     # Upstash status
     circuit = upstash_circuit.get_circuit_snapshot()
     if circuit["state"] == "open":
-        snapshot["upstash"] = f"circuit_open"
+        snapshot["upstash"] = "circuit_open"
         snapshot["task_dispatch"] = "fallback_inline"
     elif circuit["state"] == "half_open":
         snapshot["upstash"] = "half_open"
@@ -305,8 +307,8 @@ def get_dispatch_readiness_snapshot() -> dict:
     else:
         snapshot["upstash"] = "healthy"
 
-    # Worker status
-    worker_alive = _check_worker_heartbeat()
+    # Worker status (async — uses its own session)
+    worker_alive = await _check_worker_heartbeat_async()
     if worker_alive:
         snapshot["rq_worker"] = "healthy"
     else:

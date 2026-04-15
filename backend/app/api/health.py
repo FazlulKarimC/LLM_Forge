@@ -171,8 +171,7 @@ async def _check_dispatch() -> dict:
     """
     try:
         from app.core.task_dispatch import get_dispatch_readiness_snapshot
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, get_dispatch_readiness_snapshot)
+        return await get_dispatch_readiness_snapshot()
     except Exception as e:
         logger.warning("Dispatch readiness check failed: %s", e)
         return {
