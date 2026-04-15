@@ -43,7 +43,7 @@ from app.core.task_dispatch import (
 
 def _run(coro):
     """Run an async coroutine in a fresh event loop for sync tests."""
-    return asyncio.get_event_loop().run_until_complete(coro)
+    return asyncio.run(coro)
 
 
 # ── Fixtures ────────────────────────────────────────────────────────────
