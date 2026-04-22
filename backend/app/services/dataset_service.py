@@ -18,7 +18,12 @@ import json
 import logging
 import random
 from pathlib import Path
-from typing import List, NotRequired, Optional, TypedDict
+from typing import List, Optional, TypedDict
+
+try:
+    from typing import NotRequired
+except ImportError:  # Python < 3.11
+    from typing_extensions import NotRequired
 
 logger = logging.getLogger(__name__)
 
