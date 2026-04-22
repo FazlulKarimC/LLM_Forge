@@ -50,6 +50,20 @@ class DispatchBackend(Protocol):
     ) -> DispatchResult: ...
 
 
+def _schedule_inline_execution(
+    background_tasks: BackgroundTasks,
+    experiment_id: UUID,
+    custom_base_url: Optional[str] = None,
+    custom_api_key: Optional[str] = None,
+) -> None:
+    """Schedule inline execution via FastAPI BackgroundTasks."""
+    from app.api.experiments import _execute_inline
+
+    background_tasks.add_task(
+        _execute_inline, experiment_id, custom_base_url, custom_api_key
+    )
+
+
 # ── Inline Backend ──────────────────────────────────────────────────────
 
 
@@ -64,10 +78,8 @@ class InlineDispatchBackend:
         custom_base_url: Optional[str] = None,
         custom_api_key: Optional[str] = None,
     ) -> DispatchResult:
-        from app.api.experiments import _execute_inline
-
-        background_tasks.add_task(
-            _execute_inline, experiment_id, custom_base_url, custom_api_key
+        _schedule_inline_execution(
+            background_tasks, experiment_id, custom_base_url, custom_api_key
         )
         return DispatchResult(backend_used="inline")
 
@@ -124,11 +136,13 @@ class AutoDispatchBackend:
     ) -> DispatchResult:
         from app.core import upstash_circuit
         from app.core.redis import probe_redis
-        from app.api.experiments import _execute_inline
 
         # 1. No Redis URL
         if not settings.REDIS_URL:
             logger.info("Auto dispatch → inline (no REDIS_URL)")
+            _schedule_inline_execution(
+                background_tasks, experiment_id, custom_base_url, custom_api_key
+            )
             return DispatchResult(
                 backend_used="inline",
                 fallback_reason="REDIS_URL not configured",
@@ -139,8 +153,8 @@ class AutoDispatchBackend:
         if upstash_circuit.is_open():
             reason = upstash_circuit.get_circuit_snapshot()["last_failure_reason"]
             logger.info("Auto dispatch → inline (circuit open: %s)", reason)
-            background_tasks.add_task(
-                _execute_inline, experiment_id, custom_base_url, custom_api_key
+            _schedule_inline_execution(
+                background_tasks, experiment_id, custom_base_url, custom_api_key
             )
             return DispatchResult(
                 backend_used="inline",
@@ -158,8 +172,8 @@ class AutoDispatchBackend:
                 logger.warning(
                     "Auto dispatch → inline (probe failed: %s)", probe.error
                 )
-                background_tasks.add_task(
-                    _execute_inline, experiment_id, custom_base_url, custom_api_key
+                _schedule_inline_execution(
+                    background_tasks, experiment_id, custom_base_url, custom_api_key
                 )
                 return DispatchResult(
                     backend_used="inline",
@@ -172,8 +186,8 @@ class AutoDispatchBackend:
         worker_alive = await _check_worker_heartbeat_async(db)
         if not worker_alive:
             logger.info("Auto dispatch → inline (no recent worker heartbeat)")
-            background_tasks.add_task(
-                _execute_inline, experiment_id, custom_base_url, custom_api_key
+            _schedule_inline_execution(
+                background_tasks, experiment_id, custom_base_url, custom_api_key
             )
             return DispatchResult(
                 backend_used="inline",
@@ -196,8 +210,8 @@ class AutoDispatchBackend:
             logger.warning(
                 "Auto dispatch → inline fallback (enqueue failed: %s)", exc
             )
-            background_tasks.add_task(
-                _execute_inline, experiment_id, custom_base_url, custom_api_key
+            _schedule_inline_execution(
+                background_tasks, experiment_id, custom_base_url, custom_api_key
             )
             return DispatchResult(
                 backend_used="inline_fallback",

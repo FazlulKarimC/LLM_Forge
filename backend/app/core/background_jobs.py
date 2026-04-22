@@ -1,4 +1,4 @@
-"""Durable background job store backed by the primary database."""
+"""Persistent background-job metadata store backed by the primary database."""
 
 from __future__ import annotations
 

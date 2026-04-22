@@ -11,6 +11,7 @@ Covers:
 import pytest
 import hashlib
 import json
+from types import SimpleNamespace
 from uuid import uuid4
 from unittest.mock import MagicMock, patch, AsyncMock
 from fastapi.testclient import TestClient
@@ -131,6 +132,35 @@ class TestCostMetrics:
 
         assert result["cost_per_correct_answer"] is None
 
+    def test_compute_cost_prefers_observed_per_run_routing_costs(self):
+        """Observed per-run costs should override model-name estimates for routed runs."""
+        service = MetricsService.__new__(MetricsService)
+
+        runs = [
+            SimpleNamespace(
+                tokens_input=100,
+                tokens_output=50,
+                latency_ms=300,
+                is_correct=True,
+                cost_usd=0.001,
+                served_provider="openrouter",
+            ),
+            SimpleNamespace(
+                tokens_input=200,
+                tokens_output=100,
+                latency_ms=700,
+                is_correct=False,
+                cost_usd=0.002,
+                served_provider="groq",
+            ),
+        ]
+        result = service._compute_cost(runs, model_name="gpt-4o")
+
+        assert result["total_cost_usd"] == 0.003
+        assert result["cost_per_correct_answer"] == 0.003
+        assert result["provider"] == "mixed"
+        assert result["cost_source"] == "observed_per_run"
+
 
 # =============================================================================
 # Phase 1.3: Auto-Generated Summary
@@ -198,19 +228,20 @@ class TestExperimentSummary:
         assert "3 failures" in summary
         assert "timeout" in summary.lower()
 
-    def test_summary_includes_hallucination_rate(self):
-        """Summary should mention hallucination rate when faithfulness data exists."""
+    def test_summary_includes_context_support_rate(self):
+        """Summary should describe RAG support as a proxy, not a fact hallucination label."""
         service = MetricsService.__new__(MetricsService)
 
         accuracy = {"accuracy_any": 0.7, "total_evaluated": 20}
         latency = {"p50": 300}
         cost = {"total_tokens_input": 0, "total_tokens_output": 0}
-        faithfulness = {"count": 10, "hallucination_rate": 0.15}
+        faithfulness = {"count": 10, "unsupported_rate": 0.15}
         failure_modes = {"total_failures": 0}
 
         summary = service._generate_summary(accuracy, latency, cost, faithfulness, failure_modes, uuid4())
 
-        assert "hallucination" in summary.lower()
+        assert "context-support proxy" in summary.lower()
+        assert "low-support" in summary.lower()
         assert "15.0%" in summary
 
 

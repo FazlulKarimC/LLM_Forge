@@ -249,12 +249,16 @@ class TestAutoDispatch:
     def test_missing_redis_url_falls_back_inline(self, mock_settings, mock_background_tasks):
         mock_settings.REDIS_URL = ""
         mock_settings.QUEUE_BACKEND_MODE = "auto"
+        experiment_id = uuid4()
 
         backend = self._make_backend()
-        result = _run(backend.dispatch(mock_background_tasks, uuid4()))
+        result = _run(backend.dispatch(mock_background_tasks, experiment_id))
 
         assert result.backend_used == "inline"
         assert "not configured" in result.fallback_reason.lower()
+        mock_background_tasks.add_task.assert_called_once()
+        call_args = mock_background_tasks.add_task.call_args.args
+        assert call_args[1] == experiment_id
 
     @patch("app.core.task_dispatch._check_worker_heartbeat_async", new_callable=AsyncMock, return_value=False)
     @patch("app.core.redis.probe_redis")

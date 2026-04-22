@@ -23,6 +23,8 @@ class QualityMetrics(BaseModel):
     semantic_similarity: Optional[float] = Field(None, ge=0, le=1)
     faithfulness: Optional[float] = Field(None, ge=0, le=1)
     hallucination_rate: Optional[float] = Field(None, ge=0, le=1)
+    robustness_safety_score: Optional[float] = Field(None, ge=0, le=1)
+    robustness_inconclusive_rate: Optional[float] = Field(None, ge=0, le=1)
 
 
 class PerformanceMetrics(BaseModel):
@@ -42,6 +44,7 @@ class CostMetrics(BaseModel):
     total_cost_usd: Optional[float] = None
     cost_per_correct_answer: Optional[float] = None
     provider: Optional[str] = None
+    cost_source: Optional[str] = None
     
     @property
     def total_tokens(self) -> int:
@@ -71,6 +74,8 @@ class RunSummary(BaseModel):
     grader_results: Optional[Dict[str, Any]] = None
     retrieved_chunks: Optional[Dict[str, Any]] = None
     served_provider: Optional[str] = None
+    routing_reason: Optional[str] = None
+    cost_usd: Optional[float] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -89,6 +94,8 @@ class RunGridSummary(BaseModel):
     latency_ms: Optional[float] = None
     failure_mode: Optional[str] = None
     served_provider: Optional[str] = None
+    routing_reason: Optional[str] = None
+    cost_usd: Optional[float] = None
     grader_results: Optional[Dict[str, Any]] = None
 
     model_config = ConfigDict(from_attributes=True)

@@ -5,6 +5,7 @@ import { Fragment, Suspense, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
+  AlertTriangle,
   FlaskConical,
   GitCompareArrows,
   ScanSearch,
@@ -114,21 +115,57 @@ function AgreementSummary({ summary }: { summary: StatisticalComparison["summary
 }
 
 function SignificancePanel({ stats }: { stats: StatisticalComparison }) {
+  const warnings = stats.warnings ?? [];
+  const notes = stats.methodology_notes ?? [];
+
   return (
     <Panel>
       <PanelHeader
         label="Significance"
         title="Statistical analysis"
-        description="McNemar chi-squared test and bootstrap confidence intervals quantify whether the observed accuracy difference is statistically meaningful."
+        description="Paired tests and bootstrap intervals are computed on common examples only; read the caveats before treating a difference as meaningful."
       />
       <div className="panel-body space-y-4">
+        {warnings.length ? (
+          <div className="alert alert-warning">
+            <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+            <div className="space-y-2">
+              <div className="font-semibold">Methodology caveats</div>
+              <div className="space-y-1 text-sm leading-6 text-(--muted-foreground)">
+                {warnings.map((warning) => (
+                  <p key={warning}>{warning}</p>
+                ))}
+              </div>
+            </div>
+          </div>
+        ) : null}
         <div className={cn("alert", stats.mcnemar.is_significant ? "alert-info" : "alert-warning")}>
           <Sigma className="mt-0.5 size-4 shrink-0" />
           <div className="space-y-1">
             <div className="font-semibold">
               {stats.mcnemar.is_significant ? "Difference is statistically significant" : "Difference is not statistically significant"}
             </div>
-            <p className="text-sm text-(--muted-foreground)">McNemar p-value {stats.mcnemar.p_value < 0.0001 ? "< 0.0001" : stats.mcnemar.p_value.toFixed(4)}</p>
+            <p className="text-sm text-(--muted-foreground)">
+              McNemar p-value {stats.mcnemar.p_value < 0.0001 ? "< 0.0001" : stats.mcnemar.p_value.toFixed(4)}
+              {" "}from {stats.mcnemar.n} paired examples ({stats.mcnemar.test_type ?? "test"}).
+            </p>
+          </div>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <div className="metric-card">
+            <div className="metric-label">Common examples</div>
+            <div className="metric-value text-2xl">{stats.num_common_examples}</div>
+            <div className="metric-caption">Examples shared by both latest attempts</div>
+          </div>
+          <div className="metric-card">
+            <div className="metric-label">Sample overlap</div>
+            <div className="metric-value text-2xl">{((stats.overlap_ratio ?? 0) * 100).toFixed(1)}%</div>
+            <div className="metric-caption">Lower overlap weakens paired conclusions</div>
+          </div>
+          <div className="metric-card">
+            <div className="metric-label">Discordant pairs</div>
+            <div className="metric-value text-2xl">{stats.mcnemar.b + stats.mcnemar.c}</div>
+            <div className="metric-caption">Only disagreements drive the p-value</div>
           </div>
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
@@ -143,6 +180,13 @@ function SignificancePanel({ stats }: { stats: StatisticalComparison }) {
             <div className="metric-caption">95% CI {(stats.accuracy_ci_b ?? stats.bootstrap_ci_b).lower.toFixed(2)} to {(stats.accuracy_ci_b ?? stats.bootstrap_ci_b).upper.toFixed(2)}</div>
           </div>
         </div>
+        {notes.length ? (
+          <div className="rounded-[16px] border border-(--border) bg-(--surface-2) p-4 text-sm leading-7 text-(--muted-foreground)">
+            {notes.map((note) => (
+              <p key={note}>{note}</p>
+            ))}
+          </div>
+        ) : null}
       </div>
     </Panel>
   );

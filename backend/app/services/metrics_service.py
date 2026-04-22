@@ -103,6 +103,7 @@ class MetricsService:
         faithfulness_metrics = self._compute_faithfulness(runs)
         similarity_metrics = self._compute_semantic_similarity(runs)
         failure_modes = self._compute_failure_modes(runs)
+        robustness_metrics = self._compute_robustness(runs)
 
         # Generate natural language summary
         summary_text = self._generate_summary(
@@ -111,13 +112,14 @@ class MetricsService:
             cost=cost,
             faithfulness=faithfulness_metrics,
             failure_modes=failure_modes,
-            experiment_id=experiment_id
+            experiment_id=experiment_id,
+            robustness=robustness_metrics,
         )
 
         # Keys owned by this service — all other keys in raw_metrics are preserved
         _METRICS_OWNED_KEYS = {
             "summary_text", "accuracy", "latency", "cost", "faithfulness",
-            "semantic_similarity", "failure_modes", "attempt", "per_run",
+            "semantic_similarity", "failure_modes", "robustness", "attempt", "per_run",
         }
 
         # Build raw metrics dict (only keys this service owns)
@@ -129,6 +131,7 @@ class MetricsService:
             "faithfulness": faithfulness_metrics,
             "semantic_similarity": similarity_metrics,
             "failure_modes": failure_modes,
+            "robustness": robustness_metrics,
             "attempt": max_attempt,
             "per_run": [
                 {
@@ -144,6 +147,10 @@ class MetricsService:
                     "tokens_output": run.tokens_output,
                     "failure_mode": run.failure_mode.value if run.failure_mode else None,
                     "error_message": run.error_message,
+                    "served_provider": run.served_provider,
+                    "routing_reason": run.routing_reason,
+                    "cost_usd": run.cost_usd,
+                    "grader_results": run.grader_results,
                 }
                 for run in runs
             ],
@@ -211,7 +218,16 @@ class MetricsService:
         )
         await self.db.flush()
 
-    def _generate_summary(self, accuracy: dict, latency: dict, cost: dict, faithfulness: dict, failure_modes: dict, experiment_id: UUID) -> str:
+    def _generate_summary(
+        self,
+        accuracy: dict,
+        latency: dict,
+        cost: dict,
+        faithfulness: dict,
+        failure_modes: dict,
+        experiment_id: UUID,
+        robustness: Optional[dict] = None,
+    ) -> str:
         """
         Generate a 3-4 sentence natural language summary from computed metrics.
         """
@@ -219,20 +235,28 @@ class MetricsService:
         total = accuracy.get("total_evaluated", 0)
         p50 = latency.get("p50", 0)
         
-        # Estimate cost (assuming generic $0.15/1M input and $0.60/1M output tokens as a baseline)
-        input_cost = (cost.get("total_tokens_input", 0) / 1_000_000) * 0.15
-        output_cost = (cost.get("total_tokens_output", 0) / 1_000_000) * 0.60
-        total_cost = input_cost + output_cost
+        if "total_cost_usd" in cost:
+            total_cost = cost.get("total_cost_usd") or 0.0
+        else:
+            input_cost = (cost.get("total_tokens_input", 0) / 1_000_000) * 0.15
+            output_cost = (cost.get("total_tokens_output", 0) / 1_000_000) * 0.60
+            total_cost = input_cost + output_cost
+        cost_label = "Recorded" if cost.get("cost_source") == "observed_per_run" else "Estimated"
 
         summary = f"This experiment achieved {acc:.1f}% overall correctness across {total} evaluated samples, with a median generation latency of {p50:.0f}ms. "
         
         # Add RAG/Faithfulness context if applicable
         if faithfulness.get("count", 0) > 0:
-            hall_rate = faithfulness.get("hallucination_rate", 0) * 100
-            summary += f"The pipeline maintained a hallucination rate of {hall_rate:.1f}% based on NLI entailment scoring. "
+            unsupported_rate = faithfulness.get("unsupported_rate", faithfulness.get("hallucination_rate", 0)) * 100
+            summary += f"The RAG context-support proxy marked {unsupported_rate:.1f}% of answers as low-support. "
+
+        if robustness and robustness.get("total", 0) > 0:
+            safety = robustness.get("safety_score", 0) * 100
+            inconclusive = (robustness.get("breakdown") or {}).get("inconclusive_pct", 0)
+            summary += f"Adversarial safety scoring passed {safety:.1f}% of prompts with {inconclusive:.1f}% inconclusive. "
             
         if total_cost > 0:
-            summary += f"Estimated inference cost for this run was ${total_cost:.4f}. "
+            summary += f"{cost_label} inference cost for this run was ${total_cost:.4f}. "
         else:
             summary += "Inference was completed with no measurable API token costs. "
             
@@ -360,13 +384,36 @@ class MetricsService:
         total_output = sum(run.tokens_output or 0 for run in runs)
         total_latency_ms = sum(run.latency_ms or 0 for run in runs)
 
-        # Estimate cost using pricing table
+        observed_costs = [
+            float(cost)
+            for run in runs
+            for cost in [getattr(run, "cost_usd", None)]
+            if isinstance(cost, (int, float))
+        ]
+        served_providers = sorted(
+            {
+                provider
+                for run in runs
+                for provider in [getattr(run, "served_provider", None)]
+                if isinstance(provider, str) and provider
+            }
+        )
+
+        # Prefer per-run provider costs when available; fall back to pricing lookup for legacy runs.
         cost_estimate = estimate_cost(model_name, total_input, total_output)
+        if observed_costs:
+            total_cost_usd = round(sum(observed_costs), 8)
+            provider = served_providers[0] if len(served_providers) == 1 else "mixed" if served_providers else cost_estimate["provider"]
+            cost_source = "observed_per_run"
+        else:
+            total_cost_usd = cost_estimate["total_cost_usd"]
+            provider = cost_estimate["provider"]
+            cost_source = "pricing_table_estimate"
 
         # Cost per correct answer
         correct_count = sum(1 for r in runs if r.is_correct)
         cost_per_correct = (
-            round(cost_estimate["total_cost_usd"] / correct_count, 6)
+            round(total_cost_usd / correct_count, 6)
             if correct_count > 0
             else None
         )
@@ -377,9 +424,10 @@ class MetricsService:
             "total_tokens": total_input + total_output,
             "total_runs": len(runs),
             "gpu_time_seconds": total_latency_ms / 1000.0,
-            "total_cost_usd": cost_estimate["total_cost_usd"],
+            "total_cost_usd": total_cost_usd,
             "cost_per_correct_answer": cost_per_correct,
-            "provider": cost_estimate["provider"],
+            "provider": provider,
+            "cost_source": cost_source,
         }
 
     # =========================================================================
@@ -388,9 +436,10 @@ class MetricsService:
 
     def _compute_faithfulness(self, runs: List[Run]) -> dict:
         """
-        Aggregate faithfulness scores from per-run NLI evaluations.
+        Aggregate context-support scores from per-run RAG evaluations.
 
-        Returns mean faithfulness and hallucination rate (fraction < 0.5).
+        ``hallucination_rate`` is kept as a legacy API field, but this scorer
+        is only a low context-support proxy.
         """
         scores = [
             run.faithfulness_score
@@ -399,16 +448,43 @@ class MetricsService:
         ]
 
         if not scores:
-            return {"mean": None, "hallucination_rate": None, "count": 0}
+            return {
+                "mean": None,
+                "unsupported_rate": None,
+                "hallucination_rate": None,
+                "count": 0,
+                "method": "hf_zero_shot_context_support_proxy",
+                "threshold": 0.5,
+            }
 
         arr = np.array(scores)
+        unsupported_rate = float(np.mean(arr < 0.5))
         return {
             "mean": float(np.mean(arr)),
-            "hallucination_rate": float(np.mean(arr < 0.5)),
+            "unsupported_rate": unsupported_rate,
+            "hallucination_rate": unsupported_rate,
             "count": len(scores),
             "min": float(np.min(arr)),
             "max": float(np.max(arr)),
+            "method": "hf_zero_shot_context_support_proxy",
+            "threshold": 0.5,
         }
+
+    def _compute_robustness(self, runs: List[Run]) -> Optional[dict]:
+        """Aggregate deterministic robustness classifications from grader results."""
+        classifications = []
+        for run in runs:
+            grader_results = run.grader_results or {}
+            robustness = grader_results.get("robustness") if isinstance(grader_results, dict) else None
+            if isinstance(robustness, dict):
+                classifications.append(robustness)
+
+        if not classifications:
+            return None
+
+        from app.services.robustness_scorer import compute_safety_score
+
+        return compute_safety_score(classifications)
 
     # =========================================================================
     # P1 #9: Aggregate semantic similarity

@@ -53,6 +53,8 @@ def _result_to_metrics_response(result: Result) -> MetricsResponse:
     """Convert a Result model instance to MetricsResponse schema."""
     raw_metrics = result.raw_metrics or {}
     cost_metrics = raw_metrics.get("cost", {})
+    robustness_metrics = raw_metrics.get("robustness") or {}
+    robustness_breakdown = robustness_metrics.get("breakdown") or {}
     return MetricsResponse(
         experiment_id=result.experiment_id,
         summary_text=raw_metrics.get("summary_text"),
@@ -63,6 +65,12 @@ def _result_to_metrics_response(result: Result) -> MetricsResponse:
             semantic_similarity=result.semantic_similarity,
             faithfulness=result.faithfulness,
             hallucination_rate=result.hallucination_rate,
+            robustness_safety_score=robustness_metrics.get("safety_score"),
+            robustness_inconclusive_rate=(
+                robustness_breakdown.get("inconclusive_pct") / 100
+                if robustness_breakdown.get("inconclusive_pct") is not None
+                else None
+            ),
         ),
         performance=PerformanceMetrics(
             latency_p50=result.latency_p50,
@@ -78,6 +86,7 @@ def _result_to_metrics_response(result: Result) -> MetricsResponse:
             total_cost_usd=cost_metrics.get("total_cost_usd"),
             cost_per_correct_answer=cost_metrics.get("cost_per_correct_answer"),
             provider=cost_metrics.get("provider"),
+            cost_source=cost_metrics.get("cost_source"),
         ),
         failure_modes=raw_metrics.get("failure_modes"),
         computed_at=result.computed_at,
@@ -144,7 +153,7 @@ def _load_knowledge_base_chunks(max_chunks: int) -> List[str]:
 
 
 async def _run_llm_judge_job(job_id: str, experiment_id: UUID, sample_size: int) -> None:
-    """Execute judge evaluation in the background and persist the result."""
+    """Execute judge evaluation as best-effort in-process background work."""
     from app.services.llm_judge_service import LLMJudgeService
 
     await mark_job_running(job_id)
@@ -166,7 +175,7 @@ async def _run_synthetic_generation_job(
     max_chunks: int,
     seed: Optional[int],
 ) -> None:
-    """Execute synthetic dataset generation in the background."""
+    """Execute synthetic dataset generation as best-effort in-process background work."""
     from app.services.synthetic_data_service import SyntheticDatasetService
 
     await mark_job_running(job_id)
@@ -411,8 +420,8 @@ async def get_run_summaries(
 
     Set ``sparse=true`` to receive only grid-level fields (id, example_id,
     is_correct, score, latency_ms, failure_mode, served_provider,
-    grader_results).  Full text fields (prompt, raw_output, expected_output)
-    are omitted in sparse mode.
+    routing_reason, cost_usd, grader_results). Full text fields (prompt,
+    raw_output, expected_output) are omitted in sparse mode.
     """
     runs = await _latest_runs_for_experiment(db, experiment_id)
     
@@ -520,6 +529,10 @@ async def export_results(
                 "latency_ms": run.latency_ms,
                 "tokens_input": run.tokens_input,
                 "tokens_output": run.tokens_output,
+                "served_provider": run.served_provider,
+                "routing_reason": run.routing_reason,
+                "cost_usd": run.cost_usd,
+                "failure_mode": run.failure_mode.value if run.failure_mode else None,
             }
             for run in runs
         ],
@@ -561,7 +574,7 @@ async def run_llm_judge(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Queue LLM-as-judge evaluation and return a pollable job id immediately.
+    Create a pollable job record and schedule best-effort in-process judge work.
     """
     experiment_query = select(Experiment).where(Experiment.id == experiment_id)
     experiment_result = await db.execute(experiment_query)
@@ -587,7 +600,7 @@ async def generate_synthetic_dataset(
     seed: Optional[int] = Query(None, description="Random seed for reproducibility"),
 ):
     """
-    Queue synthetic dataset generation and return a pollable job id immediately.
+    Create a pollable job record and schedule best-effort in-process generation.
     """
     job = await create_job(
         "synthetic_generation",

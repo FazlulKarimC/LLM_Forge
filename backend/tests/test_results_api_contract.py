@@ -35,6 +35,10 @@ class TestMetricsResponseContract:
                     "cost_per_correct_answer": 0.00615,
                     "provider": "openrouter",
                 },
+                "robustness": {
+                    "safety_score": 0.75,
+                    "breakdown": {"inconclusive_pct": 25.0},
+                },
             },
             computed_at=datetime.now(timezone.utc),
         )
@@ -46,10 +50,12 @@ class TestMetricsResponseContract:
         assert response.cost.total_cost_usd == 0.0123
         assert response.cost.cost_per_correct_answer == 0.00615
         assert response.cost.provider == "openrouter"
+        assert response.quality.robustness_safety_score == 0.75
+        assert response.quality.robustness_inconclusive_rate == 0.25
 
 
 class TestRunSummaryContract:
-    def test_run_summary_includes_rag_chunks_grader_results_and_served_provider(self):
+    def test_run_summary_includes_rag_chunks_grader_results_and_routing_metadata(self):
         run = Run(
             experiment_id=uuid.uuid4(),
             example_id="ex-1",
@@ -63,6 +69,8 @@ class TestRunSummaryContract:
             retrieved_chunks={"chunks": [{"text": "chunk text", "score": 0.9}]},
             grader_results={"latency_budget": {"status": "pass", "reason": "ok"}},
             served_provider="openrouter",
+            routing_reason="fallback_1",
+            cost_usd=0.0123,
         )
 
         summary = RunSummary.model_validate(run)
@@ -70,3 +78,5 @@ class TestRunSummaryContract:
         assert summary.retrieved_chunks["chunks"][0]["text"] == "chunk text"
         assert summary.grader_results["latency_budget"]["status"] == "pass"
         assert summary.served_provider == "openrouter"
+        assert summary.routing_reason == "fallback_1"
+        assert summary.cost_usd == 0.0123

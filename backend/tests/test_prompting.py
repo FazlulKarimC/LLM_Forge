@@ -7,6 +7,7 @@ Covers formatting, parsing, and edge cases for both prompt strategies.
 import json
 import os
 import pytest
+from app.core.config import settings
 from app.services.inference.prompting import NaivePromptTemplate, CoTPromptTemplate
 
 
@@ -145,17 +146,11 @@ Therefore, the answer is 1989."""
 
 class TestCoTExamplesFile:
     def test_cot_examples_file_exists(self):
-        path = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-            "configs", "cot_examples.json"
-        )
+        path = settings.configs_dir / "cot_examples.json"
         assert os.path.exists(path), f"cot_examples.json not found at {path}"
     
     def test_cot_examples_valid_json(self):
-        path = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-            "configs", "cot_examples.json"
-        )
+        path = settings.configs_dir / "cot_examples.json"
         with open(path, "r", encoding="utf-8") as f:
             examples = json.load(f)
         
@@ -169,10 +164,7 @@ class TestCoTExamplesFile:
             assert len(ex["reasoning"]) > 20  # Should be substantial reasoning
     
     def test_cot_examples_work_with_template(self):
-        path = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-            "configs", "cot_examples.json"
-        )
+        path = settings.configs_dir / "cot_examples.json"
         with open(path, "r", encoding="utf-8") as f:
             examples = json.load(f)
         

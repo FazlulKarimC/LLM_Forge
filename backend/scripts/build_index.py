@@ -27,6 +27,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from dotenv import load_dotenv
 load_dotenv()
 
+from app.core.config import settings
 from app.services.rag_service import (
     ChunkingService,
     EmbeddingService,
@@ -40,10 +41,7 @@ def main():
     print("=" * 60)
 
     # 1. Load articles
-    articles_path = os.path.join(
-        os.path.dirname(__file__), "..", "..", "data", "knowledge_base", "articles.json"
-    )
-    articles_path = os.path.normpath(articles_path)
+    articles_path = settings.data_dir / "knowledge_base" / "articles.json"
 
     print(f"\n[1/4] Loading articles from: {articles_path}")
     with open(articles_path, "r", encoding="utf-8") as f:

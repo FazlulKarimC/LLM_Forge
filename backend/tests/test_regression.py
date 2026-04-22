@@ -41,6 +41,8 @@ class MockRun:
     agent_trace: Optional[Dict] = None
     retrieved_chunks: Optional[Any] = None
     grader_results: Optional[Dict] = None
+    served_provider: Optional[str] = None
+    routing_reason: Optional[str] = None
 
 
 # ─── compare_run_sets tests ──────────────────────────────────────────────────
@@ -110,6 +112,33 @@ class TestCompareRunSets:
         
         result = StatisticalService.compare_run_sets(runs_a, runs_b)
         assert result["overlap_ratio"] == pytest.approx(2.0/3.0, abs=0.01)
+        assert any("not a clean paired comparison" in warning for warning in result["warnings"])
+
+    def test_small_n_warning(self):
+        """Small common-example sets should be labeled exploratory."""
+        runs_a = self._make_runs([True, False])
+        runs_b = self._make_runs([False, False])
+
+        result = StatisticalService.compare_run_sets(runs_a, runs_b)
+
+        assert any("Only 2 common examples" in warning for warning in result["warnings"])
+
+    def test_provider_routing_warning(self):
+        """Mixed providers should produce a comparison caveat."""
+        runs_a = [
+            MockRun(example_id="ex_0", is_correct=True, score=1.0, served_provider="openrouter"),
+            MockRun(example_id="ex_1", is_correct=False, score=0.0, served_provider="openrouter"),
+        ]
+        runs_b = [
+            MockRun(example_id="ex_0", is_correct=True, score=1.0, served_provider="groq", routing_reason="fallback_1"),
+            MockRun(example_id="ex_1", is_correct=True, score=1.0, served_provider="groq", routing_reason="fallback_1"),
+        ]
+
+        result = StatisticalService.compare_run_sets(runs_a, runs_b)
+
+        assert result["routing"]["providers_a"] == ["openrouter"]
+        assert result["routing"]["providers_b"] == ["groq"]
+        assert any("confounded by routing" in warning for warning in result["warnings"])
     
     def test_no_common_examples_raises(self):
         """Disjoint sets → ValueError."""

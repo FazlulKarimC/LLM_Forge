@@ -169,6 +169,7 @@ class StatisticalService:
                 "b": 0,  # A correct, B wrong
                 "c": 0,  # A wrong, B correct
                 "n": 0,
+                "test_type": "not_applicable",
             }
         
         # Count disagreements
@@ -189,6 +190,7 @@ class StatisticalService:
                 "b": b,
                 "c": c,
                 "n": n,
+                "test_type": "not_applicable",
             }
         
         try:
@@ -212,6 +214,7 @@ class StatisticalService:
                 "b": b,
                 "c": c,
                 "n": n,
+                "test_type": "exact" if use_exact else "chi_square",
             }
         except ImportError:
             logger.warning("statsmodels not installed, using manual McNemar's test")
@@ -228,6 +231,7 @@ class StatisticalService:
                 "b": b,
                 "c": c,
                 "n": n,
+                "test_type": "chi_square_approximation",
             }
     
     async def compare_experiments(
@@ -271,6 +275,54 @@ class StatisticalService:
         result["experiment_a_id"] = str(experiment_a_id)
         result["experiment_b_id"] = str(experiment_b_id)
         return result
+
+    @staticmethod
+    def _nonempty_attr_values(runs: list, attr_name: str) -> list[str]:
+        """Collect stable string metadata values for comparison caveats."""
+        return sorted(
+            {
+                value
+                for run in runs
+                for value in [getattr(run, attr_name, None)]
+                if isinstance(value, str) and value
+            }
+        )
+
+    @staticmethod
+    def _comparison_warnings(
+        *,
+        num_common_examples: int,
+        overlap_ratio: float,
+        mcnemar_result: dict,
+        routing_summary: dict,
+    ) -> list[str]:
+        """Generate reviewer-facing caveats for statistical comparison output."""
+        warnings: list[str] = []
+
+        if num_common_examples < 20:
+            warnings.append(
+                f"Only {num_common_examples} common examples were compared; treat significance as exploratory."
+            )
+
+        if overlap_ratio < 0.8:
+            warnings.append(
+                f"Sample overlap is {overlap_ratio * 100:.1f}%, so this is not a clean paired comparison."
+            )
+
+        discordant_pairs = int(mcnemar_result.get("b", 0) or 0) + int(mcnemar_result.get("c", 0) or 0)
+        if discordant_pairs < 10:
+            warnings.append(
+                f"Only {discordant_pairs} discordant pairs drive McNemar's test; p-values may have low power."
+            )
+
+        providers_a = set(routing_summary.get("providers_a") or [])
+        providers_b = set(routing_summary.get("providers_b") or [])
+        if (providers_a and providers_b and providers_a != providers_b) or len(providers_a | providers_b) > 1:
+            warnings.append(
+                "Runs were served by different providers or fallback routes; quality differences may be confounded by routing."
+            )
+
+        return warnings
 
     @staticmethod
     def compare_run_sets(
@@ -357,10 +409,24 @@ class StatisticalService:
         total_a = len(runs_a_by_example)
         total_b = len(runs_b_by_example)
         overlap_ratio = len(common_examples) / max(total_a, total_b) if max(total_a, total_b) > 0 else 0.0
+        routing_summary = {
+            "providers_a": StatisticalService._nonempty_attr_values(runs_a, "served_provider"),
+            "providers_b": StatisticalService._nonempty_attr_values(runs_b, "served_provider"),
+            "routing_reasons_a": StatisticalService._nonempty_attr_values(runs_a, "routing_reason"),
+            "routing_reasons_b": StatisticalService._nonempty_attr_values(runs_b, "routing_reason"),
+        }
+        warnings = StatisticalService._comparison_warnings(
+            num_common_examples=len(common_examples),
+            overlap_ratio=overlap_ratio,
+            mcnemar_result=mcnemar_result,
+            routing_summary=routing_summary,
+        )
         
         return {
             "num_common_examples": len(common_examples),
             "overlap_ratio": overlap_ratio,
+            "total_examples_a": total_a,
+            "total_examples_b": total_b,
             "accuracy_a": acc_a,
             "accuracy_b": acc_b,
             "accuracy_diff": acc_b - acc_a,
@@ -372,6 +438,12 @@ class StatisticalService:
             # Keep backward-compatible keys
             "bootstrap_ci_a": accuracy_ci_a,
             "bootstrap_ci_b": accuracy_ci_b,
+            "warnings": warnings,
+            "routing": routing_summary,
+            "methodology_notes": [
+                "Statistical tests are computed only on common example IDs from the latest attempt.",
+                "Bootstrap intervals are descriptive uncertainty estimates, not proof that one method generalizes better.",
+            ],
             "per_example_differences": per_example[:50],  # Limit to 50
             "summary": {
                 "both_correct": sum(1 for a, b in zip(correct_a, correct_b) if a and b),

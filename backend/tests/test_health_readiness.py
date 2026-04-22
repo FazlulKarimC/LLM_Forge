@@ -46,18 +46,20 @@ class TestReadinessDispatch:
         assert "rq_worker" in checks
 
     def test_readiness_fallback_inline(self, client):
-        """When dispatch reports fallback_inline, /ready should reflect it."""
+        """Inline fallback should still be ready because core execution still works."""
         with patch("app.api.health._check_database", return_value="healthy"), \
              patch("app.api.health._check_vector_db", return_value="not_configured"), \
-             patch("app.api.health._check_models", return_value="not_configured"), \
+             patch("app.api.health._check_models", return_value="healthy"), \
              patch("app.api.health._check_dispatch", return_value={
-                 "task_dispatch": "fallback_inline",
-                 "upstash": "not_configured",
-                 "rq_worker": "not_configured",
-             }):
+                  "task_dispatch": "fallback_inline",
+                  "upstash": "not_configured",
+                  "rq_worker": "not_configured",
+              }):
             response = client.get("/ready")
 
         data = response.json()
+        assert data["status"] == "ready"
+        assert data["mode"] == "degraded"
         assert data["checks"]["task_dispatch"] == "fallback_inline"
 
     def test_readiness_circuit_open(self, client):
@@ -77,18 +79,20 @@ class TestReadinessDispatch:
         assert data["checks"]["task_dispatch"] == "fallback_inline"
 
     def test_readiness_worker_missing(self, client):
-        """When no worker heartbeat exists, rq_worker should show worker_missing."""
+        """Missing worker should be degraded but ready when inline fallback is available."""
         with patch("app.api.health._check_database", return_value="healthy"), \
              patch("app.api.health._check_vector_db", return_value="not_configured"), \
-             patch("app.api.health._check_models", return_value="not_configured"), \
+             patch("app.api.health._check_models", return_value="healthy"), \
              patch("app.api.health._check_dispatch", return_value={
-                 "task_dispatch": "fallback_inline",
-                 "upstash": "healthy",
-                 "rq_worker": "worker_missing",
-             }):
+                  "task_dispatch": "fallback_inline",
+                  "upstash": "healthy",
+                  "rq_worker": "worker_missing",
+              }):
             response = client.get("/ready")
 
         data = response.json()
+        assert data["status"] == "ready"
+        assert data["mode"] == "degraded"
         assert data["checks"]["rq_worker"] == "worker_missing"
 
     def test_readiness_all_healthy_returns_ready(self, client):
@@ -105,3 +109,4 @@ class TestReadinessDispatch:
 
         data = response.json()
         assert data["status"] == "ready"
+        assert data["mode"] == "healthy"

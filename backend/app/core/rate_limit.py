@@ -9,6 +9,7 @@ RQ workers and the API server run separately.
 
 import logging
 import time
+from ipaddress import ip_address
 from collections import defaultdict
 from threading import Lock
 from typing import Optional
@@ -55,12 +56,43 @@ class SlidingWindowCounter:
 _limiter = SlidingWindowCounter()
 
 
+def _parse_ip(value: str):
+    try:
+        return ip_address(value.strip())
+    except ValueError:
+        return None
+
+
 def _get_client_ip(request: Request) -> str:
-    """Extract client IP, respecting X-Forwarded-For from proxies."""
+    """
+    Extract the client IP with conservative proxy-header handling.
+
+    We only trust X-Forwarded-For when the immediate peer looks like an
+    internal proxy. In that case, prefer the right-most globally routable
+    address because trusted proxies append to the chain.
+    """
+    peer_host = request.client.host if request.client else "unknown"
     forwarded = request.headers.get("X-Forwarded-For")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    return request.client.host if request.client else "unknown"
+    if not forwarded:
+        return peer_host
+
+    peer_ip = _parse_ip(peer_host)
+    if peer_ip is None or peer_ip.is_global:
+        return peer_host
+
+    forwarded_ips = [
+        parsed
+        for raw_ip in forwarded.split(",")
+        if (parsed := _parse_ip(raw_ip)) is not None
+    ]
+    if not forwarded_ips:
+        return peer_host
+
+    for candidate in reversed(forwarded_ips):
+        if candidate.is_global:
+            return str(candidate)
+
+    return str(forwarded_ips[-1])
 
 
 def rate_limit_response(message: str, retry_after: int) -> JSONResponse:

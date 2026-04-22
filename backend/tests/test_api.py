@@ -91,6 +91,12 @@ class TestExperimentCoreEndpoints:
         response = client.get("/api/v1/does-not-exist")
         assert response.status_code == 404
 
+    def test_prompt_routes_are_mounted_once(self):
+        """Prompt routes should live at /api/v1/prompts, not /api/v1/prompts/prompts."""
+        paths = {route.path for route in app.routes}
+        assert "/api/v1/prompts" in paths
+        assert "/api/v1/prompts/prompts" not in paths
+
 
 class TestExperimentRunCustomHeaders:
     """Tests for starting an experiment with custom headers."""

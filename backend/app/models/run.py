@@ -131,6 +131,8 @@ class Run(Base):
 
     # ----- Routing telemetry (Phase: Adaptive Router) -----
     served_provider: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    routing_reason: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    cost_usd: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     
     # ----- Timestamps -----
     created_at: Mapped[datetime] = mapped_column(

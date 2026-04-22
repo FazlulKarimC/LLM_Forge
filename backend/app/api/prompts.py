@@ -11,7 +11,7 @@ from typing import List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,7 +20,7 @@ from app.models.prompt_version import PromptVersion
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/prompts", tags=["Prompts"])
+router = APIRouter(tags=["Prompts"])
 
 MAX_PROMPT_TEMPLATE_LENGTH = 50_000
 MAX_PROMPT_DESCRIPTION_LENGTH = 4000
@@ -37,6 +37,8 @@ class PromptVersionCreate(BaseModel):
 
 class PromptVersionResponse(BaseModel):
     """Schema for prompt version response."""
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     name: str
     template_text: str
@@ -45,9 +47,6 @@ class PromptVersionResponse(BaseModel):
     parent_id: Optional[UUID]
     description: Optional[str]
     created_at: str
-
-    class Config:
-        from_attributes = True
 
 
 # ─── Endpoints ──────────────────────────────────────────────────────────────

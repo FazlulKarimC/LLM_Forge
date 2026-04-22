@@ -88,6 +88,9 @@ class AgentResult:
             "total_tool_calls": self.tool_calls,
             "successful_tool_calls": successful_tool_calls,
             "failed_tool_calls": failed_tool_calls,
+            "success": self.success,
+            "termination_reason": self.termination_reason,
+            "total_iterations": self.total_iterations,
         }
 
 

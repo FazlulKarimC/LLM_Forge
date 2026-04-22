@@ -61,6 +61,8 @@ class RunService:
         error_message: Optional[str] = None,
         grader_results: Optional[dict] = None,
         served_provider: Optional[str] = None,
+        routing_reason: Optional[str] = None,
+        cost_usd: Optional[float] = None,
         attempt: int = 1,
     ) -> Run:
         """
@@ -90,6 +92,8 @@ class RunService:
             context_relevance_score: CrossEncoder context relevance (optional)
             grader_results: Deterministic grader verdicts (optional)
             served_provider: Which routed provider served this run (optional)
+            routing_reason: Why the router selected that provider (optional)
+            cost_usd: Provider-reported or locally estimated run cost (optional)
             attempt: Attempt number for non-destructive re-runs
         
         Returns:
@@ -121,6 +125,8 @@ class RunService:
             error_message=error_message,
             grader_results=grader_results,
             served_provider=served_provider,
+            routing_reason=routing_reason,
+            cost_usd=cost_usd,
             attempt=attempt,
         )
         

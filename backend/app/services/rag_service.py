@@ -429,13 +429,12 @@ class CrossEncoderReranker:
 
 class FaithfulnessScorer:
     """
-    Measures faithfulness of generated answers to source context.
+    Estimates whether generated answers are supported by retrieved context.
     
-    Uses zero-shot classification via HF Inference API with
-    facebook/bart-large-mnli for Natural Language Inference.
+    This is a context-support proxy using HF zero-shot classification.
     
     Faithfulness = P(entailment | context → answer)
-    Hallucination = faithfulness < 0.5
+    It is useful for triage, but it is not a definitive factual hallucination label.
     """
 
     DEFAULT_MODEL = "facebook/bart-large-mnli"
@@ -484,7 +483,7 @@ class FaithfulnessScorer:
             return 0.0
 
     def is_hallucination(self, answer: str, context: str, threshold: float = 0.5) -> bool:
-        """Check if an answer is likely hallucinated."""
+        """Legacy helper: returns whether context support is below threshold."""
         return self.score(answer, context) < threshold
 
 

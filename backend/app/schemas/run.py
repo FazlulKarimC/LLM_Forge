@@ -27,6 +27,9 @@ class AgentTrace(BaseModel):
     total_tool_calls: int
     successful_tool_calls: int
     failed_tool_calls: int
+    success: Optional[bool] = None
+    termination_reason: Optional[str] = None
+    total_iterations: Optional[int] = None
 
 
 class RetrievalInfo(BaseModel):
@@ -77,6 +80,8 @@ class RunResponse(BaseModel):
 
     # Routing-specific
     served_provider: Optional[str] = None
+    routing_reason: Optional[str] = None
+    cost_usd: Optional[float] = Field(None, ge=0)
     
     # Attempt tracking
     attempt: Optional[int] = None

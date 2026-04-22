@@ -12,7 +12,7 @@ This directory contains the Python backend that drives LlmForge. It acts as the 
 - **Database:** PostgreSQL via [NeonDB](https://neon.tech/) (Async SQLAlchemy + Alembic)
 - **Validation:** Pydantic v2
 - **Vector DB:** Qdrant Cloud (for RAG and embeddings retrieval)
-- **Task Queue:** Durable Postgres-backed custom queue + Upstash Redis (RQ)
+- **Task Execution:** Postgres-backed experiment/job state + optional Upstash Redis (RQ) acceleration
 - **Observability:** Sentry for distributed tracing and crash reporting
 - **Math/Stats:** NumPy, statsmodels (for Bootstrap CIs, McNemar's tests)
 
@@ -29,7 +29,7 @@ Provides epsilon-greedy auto-routing across `HF Inference API`, `OpenRouter`, `G
 Each candidate run is passed through a comprehensive `GraderEngine` employing deterministic bounds checks such as specific token/latency budgets, explicit tool dependencies, or hard F1-score floors. The system isolates and flags regressions against pinned baseline experiments to ensure deployment safety.
 
 ### Reliability & Error Tracking
-To support execution in potentially constrained serverless setups, backend queues are now durable via Postgres caching to resume natively without data-loss across cold starts. The latest integration seamlessly funnels failure stack traces down to Sentry. RAG experiments include intelligent preflight collections checks to fail fast gracefully.
+To support execution in constrained serverless setups, durable state for experiments and background-job metadata is stored in Postgres. Actual execution is still best-effort: experiments run inline via FastAPI `BackgroundTasks` unless RQ is available, and interrupted in-process jobs are marked failed on restart rather than resumed automatically. The latest integration funnels failure stack traces down to Sentry. RAG experiments include intelligent preflight collections checks to fail fast gracefully.
 
 ---
 
@@ -84,8 +84,8 @@ uvicorn app.main:app --reload --port 8000
 
 LlmForge uses a resilient task dispatch system designed for free-tier hosting:
 
-- **Neon/Postgres is required** — all durable state (experiments, results, jobs) lives here
-- **Upstash Redis + RQ worker is optional** — provides background job acceleration
+- **Neon/Postgres is required** — all durable state (experiments, results, job metadata) lives here
+- **Upstash Redis + RQ worker is optional** — provides background execution acceleration
 - **`QUEUE_BACKEND_MODE=auto`** is the recommended production setting
 
 ### How `auto` mode works
@@ -114,4 +114,4 @@ The RQ worker writes a heartbeat to the `worker_heartbeats` table every 30 secon
 python worker.py
 ```
 
-The worker is optional. Without it, experiments run inline via FastAPI BackgroundTasks.
+The worker is optional. Without it, experiments run inline via FastAPI `BackgroundTasks`. This fallback is resilient for free-tier hosting, but it is not a durable queue: if the API process restarts mid-job, the in-flight work is lost and the corresponding records are marked failed on startup.

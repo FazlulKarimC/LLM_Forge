@@ -24,6 +24,9 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+_READY_TASK_DISPATCH_STATUSES = {"healthy", "inline_only", "fallback_inline"}
+_CRITICAL_READY_VALUES = {"healthy"}
+
 
 @router.get("/")
 async def root():
@@ -98,14 +101,21 @@ async def readiness_check(db: AsyncSession = Depends(get_db)):
     else:
         checks.update(dispatch_result)
 
-    all_healthy = all(
-        v == "healthy"
-        for v in checks.values()
-        if v not in ("not_configured", "inline_only")
+    database_ready = checks.get("database") in _CRITICAL_READY_VALUES
+    models_ready = checks.get("models") in _CRITICAL_READY_VALUES
+    dispatch_ready = checks.get("task_dispatch") in _READY_TASK_DISPATCH_STATUSES
+    ready = database_ready and models_ready and dispatch_ready
+
+    optional_degraded = any(
+        checks.get(key) not in ("healthy", "not_configured")
+        for key in ("upstash", "rq_worker")
     )
-    
+    critical_degraded = checks.get("task_dispatch") in {"inline_only", "fallback_inline"}
+    degraded = ready and (optional_degraded or critical_degraded)
+
     return {
-        "status": "ready" if all_healthy else "not_ready",
+        "status": "ready" if ready else "not_ready",
+        "mode": "degraded" if degraded else ("healthy" if ready else "down"),
         "checks": checks,
     }
 
@@ -148,17 +158,33 @@ async def _check_vector_db() -> str:
 
 
 async def _check_models() -> str:
-    """Check HuggingFace API token validity."""
+    """
+    Check whether at least one configured provider path is usable.
+
+    Hugging Face gets a live token validation because the SDK is already present.
+    OpenRouter and Groq are treated as configured/usable when their API keys are
+    present so /ready does not incorrectly fail a deployment that intentionally
+    routes away from Hugging Face.
+    """
     try:
         from app.core.config import settings as _settings
+
+        configured_non_hf = any(
+            (_settings.OPENROUTER_API_KEY, _settings.GROQ_API_KEY)
+        )
+        if _settings.HF_TOKEN:
+            from huggingface_hub import HfApi
+
+            api = HfApi(token=_settings.HF_TOKEN)
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(None, api.whoami)
+            return "healthy"
+
+        if configured_non_hf:
+            return "healthy"
+
         if not _settings.HF_TOKEN:
             return "not_configured"
-
-        from huggingface_hub import HfApi
-        api = HfApi(token=_settings.HF_TOKEN)
-        loop = asyncio.get_event_loop()
-        await loop.run_in_executor(None, api.whoami)
-        return "healthy"
     except Exception as e:
         return f"unhealthy: {str(e)[:120]}"
 

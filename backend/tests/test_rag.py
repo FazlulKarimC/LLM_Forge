@@ -10,6 +10,7 @@ import json
 import os
 import sys
 import pytest
+from app.core.config import settings
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -209,16 +210,12 @@ class TestKnowledgeBase:
 
     def test_articles_file_exists(self):
         """articles.json should exist."""
-        path = os.path.join(
-            os.path.dirname(__file__), "..", "..", "data", "knowledge_base", "articles.json"
-        )
-        assert os.path.exists(os.path.normpath(path))
+        path = settings.data_dir / "knowledge_base" / "articles.json"
+        assert os.path.exists(path)
 
     def test_articles_format(self):
         """Every article should have title and text."""
-        path = os.path.normpath(os.path.join(
-            os.path.dirname(__file__), "..", "..", "data", "knowledge_base", "articles.json"
-        ))
+        path = settings.data_dir / "knowledge_base" / "articles.json"
         with open(path, "r", encoding="utf-8") as f:
             articles = json.load(f)
 
@@ -232,9 +229,7 @@ class TestKnowledgeBase:
         """All articles should chunk without errors."""
         from app.services.rag_service import ChunkingService
 
-        path = os.path.normpath(os.path.join(
-            os.path.dirname(__file__), "..", "..", "data", "knowledge_base", "articles.json"
-        ))
+        path = settings.data_dir / "knowledge_base" / "articles.json"
         with open(path, "r", encoding="utf-8") as f:
             articles = json.load(f)
 

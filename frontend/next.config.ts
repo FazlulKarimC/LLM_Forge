@@ -1,7 +1,11 @@
 import type { NextConfig } from "next";
 import { withSentryConfig } from "@sentry/nextjs";
 
-const nextConfig: NextConfig = {};
+const nextConfig: NextConfig = {
+  turbopack: {
+    root: __dirname,
+  },
+};
 
 export default withSentryConfig(nextConfig, {
   // Suppress source map upload logs in build output

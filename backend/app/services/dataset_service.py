@@ -18,7 +18,7 @@ import json
 import logging
 import random
 from pathlib import Path
-from typing import List, Optional, TypedDict
+from typing import List, NotRequired, Optional, TypedDict
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +29,8 @@ class DatasetExample(TypedDict):
     question: str
     answer: str
     aliases: List[str]
+    category: NotRequired[str]
+    expected_behavior: NotRequired[str]
 
 
 # =============================================================================
@@ -205,12 +207,17 @@ class DatasetService:
         
         examples: List[DatasetExample] = []
         for item in data:
-            examples.append(DatasetExample(
+            example = DatasetExample(
                 id=item["id"],
                 question=item["question"],
                 answer=item["answer"],
                 aliases=item.get("aliases", [item["answer"]]),
-            ))
+            )
+            if "category" in item:
+                example["category"] = item["category"]
+            if "expected_behavior" in item:
+                example["expected_behavior"] = item["expected_behavior"]
+            examples.append(example)
         
         return examples
     

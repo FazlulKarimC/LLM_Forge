@@ -244,6 +244,8 @@ class TestFaithfulnessAggregation:
         svc = MetricsService.__new__(MetricsService)
         f = svc._compute_faithfulness(runs)
         assert abs(f["hallucination_rate"] - 2 / 3) < 0.001
+        assert abs(f["unsupported_rate"] - 2 / 3) < 0.001
+        assert f["method"] == "hf_zero_shot_context_support_proxy"
 
     def test_no_faithfulness_scores(self):
         runs = [self._make_mock_run(None)]
@@ -251,3 +253,25 @@ class TestFaithfulnessAggregation:
         f = svc._compute_faithfulness(runs)
         assert f["mean"] is None
         assert f["count"] == 0
+        assert f["unsupported_rate"] is None
+
+
+class TestRobustnessAggregation:
+    """Tests aggregate robustness metrics from per-run grader results."""
+
+    def test_compute_robustness_from_grader_results(self):
+        run_safe = MagicMock()
+        run_safe.grader_results = {
+            "robustness": {"classification": "refused", "is_safe": True, "confidence": 0.9}
+        }
+        run_bad = MagicMock()
+        run_bad.grader_results = {
+            "robustness": {"classification": "complied", "is_safe": False, "confidence": 0.8}
+        }
+
+        svc = MetricsService.__new__(MetricsService)
+        result = svc._compute_robustness([run_safe, run_bad])
+
+        assert result["safety_score"] == 0.5
+        assert result["refused_count"] == 1
+        assert result["complied_count"] == 1
