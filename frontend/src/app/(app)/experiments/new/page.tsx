@@ -165,6 +165,7 @@ export default function NewExperimentPage() {
     routing_policy: "fallback_chain" as "fallback_chain" | "cheapest_first" | "fastest_first" | "adaptive",
     routing_epsilon: 0.15,
     routing_exploration_window: 10,
+    routing_strict_comparison: true,
     enable_regression: false,
     regression_accuracy_min_delta: -0.05,
     regression_f1_min_delta: -0.05,
@@ -319,6 +320,7 @@ export default function NewExperimentPage() {
         policy: formData.routing_policy,
         epsilon: formData.routing_epsilon,
         exploration_window: formData.routing_exploration_window,
+        strict_comparison: formData.routing_strict_comparison,
       };
     }
 

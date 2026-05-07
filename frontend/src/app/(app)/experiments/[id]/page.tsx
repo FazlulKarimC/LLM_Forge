@@ -248,6 +248,17 @@ export default function ExperimentDetailPage({ params }: Props) {
         </Panel>
       </section>
 
+      {experiment.run_manifest ? (
+        <section>
+          <Panel>
+            <PanelHeader label="Provenance" title="Execution manifest" description="Submitted config plus effective runtime settings captured for reproducibility." />
+            <div className="panel-body">
+              <pre className="code-panel">{JSON.stringify(experiment.run_manifest, null, 2)}</pre>
+            </div>
+          </Panel>
+        </section>
+      ) : null}
+
       {experiment.status === "completed" ? (
         <>
           <ExperimentResultsDashboard

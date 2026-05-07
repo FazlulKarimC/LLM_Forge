@@ -45,6 +45,16 @@ class MockRun:
     routing_reason: Optional[str] = None
 
 
+@dataclass
+class MockExperiment:
+    """Minimal Experiment-like object for lineage tests."""
+
+    dataset_name: str = "sample"
+    model_name: str = "mock-model"
+    dataset_hash: Optional[str] = "dataset-hash"
+    config: Dict[str, Any] = field(default_factory=dict)
+
+
 # ─── compare_run_sets tests ──────────────────────────────────────────────────
 
 class TestCompareRunSets:
@@ -147,6 +157,66 @@ class TestCompareRunSets:
         
         with pytest.raises(ValueError, match="No common examples"):
             StatisticalService.compare_run_sets(runs_a, runs_b)
+
+
+class TestBaselineLineage:
+    """Auto baselines should only match methodologically comparable runs."""
+
+    def _experiment(self, **overrides):
+        config = {
+            "model_name": "mock-model",
+            "dataset_name": "sample",
+            "reasoning_method": "naive",
+            "provider": "auto",
+            "hyperparameters": {"temperature": 0.1, "max_tokens": 150, "seed": 42},
+            "num_samples": 10,
+            "rag": None,
+            "agent": None,
+            "optimization": None,
+            "graders": None,
+            "routing": {
+                "policy": "fallback_chain",
+                "epsilon": 0.15,
+                "exploration_window": 10,
+                "strict_comparison": True,
+            },
+            "prompt_version_id": None,
+        }
+        config.update(overrides.pop("config_updates", {}))
+        return MockExperiment(config=config, **overrides)
+
+    def test_same_execution_defining_config_matches(self):
+        baseline = self._experiment()
+        candidate = self._experiment()
+
+        assert RegressionService._same_baseline_lineage(baseline, candidate)
+
+    def test_reasoning_method_mismatch_does_not_match(self):
+        baseline = self._experiment()
+        candidate = self._experiment(config_updates={"reasoning_method": "cot"})
+
+        assert not RegressionService._same_baseline_lineage(baseline, candidate)
+
+    def test_routing_strictness_mismatch_does_not_match(self):
+        baseline = self._experiment()
+        candidate = self._experiment(
+            config_updates={
+                "routing": {
+                    "policy": "fallback_chain",
+                    "epsilon": 0.15,
+                    "exploration_window": 10,
+                    "strict_comparison": False,
+                }
+            }
+        )
+
+        assert not RegressionService._same_baseline_lineage(baseline, candidate)
+
+    def test_dataset_hash_mismatch_does_not_match(self):
+        baseline = self._experiment(dataset_hash="hash-a")
+        candidate = self._experiment(dataset_hash="hash-b")
+
+        assert not RegressionService._same_baseline_lineage(baseline, candidate)
 
 
 # ─── Aggregate threshold checks ─────────────────────────────────────────────

@@ -202,6 +202,24 @@ class TestProviderRouter:
         assert result.served_provider == "groq"
         assert result.routing_reason == "fallback_1"
 
+    def test_strict_comparison_does_not_fallback_on_rate_limit(self):
+        router = ProviderRouter(
+            [
+                MockEngine(provider_id="hf_api", name="Primary", fail_with_rate_limit=True),
+                MockEngine(provider_id="groq", name="Secondary"),
+            ],
+            RoutingPolicy.FALLBACK_CHAIN,
+            strict_comparison=True,
+        )
+        router.load_model("test-model")
+
+        result = router.generate("hello", GenerationConfig())
+
+        assert result.failure_mode == FailureMode.API_ERROR
+        assert result.served_provider == "hf_api"
+        assert result.routing_reason == "strict_selected"
+        assert "groq" not in router.stats_tracker.summary()
+
     def test_cheapest_first_selects_lowest_cost(self):
         tracker = ProviderStatsTracker()
         tracker.record("openrouter", 150.0, 10, 20, 0.002, False)

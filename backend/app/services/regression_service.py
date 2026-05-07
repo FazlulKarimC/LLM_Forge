@@ -8,7 +8,7 @@ Key design decisions:
 - Runs are loaded at specific attempts, never "latest"
 - Each side is graded with its own config and execution context
 - Overlap ratio below threshold → inconclusive (None) verdict
-- One baseline per (dataset_name, model_name) lineage
+- One baseline per comparable experiment lineage
 """
 
 import logging
@@ -23,6 +23,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.experiment import Experiment
 from app.models.run import Run
 from app.schemas.experiment import ExperimentConfig, RegressionConfig, GradersConfig
+from app.services.experiment_provenance import (
+    BASELINE_LINEAGE_CONFIG_KEYS,
+    baseline_lineage_key,
+    canonical_json,
+    same_baseline_lineage,
+)
 from app.services.grader_service import GraderEngine
 from app.services.statistical_service import StatisticalService
 
@@ -78,14 +84,35 @@ class RegressionService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
+    @staticmethod
+    def _canonical(value: Any) -> str:
+        """Return a stable JSON representation for nested config comparisons."""
+        return canonical_json(value)
+
+    @classmethod
+    def _baseline_lineage_key(cls, experiment: Experiment) -> Dict[str, Any]:
+        """Fields that must match before an auto-selected baseline is fair."""
+        return baseline_lineage_key(experiment)
+
+    @classmethod
+    def _same_baseline_lineage(
+        cls,
+        baseline: Experiment,
+        candidate: Experiment,
+    ) -> bool:
+        """Whether two experiments are comparable for automatic regression."""
+        return same_baseline_lineage(baseline, candidate)
+
     async def find_baseline(self, experiment: Experiment) -> Optional[Experiment]:
         """
         Find the appropriate baseline for comparison.
         
         Resolution order:
         1. Explicit baseline_id on the experiment → use it
-        2. Most recent is_baseline=True with same dataset_name + model_name + dataset_hash
-        3. Fallback to same dataset_name + model_name lineage when dataset hashes are unavailable
+        2. Most recent comparable is_baseline=True experiment.
+           Comparability requires the same dataset/model/hash plus the same
+           execution-defining config fields. Explicit baselines may still compare
+           intentionally different experiments.
         3. None if no match
         """
         # 1. Explicit baseline
@@ -108,28 +135,17 @@ class RegressionService:
         ]
 
         if experiment.dataset_hash:
-            exact_hash_query = (
-                select(Experiment)
-                .where(
-                    *base_conditions,
-                    Experiment.dataset_hash == experiment.dataset_hash,
-                )
-                .order_by(Experiment.created_at.desc())
-                .limit(1)
-            )
-            exact_hash_result = await self.db.execute(exact_hash_query)
-            exact_hash_baseline = exact_hash_result.scalar_one_or_none()
-            if exact_hash_baseline:
-                return exact_hash_baseline
-
+            base_conditions.append(Experiment.dataset_hash == experiment.dataset_hash)
         lineage_query = (
             select(Experiment)
             .where(*base_conditions)
             .order_by(Experiment.created_at.desc())
-            .limit(1)
         )
         result = await self.db.execute(lineage_query)
-        return result.scalar_one_or_none()
+        for baseline in result.scalars().all():
+            if self._same_baseline_lineage(baseline, experiment):
+                return baseline
+        return None
 
     async def run_regression_check(
         self,
@@ -275,7 +291,7 @@ class RegressionService:
 
     async def pin_baseline(self, experiment_id: UUID) -> Experiment:
         """
-        Pin an experiment as the baseline for its lineage.
+        Pin an experiment as the baseline for its comparable lineage.
         
         Rules:
         1. Only COMPLETED experiments can be pinned
@@ -303,6 +319,8 @@ class RegressionService:
         )
         result = await self.db.execute(existing_query)
         for old_baseline in result.scalars().all():
+            if not self._same_baseline_lineage(old_baseline, experiment):
+                continue
             old_baseline.is_baseline = False
             old_baseline.pinned_attempt = None
             logger.info("Unpinned old baseline %s", old_baseline.id)

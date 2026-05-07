@@ -106,6 +106,7 @@ def create_inference_engine(
         router_policy = RoutingPolicy.FALLBACK_CHAIN
         epsilon = 0.15
         exploration_window = 10
+        strict_comparison = True
 
         if routing_config:
             try:
@@ -114,12 +115,14 @@ def create_inference_engine(
                 router_policy = RoutingPolicy.FALLBACK_CHAIN
             epsilon = routing_config.epsilon
             exploration_window = routing_config.exploration_window
+            strict_comparison = getattr(routing_config, "strict_comparison", True)
 
         return ProviderRouter(
             engines=engines,
             policy=router_policy,
             epsilon=epsilon,
             exploration_window=exploration_window,
+            strict_comparison=strict_comparison,
         ), "auto (router)"
 
     if default_engine == "hf_api":

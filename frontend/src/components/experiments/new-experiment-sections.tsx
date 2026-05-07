@@ -3,68 +3,24 @@
 import { Database, Layers3, PlugZap } from "lucide-react";
 
 import { MetricBar, Panel, PanelHeader } from "@/components/ui/primitives";
+import type {
+  ExperimentBuilderDatasetGroup,
+  ExperimentBuilderFormData,
+  ExperimentBuilderOption,
+  ExperimentBuilderPreset,
+  ExperimentBuilderPresetConfig,
+  UpdateExperimentBuilderField,
+} from "@/components/experiments/new-experiment-types";
 
-export type ExperimentBuilderFormData = {
-  name: string;
-  description: string;
-  model_name: string;
-  reasoning_method: "naive" | "cot" | "react";
-  dataset_name: string;
-  provider: "auto" | "hf_api" | "openrouter" | "groq" | "custom";
-  temperature: number;
-  max_tokens: number;
-  num_samples: number;
-  retrieval_method: "none" | "naive" | "hybrid" | "reranked";
-  rag_top_k: number;
-  agent_max_iterations: number;
-  agent_tools: string[];
-  enable_batching: boolean;
-  batch_size: number;
-  enable_caching: boolean;
-  cache_max_size: number;
-  routing_policy: "fallback_chain" | "cheapest_first" | "fastest_first" | "adaptive";
-  routing_epsilon: number;
-  routing_exploration_window: number;
-  enable_regression: boolean;
-  regression_accuracy_min_delta: number;
-  regression_f1_min_delta: number;
-  regression_latency_p95_max_ms: number | "";
-  regression_no_sample_regressions: boolean;
-  regression_max_new_failures: number | "";
-  regression_min_overlap_ratio: number;
-  prompt_version_id: string;
-  graders_json: string;
-  seed: number | "";
-};
+export type {
+  ExperimentBuilderDatasetGroup,
+  ExperimentBuilderFormData,
+  ExperimentBuilderOption,
+  ExperimentBuilderPreset,
+  ExperimentBuilderPresetConfig,
+} from "@/components/experiments/new-experiment-types";
 
-type UpdateField = <K extends keyof ExperimentBuilderFormData>(
-  key: K,
-  value: ExperimentBuilderFormData[K],
-) => void;
-
-export type ExperimentBuilderPreset = {
-  reasoning_method: ExperimentBuilderFormData["reasoning_method"];
-  dataset_name: string;
-  num_samples: number;
-  retrieval_method: ExperimentBuilderFormData["retrieval_method"];
-};
-
-export type ExperimentBuilderPresetConfig = {
-  title: string;
-  description: string;
-  apply: ExperimentBuilderPreset;
-};
-
-export type ExperimentBuilderOption = {
-  value: string;
-  label: string;
-  description: string;
-};
-
-export type ExperimentBuilderDatasetGroup = {
-  label: string;
-  options: ExperimentBuilderOption[];
-};
+type UpdateField = UpdateExperimentBuilderField;
 
 export function ExperimentBasicsPanel({
   formData,
@@ -222,6 +178,20 @@ export function ExperimentConfigurationPanel({
                 <p className="field-help mt-2">Initial requests to round-robin before exploiting telemetry.</p>
               </div>
             </div>
+            <label className="mt-4 flex items-start gap-3 rounded-[14px] border border-(--border) bg-(--surface-1) p-3 text-sm">
+              <input
+                type="checkbox"
+                checked={formData.routing_strict_comparison}
+                onChange={(event) => updateField("routing_strict_comparison", event.target.checked)}
+                className="mt-1"
+              />
+              <span>
+                <span className="block font-semibold">Strict comparison mode</span>
+                <span className="mt-1 block text-(--muted-foreground)">
+                  Pin the first available provider and disable cross-provider fallback for scored runs.
+                </span>
+              </span>
+            </label>
           </div>
         </div>
       ) : null}

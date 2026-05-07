@@ -46,6 +46,7 @@ class ProviderRouter(InferenceEngine):
         stats_tracker: Optional[ProviderStatsTracker] = None,
         epsilon: float = 0.15,
         exploration_window: int = 10,
+        strict_comparison: bool = False,
     ):
         if not engines:
             raise ValueError("At least one engine is required")
@@ -56,14 +57,16 @@ class ProviderRouter(InferenceEngine):
         self._stats = stats_tracker or ProviderStatsTracker()
         self._epsilon = epsilon
         self._exploration_window = exploration_window
+        self._strict_comparison = strict_comparison
         self._request_count = 0
         self._request_count_lock = threading.Lock()
 
         logger.info(
-            "ProviderRouter initialized (policy=%s, engines=%s, epsilon=%.2f)",
+            "ProviderRouter initialized (policy=%s, engines=%s, epsilon=%.2f, strict=%s)",
             policy.value,
             [self._get_engine_name(e) for e in engines],
             epsilon,
+            strict_comparison,
         )
 
     @property
@@ -148,7 +151,7 @@ class ProviderRouter(InferenceEngine):
         if not available:
             return self._engines[0]
 
-        if self._policy == RoutingPolicy.FALLBACK_CHAIN:
+        if self._strict_comparison or self._policy == RoutingPolicy.FALLBACK_CHAIN:
             return available[0]
 
         available_names = [self._get_engine_name(engine) for engine in available]
@@ -203,9 +206,12 @@ class ProviderRouter(InferenceEngine):
         with self._request_count_lock:
             self._request_count += 1
 
-        engines_to_try = [selected] + [
-            engine for engine in self._engines if engine is not selected and engine.is_loaded
-        ]
+        if self._strict_comparison:
+            engines_to_try = [selected]
+        else:
+            engines_to_try = [selected] + [
+                engine for engine in self._engines if engine is not selected and engine.is_loaded
+            ]
         last_error = None
 
         for index, engine in enumerate(engines_to_try):
@@ -221,7 +227,7 @@ class ProviderRouter(InferenceEngine):
 
                 if self._is_retryable_result(result):
                     last_error = result.error_message or result.failure_mode.value
-                    if index < len(engines_to_try) - 1:
+                    if not self._strict_comparison and index < len(engines_to_try) - 1:
                         logger.warning(
                             "Provider %s returned retryable failure (%s), trying next provider...",
                             engine_name,
@@ -231,10 +237,12 @@ class ProviderRouter(InferenceEngine):
 
                 result.served_provider = engine_name
                 reason = "selected" if engine is selected else f"fallback_{index}"
-                if self._policy == RoutingPolicy.ADAPTIVE:
+                if self._strict_comparison:
+                    reason = "strict_selected"
+                elif self._policy == RoutingPolicy.ADAPTIVE:
                     reason = f"adaptive_{reason}"
                 result.routing_reason = reason
-                if self._is_retryable_result(result):
+                if self._is_retryable_result(result) and not self._strict_comparison:
                     break
                 return result
 
@@ -256,7 +264,7 @@ class ProviderRouter(InferenceEngine):
                     )
                 )
 
-                if is_retryable and index < len(engines_to_try) - 1:
+                if not self._strict_comparison and is_retryable and index < len(engines_to_try) - 1:
                     logger.warning(
                         "Provider %s failed (%s), falling back...",
                         engine_name,
@@ -289,6 +297,24 @@ class ProviderRouter(InferenceEngine):
         - Other policies: per-prompt routing through self.generate()
         """
         available = self._get_available_engines()
+
+        if self._strict_comparison:
+            selected = self._select_engine()
+            engine_name = self._get_engine_name(selected)
+            try:
+                results = selected.generate_batch(prompts, config, max_workers)
+                for result in results:
+                    result.served_provider = engine_name
+                    result.routing_reason = "strict_batch_delegate"
+                    self._record_result_stats(engine_name, result)
+                return results
+            except Exception as exc:
+                logger.warning(
+                    "Strict batch generation failed on %s: %s; falling back to strict sequential",
+                    engine_name,
+                    exc,
+                )
+                return [self.generate(prompt, config) for prompt in prompts]
 
         if self._policy == RoutingPolicy.FALLBACK_CHAIN and len(available) <= 1:
             for engine in self._engines:

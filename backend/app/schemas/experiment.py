@@ -423,6 +423,13 @@ class RoutingConfig(BaseModel):
         default=10, ge=1, le=50,
         description="Number of initial requests to round-robin before exploiting"
     )
+    strict_comparison: bool = Field(
+        default=True,
+        description=(
+            "When true, provider='auto' pins the first available provider and "
+            "does not fall back across providers inside the scored run."
+        ),
+    )
 
 
 # Rebuild forward refs for ExperimentConfig.routing

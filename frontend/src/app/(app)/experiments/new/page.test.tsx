@@ -97,4 +97,26 @@ describe("NewExperimentPage", () => {
       expect(screen.getByLabelText(/model id/i)).toBeInTheDocument();
     });
   });
+
+  it("submits strict comparison routing by default for auto provider experiments", async () => {
+    const { container } = renderPage();
+
+    expect(screen.getByLabelText(/strict comparison mode/i)).toBeChecked();
+
+    fireEvent.change(screen.getByLabelText(/experiment name/i), {
+      target: { value: "Strict routing" },
+    });
+    fireEvent.submit(container.querySelector("form")!);
+
+    await waitFor(() => expect(apiMocks.createExperiment).toHaveBeenCalledTimes(1));
+
+    const request = apiMocks.createExperiment.mock.calls[0][0];
+    expect(request.config.provider).toBe("auto");
+    expect(request.config.routing).toMatchObject({
+      policy: "fallback_chain",
+      epsilon: 0.15,
+      exploration_window: 10,
+      strict_comparison: true,
+    });
+  });
 });

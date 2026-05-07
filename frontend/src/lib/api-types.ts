@@ -49,6 +49,7 @@ export interface RoutingConfig {
     policy?: 'fallback_chain' | 'cheapest_first' | 'fastest_first' | 'adaptive';
     epsilon?: number;
     exploration_window?: number;
+    strict_comparison?: boolean;
 }
 
 export type RegressionStatus = 'not_checked' | 'pass' | 'fail' | 'inconclusive';

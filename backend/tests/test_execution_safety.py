@@ -9,8 +9,15 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 from app.api.experiments import _active_run_count
+from app.models.experiment import Experiment
 from app.models.prompt_version import PromptVersion
-from app.schemas.experiment import ExperimentConfig, ExperimentResponse, ExperimentStatus, HyperParameters
+from app.schemas.experiment import (
+    ExperimentConfig,
+    ExperimentResponse,
+    ExperimentStatus,
+    HyperParameters,
+    OptimizationConfig,
+)
 from app.services.inference.prompting import CoTPromptTemplate, NaivePromptTemplate, RAGPromptTemplate
 from app.services.experiment_service import ExperimentService
 from app.services.metrics_service import MetricsService
@@ -185,3 +192,68 @@ def test_execute_does_not_clear_results_before_rerun():
                 asyncio.run(service.execute(experiment_id))
 
     clear_results.assert_not_awaited()
+
+
+def test_effective_manifest_records_runtime_token_adjustments():
+    experiment_id = uuid4()
+    now = datetime.now(timezone.utc)
+    experiment = ExperimentResponse(
+        id=experiment_id,
+        name="Effective Manifest",
+        description=None,
+        config=ExperimentConfig(
+            model_name="mock-model",
+            reasoning_method="cot",
+            dataset_name="sample",
+            num_samples=1,
+            hyperparameters=HyperParameters(max_tokens=150, seed=123),
+        ),
+        status=ExperimentStatus.RUNNING,
+        created_at=now,
+        started_at=now,
+        completed_at=None,
+        error_message=None,
+        tags=[],
+        run_manifest={"manifest_hash": "original"},
+    )
+    exp_row = Experiment(
+        id=experiment_id,
+        name="Effective Manifest",
+        config=experiment.config.model_dump(mode="json"),
+        method="cot",
+        model_name="mock-model",
+        dataset_name="sample",
+        status=ExperimentStatus.RUNNING,
+        run_manifest={"manifest_hash": "original"},
+        dataset_hash="dataset-hash",
+        sample_ids=["sample-1"],
+    )
+
+    service = ExperimentService(AsyncMock())
+    gen_config, max_tokens = service._build_generation_config(experiment, "cot")
+
+    asyncio.run(
+        service._persist_effective_execution_manifest(
+            experiment_response=experiment,
+            exp_obj=exp_row,
+            current_attempt=2,
+            engine_type="mock",
+            gen_config=gen_config,
+            max_tokens=max_tokens,
+            examples=[{"id": "sample-1"}],
+            use_rag=False,
+            use_batching=False,
+            opt_config=OptimizationConfig(),
+        )
+    )
+
+    effective = exp_row.run_manifest["effective_execution"]
+    assert effective["attempt"] == 2
+    assert effective["hyperparameters"]["max_tokens"] == 512
+    assert effective["configured_hyperparameters"]["max_tokens"] == 150
+    assert effective["adjustments"]["max_tokens"] == {
+        "configured": 150,
+        "effective": 512,
+    }
+    assert effective["dataset_hash"] == "dataset-hash"
+    assert exp_row.run_manifest["effective_manifest_hash"]
