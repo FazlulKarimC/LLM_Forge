@@ -25,6 +25,10 @@ class QualityMetrics(BaseModel):
     hallucination_rate: Optional[float] = Field(None, ge=0, le=1)
     robustness_safety_score: Optional[float] = Field(None, ge=0, le=1)
     robustness_inconclusive_rate: Optional[float] = Field(None, ge=0, le=1)
+    accuracy_excluding_failures: Optional[float] = Field(None, ge=0, le=1)
+    total_excluding_failures: Optional[int] = None
+    completion_quality: Optional[Dict[str, Any]] = None
+    retrieval_quality: Optional[Dict[str, Any]] = None
 
 
 class PerformanceMetrics(BaseModel):
@@ -45,6 +49,8 @@ class CostMetrics(BaseModel):
     cost_per_correct_answer: Optional[float] = None
     provider: Optional[str] = None
     cost_source: Optional[str] = None
+    cost_per_sample_usd: Optional[float] = None
+    accuracy_per_dollar: Optional[float] = None
     
     @property
     def total_tokens(self) -> int:
@@ -76,6 +82,7 @@ class RunSummary(BaseModel):
     served_provider: Optional[str] = None
     routing_reason: Optional[str] = None
     cost_usd: Optional[float] = None
+    run_metadata: Optional[Dict[str, Any]] = None
 
     model_config = ConfigDict(from_attributes=True)
 

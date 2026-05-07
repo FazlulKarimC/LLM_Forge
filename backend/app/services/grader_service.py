@@ -73,6 +73,7 @@ class GraderEngine:
         GraderType.LATENCY_BUDGET_MS: "_grade_latency_budget_ms",
         GraderType.TOKEN_BUDGET: "_grade_token_budget",
         GraderType.MIN_F1_SCORE: "_grade_min_f1_score",
+        GraderType.EXPECTED_TOOLS: "_grade_expected_tools",
     }
 
     def grade_run(
@@ -336,4 +337,62 @@ class GraderEngine:
             status=VerdictStatus.PASS if passed else VerdictStatus.FAIL,
             value=round(actual_score, 4),
             threshold=min_score,
+        )
+
+    def _grade_expected_tools(
+        self, run: Any, rule: GraderRule, reasoning_method: str, has_rag: bool,
+    ) -> GraderVerdict:
+        """
+        Check agent used the expected tools from dataset metadata.
+
+        Unlike REQUIRED_TOOLS (config-driven static list), this reads
+        expected_tools from the dataset example itself, enabling
+        per-question tool-path evaluation.
+
+        SKIP for non-ReAct or when no expected_tools metadata exists.
+        """
+        if reasoning_method != "react":
+            return GraderVerdict(
+                grader_name=rule.name,
+                status=VerdictStatus.SKIP,
+                reason="not_applicable_for_non_react",
+            )
+
+        # Read expected_tools from the run's dataset example metadata
+        example_meta = getattr(run, "example_metadata", None) or {}
+        expected = set(example_meta.get("expected_tools", []))
+        must_use = example_meta.get("must_use_tool", False)
+
+        if not expected:
+            return GraderVerdict(
+                grader_name=rule.name,
+                status=VerdictStatus.SKIP,
+                reason="no_expected_tools_in_dataset",
+            )
+
+        trace = getattr(run, "agent_trace", None)
+        if trace is None:
+            return GraderVerdict(
+                grader_name=rule.name,
+                status=VerdictStatus.FAIL if must_use else VerdictStatus.SKIP,
+                reason="no_agent_trace_available",
+            )
+
+        steps = trace.get("steps", []) if isinstance(trace, dict) else []
+        used_tools = set()
+        for step in steps:
+            action = step.get("action", "") if isinstance(step, dict) else ""
+            if action:
+                used_tools.add(action)
+
+        missing = expected - used_tools
+        hit_rate = (len(expected) - len(missing)) / len(expected) if expected else 1.0
+        passed = len(missing) == 0
+
+        return GraderVerdict(
+            grader_name=rule.name,
+            status=VerdictStatus.PASS if passed else VerdictStatus.FAIL,
+            value={"used": sorted(used_tools), "expected": sorted(expected), "hit_rate": round(hit_rate, 3)},
+            threshold=sorted(expected),
+            reason=f"missing: {sorted(missing)}" if missing else None,
         )

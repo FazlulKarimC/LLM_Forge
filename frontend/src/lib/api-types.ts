@@ -145,6 +145,10 @@ export interface Metrics {
         robustness_inconclusive_rate?: number;
         safety_score?: number;
         pass_at_k?: number;
+        completion_quality?: { label: string; failure_rate: number; total_failures: number; total_runs: number };
+        retrieval_quality?: { recall_at_k?: number; evidence_hit_rate?: number; total_evaluated?: number; k?: number };
+        accuracy_excluding_failures?: number;
+        total_excluding_failures?: number;
     };
     performance: {
         latency_p50?: number;
@@ -161,6 +165,8 @@ export interface Metrics {
         cost_per_correct_answer?: number;
         provider?: string;
         cost_source?: string;
+        cost_per_sample_usd?: number;
+        accuracy_per_dollar?: number;
     };
     failure_modes?: {
         counts: Record<string, number>;

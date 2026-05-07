@@ -184,6 +184,7 @@ class GraderType(str, Enum):
     LATENCY_BUDGET_MS = "latency_budget_ms"
     TOKEN_BUDGET = "token_budget"
     MIN_F1_SCORE = "min_f1_score"
+    EXPECTED_TOOLS = "expected_tools"
 
 
 class GraderRule(BaseModel):

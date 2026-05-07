@@ -5,9 +5,11 @@ Provides statistical analysis for comparing experiments:
 - Bootstrap confidence intervals for accuracy metrics
 - McNemar's test for paired accuracy comparison
 - Per-example agreement/disagreement analysis
+- Cohen's h effect size for practical significance
 """
 
 import logging
+import math
 from typing import List, Dict, Tuple, Optional
 from uuid import UUID
 
@@ -301,7 +303,14 @@ class StatisticalService:
 
         if num_common_examples < 20:
             warnings.append(
-                f"Only {num_common_examples} common examples were compared; treat significance as exploratory."
+                f"Only {num_common_examples} common examples were compared; "
+                f"is_significant has been overridden to False (minimum 20 paired samples required)."
+            )
+        elif num_common_examples < 30:
+            warnings.append(
+                f"Only {num_common_examples} common examples were compared. "
+                f"Statistical tests on fewer than 30 paired samples have very low power. "
+                f"Results should be interpreted as directional only."
             )
 
         if overlap_ratio < 0.8:
@@ -323,6 +332,29 @@ class StatisticalService:
             )
 
         return warnings
+
+    @staticmethod
+    def cohens_h(p1: float, p2: float) -> float:
+        """
+        Cohen's h effect size for two proportions.
+
+        Measures practical significance: how large is the accuracy difference?
+        Interpretation: |h| < 0.2 = negligible, 0.2-0.5 = small,
+        0.5-0.8 = medium, > 0.8 = large.
+        """
+        return 2 * math.asin(math.sqrt(max(0, min(1, p1)))) - 2 * math.asin(math.sqrt(max(0, min(1, p2))))
+
+    @staticmethod
+    def effect_size_label(h: float) -> str:
+        """Classify Cohen's h into a human-readable label."""
+        abs_h = abs(h)
+        if abs_h < 0.2:
+            return "negligible"
+        if abs_h < 0.5:
+            return "small"
+        if abs_h < 0.8:
+            return "medium"
+        return "large"
 
     @staticmethod
     def compare_run_sets(
@@ -392,6 +424,12 @@ class StatisticalService:
         # Compute McNemar's test
         mcnemar_result = svc.mcnemar_test(correct_a, correct_b)
         
+        # Override is_significant when N < 20 — McNemar has no power
+        if len(common_examples) < 20 and mcnemar_result.get("is_significant"):
+            mcnemar_result["is_significant"] = False
+            mcnemar_result["significance_overridden"] = True
+            mcnemar_result["override_reason"] = "Insufficient sample size (N < 20)"
+        
         # Compute SEPARATE CIs for accuracy (booleans) and F1 (scores)
         accuracy_values_a = [1.0 if c else 0.0 for c in correct_a]
         accuracy_values_b = [1.0 if c else 0.0 for c in correct_b]
@@ -430,6 +468,8 @@ class StatisticalService:
             "accuracy_a": acc_a,
             "accuracy_b": acc_b,
             "accuracy_diff": acc_b - acc_a,
+            "effect_size_cohens_h": round(StatisticalService.cohens_h(acc_a, acc_b), 4),
+            "effect_size_label": StatisticalService.effect_size_label(StatisticalService.cohens_h(acc_a, acc_b)),
             "mcnemar": mcnemar_result,
             "accuracy_ci_a": accuracy_ci_a,
             "accuracy_ci_b": accuracy_ci_b,
@@ -443,6 +483,7 @@ class StatisticalService:
             "methodology_notes": [
                 "Statistical tests are computed only on common example IDs from the latest attempt.",
                 "Bootstrap intervals are descriptive uncertainty estimates, not proof that one method generalizes better.",
+                f"Effect size (Cohen's h = {StatisticalService.cohens_h(acc_a, acc_b):.3f}) classifies the difference as '{StatisticalService.effect_size_label(StatisticalService.cohens_h(acc_a, acc_b))}'.",
             ],
             "per_example_differences": per_example[:50],  # Limit to 50
             "summary": {

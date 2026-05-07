@@ -93,7 +93,11 @@ class LLMJudgeService:
         runs = [r for r in all_runs if r.attempt == attempt]
         
         if len(runs) > self.sample_size:
-            runs = random.sample(runs, self.sample_size)
+            # Deterministic sampling: same experiment always evaluates same runs
+            rng = random.Random(int(experiment_id) if isinstance(experiment_id, int) else hash(str(experiment_id)))
+            runs = rng.sample(runs, self.sample_size)
+        
+        judge_sample_ids = [r.example_id for r in runs]
         
         logger.info(
             "[LLM-JUDGE] Evaluating %s sampled runs from experiment %s (attempt %s)",
@@ -168,6 +172,8 @@ class LLMJudgeService:
             "attempt": attempt,
             "scores": aggregated,
             "evaluated_run_ids": evaluated_ids,
+            "judge_sample_ids": judge_sample_ids,
+            "judge_sample_seed": str(experiment_id),
             "method": "llm_as_judge",
             "budget_cap": self.sample_size,
         }

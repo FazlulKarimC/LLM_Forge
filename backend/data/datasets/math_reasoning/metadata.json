@@ -1,0 +1,17 @@
+{
+    "display_name": "LlmForge Math Reasoning (40)",
+    "internal_id": "math_reasoning",
+    "source": "custom_authored",
+    "size": 40,
+    "description": "GSM8K-style word problems requiring arithmetic and step-by-step reasoning.",
+    "supported_conclusions": [
+        "Relative comparison of CoT vs. naive on math tasks",
+        "Calculator tool impact on arithmetic accuracy"
+    ],
+    "unsupported_conclusions": [
+        "Absolute benchmark claims comparable to GSM8K (1.3K test examples)",
+        "Generalization to advanced mathematical reasoning"
+    ],
+    "category": "math",
+    "version": "1.0"
+}

@@ -1,0 +1,19 @@
+{
+    "display_name": "LlmForge ReAct Agent Bench (30)",
+    "internal_id": "react_bench",
+    "source": "custom_authored",
+    "size": 30,
+    "description": "Multi-tool questions requiring search + calculation for ReAct agent evaluation. Expected tool metadata annotated for all 30 examples.",
+    "supported_conclusions": [
+        "Relative comparison of agent vs. non-agent methods",
+        "Tool usage pattern analysis",
+        "Regression detection for agent reliability"
+    ],
+    "unsupported_conclusions": [
+        "Absolute agent benchmark claims",
+        "Generalization to complex real-world tool-use scenarios"
+    ],
+    "category": "agent",
+    "version": "1.1",
+    "tool_metadata_coverage": "30/30 examples annotated"
+}

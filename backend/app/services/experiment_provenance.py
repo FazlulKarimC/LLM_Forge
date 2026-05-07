@@ -85,6 +85,12 @@ def build_effective_execution_manifest_entry(
             "configured": configured_hp.get("max_tokens"),
             "effective": effective_hp.get("max_tokens"),
         }
+    if configured_hp.get("temperature") != effective_hp.get("temperature"):
+        adjustments["temperature"] = {
+            "configured": configured_hp.get("temperature"),
+            "effective": effective_hp.get("temperature"),
+            "reason": "provider_minimum",
+        }
 
     effective_execution = {
         "attempt": attempt,

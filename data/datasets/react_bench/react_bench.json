@@ -7,7 +7,10 @@
             "2161",
             "approximately 2161",
             "about 2,161"
-        ]
+        ],
+        "expected_tools": ["wikipedia_search", "calculator"],
+        "must_use_tool": true,
+        "tool_answer_check": "calculator"
     },
     {
         "id": "rb002",
@@ -16,7 +19,10 @@
         "aliases": [
             "136",
             "136 years"
-        ]
+        ],
+        "expected_tools": ["wikipedia_search", "calculator"],
+        "must_use_tool": true,
+        "tool_answer_check": "calculator"
     },
     {
         "id": "rb003",
@@ -25,7 +31,10 @@
         "aliases": [
             "35",
             "35 years"
-        ]
+        ],
+        "expected_tools": ["calculator"],
+        "must_use_tool": false,
+        "tool_answer_check": "calculator"
     },
     {
         "id": "rb004",
@@ -35,7 +44,10 @@
             "4456",
             "4,456",
             "approximately 4456"
-        ]
+        ],
+        "expected_tools": ["calculator"],
+        "must_use_tool": false,
+        "tool_answer_check": "calculator"
     },
     {
         "id": "rb005",
@@ -46,7 +58,10 @@
             "approximately 14",
             "about 14.3",
             "14"
-        ]
+        ],
+        "expected_tools": ["calculator"],
+        "must_use_tool": false,
+        "tool_answer_check": "calculator"
     },
     {
         "id": "rb006",
@@ -56,7 +71,10 @@
             "683.5",
             "about 684",
             "approximately 683.5"
-        ]
+        ],
+        "expected_tools": ["wikipedia_search", "calculator"],
+        "must_use_tool": true,
+        "tool_answer_check": "calculator"
     },
     {
         "id": "rb007",
@@ -66,7 +84,10 @@
             "356 BC",
             "355 BC",
             "356"
-        ]
+        ],
+        "expected_tools": ["calculator"],
+        "must_use_tool": false,
+        "tool_answer_check": "calculator"
     },
     {
         "id": "rb008",
@@ -77,7 +98,10 @@
             "approximately 4.2%",
             "about 4.24%",
             "4.2%"
-        ]
+        ],
+        "expected_tools": ["calculator"],
+        "must_use_tool": false,
+        "tool_answer_check": "calculator"
     },
     {
         "id": "rb009",
@@ -87,7 +111,10 @@
             "8 × 10^14",
             "800 trillion",
             "approximately 800 trillion"
-        ]
+        ],
+        "expected_tools": ["wikipedia_search", "calculator"],
+        "must_use_tool": true,
+        "tool_answer_check": "calculator"
     },
     {
         "id": "rb010",
@@ -97,7 +124,10 @@
             "10316",
             "10,316",
             "approximately 10316"
-        ]
+        ],
+        "expected_tools": ["calculator"],
+        "must_use_tool": false,
+        "tool_answer_check": "calculator"
     },
     {
         "id": "rb011",
@@ -108,7 +138,10 @@
             "2,145.14",
             "about 2145",
             "approximately 2,145"
-        ]
+        ],
+        "expected_tools": ["calculator"],
+        "must_use_tool": false,
+        "tool_answer_check": "calculator"
     },
     {
         "id": "rb012",
@@ -118,7 +151,10 @@
             "61754",
             "approximately 61,754",
             "about 61754"
-        ]
+        ],
+        "expected_tools": ["wikipedia_search", "calculator"],
+        "must_use_tool": true,
+        "tool_answer_check": "calculator"
     },
     {
         "id": "rb013",
@@ -127,7 +163,10 @@
         "aliases": [
             "234",
             "234 years"
-        ]
+        ],
+        "expected_tools": ["calculator"],
+        "must_use_tool": false,
+        "tool_answer_check": "calculator"
     },
     {
         "id": "rb014",
@@ -137,7 +176,10 @@
             "284,000",
             "284000",
             "284,000 km²"
-        ]
+        ],
+        "expected_tools": ["calculator"],
+        "must_use_tool": false,
+        "tool_answer_check": "calculator"
     },
     {
         "id": "rb015",
@@ -148,7 +190,10 @@
             "approximately 3 minutes",
             "about 3.06 minutes",
             "3 minutes"
-        ]
+        ],
+        "expected_tools": ["wikipedia_search", "calculator"],
+        "must_use_tool": true,
+        "tool_answer_check": "calculator"
     },
     {
         "id": "rb016",
@@ -156,7 +201,10 @@
         "answer": "193",
         "aliases": [
             "193"
-        ]
+        ],
+        "expected_tools": ["calculator"],
+        "must_use_tool": false,
+        "tool_answer_check": "calculator"
     },
     {
         "id": "rb017",
@@ -166,7 +214,10 @@
             "604.5",
             "approximately 605",
             "about 604.5 km"
-        ]
+        ],
+        "expected_tools": ["calculator"],
+        "must_use_tool": false,
+        "tool_answer_check": "calculator"
     },
     {
         "id": "rb018",
@@ -174,7 +225,10 @@
         "answer": "1947",
         "aliases": [
             "1947"
-        ]
+        ],
+        "expected_tools": ["wikipedia_search"],
+        "must_use_tool": true,
+        "tool_answer_check": "wikipedia_search"
     },
     {
         "id": "rb019",
@@ -184,7 +238,10 @@
             "103:23",
             "103/23",
             "approximately 4.48"
-        ]
+        ],
+        "expected_tools": ["calculator"],
+        "must_use_tool": false,
+        "tool_answer_check": "calculator"
     },
     {
         "id": "rb020",
@@ -193,7 +250,10 @@
         "aliases": [
             "31",
             "31 years"
-        ]
+        ],
+        "expected_tools": ["calculator"],
+        "must_use_tool": false,
+        "tool_answer_check": "calculator"
     },
     {
         "id": "rb021",
@@ -202,7 +262,10 @@
         "aliases": [
             "104",
             "104 years"
-        ]
+        ],
+        "expected_tools": ["wikipedia_search", "calculator"],
+        "must_use_tool": true,
+        "tool_answer_check": "calculator"
     },
     {
         "id": "rb022",
@@ -212,7 +275,10 @@
             "315.4",
             "approximately 315",
             "about 315.4"
-        ]
+        ],
+        "expected_tools": ["calculator"],
+        "must_use_tool": false,
+        "tool_answer_check": "calculator"
     },
     {
         "id": "rb023",
@@ -220,7 +286,10 @@
         "answer": "88",
         "aliases": [
             "88"
-        ]
+        ],
+        "expected_tools": ["calculator"],
+        "must_use_tool": false,
+        "tool_answer_check": "calculator"
     },
     {
         "id": "rb024",
@@ -230,7 +299,10 @@
             "11%",
             "approximately 11%",
             "about 11 percent"
-        ]
+        ],
+        "expected_tools": ["wikipedia_search", "calculator"],
+        "must_use_tool": true,
+        "tool_answer_check": "calculator"
     },
     {
         "id": "rb025",
@@ -239,7 +311,10 @@
         "aliases": [
             "22",
             "22 years"
-        ]
+        ],
+        "expected_tools": ["calculator"],
+        "must_use_tool": false,
+        "tool_answer_check": "calculator"
     },
     {
         "id": "rb026",
@@ -248,7 +323,10 @@
         "aliases": [
             "7",
             "7 years"
-        ]
+        ],
+        "expected_tools": ["calculator"],
+        "must_use_tool": false,
+        "tool_answer_check": "calculator"
     },
     {
         "id": "rb027",
@@ -258,7 +336,10 @@
             "2953",
             "approximately 2,953",
             "about 2953 meters"
-        ]
+        ],
+        "expected_tools": ["wikipedia_search", "calculator"],
+        "must_use_tool": true,
+        "tool_answer_check": "calculator"
     },
     {
         "id": "rb028",
@@ -267,7 +348,10 @@
         "aliases": [
             "503",
             "503 years"
-        ]
+        ],
+        "expected_tools": ["calculator"],
+        "must_use_tool": false,
+        "tool_answer_check": "calculator"
     },
     {
         "id": "rb029",
@@ -277,7 +361,10 @@
             "1.82",
             "approximately 1.82",
             "about 1.8"
-        ]
+        ],
+        "expected_tools": ["wikipedia_search", "calculator"],
+        "must_use_tool": true,
+        "tool_answer_check": "calculator"
     },
     {
         "id": "rb030",
@@ -286,6 +373,9 @@
         "aliases": [
             "23",
             "23 years old"
-        ]
+        ],
+        "expected_tools": ["calculator"],
+        "must_use_tool": false,
+        "tool_answer_check": "calculator"
     }
 ]

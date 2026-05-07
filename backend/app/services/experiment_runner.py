@@ -103,6 +103,23 @@ class ExperimentRunExecutor:
             return cot_prompt_template.parse_response(raw_text)
         return naive_prompt_template.parse_response(raw_text)
 
+    def parse_response_with_method(
+        self,
+        raw_text: str,
+        reasoning_method: str,
+        *,
+        used_rag: bool,
+        naive_prompt_template,
+        cot_prompt_template,
+        rag_prompt_template,
+    ) -> tuple:
+        """Parse response and return (answer, parse_method) for confidence tracking."""
+        if used_rag:
+            return rag_prompt_template.parse_response_with_method(raw_text)
+        if reasoning_method == "cot":
+            return cot_prompt_template.parse_response_with_method(raw_text)
+        return naive_prompt_template.parse_response_with_method(raw_text)
+
     def retrieve_rag_context(self, item, rag_config, rag_pipeline, profiler):
         """Retrieve RAG context and normalize it into run payload fields."""
         context_chunks = []
@@ -120,13 +137,18 @@ class ExperimentRunExecutor:
             )
 
         context_chunks = [chunk.text for chunk in retrieval_result.chunks]
+        # Zip chunks with scores from RetrievalResult — Chunk has no score
+        # field, so getattr(chunk, "score", None) was silently returning None.
+        chunk_scores = retrieval_result.scores if retrieval_result.scores else [None] * len(retrieval_result.chunks)
         retrieved_chunk_payload = {
             "chunks": [
                 {
                     "text": chunk.text,
-                    "score": getattr(chunk, "score", None),
+                    "chunk_id": chunk.id,
+                    "title": chunk.title,
+                    "score": score,
                 }
-                for chunk in retrieval_result.chunks
+                for chunk, score in zip(retrieval_result.chunks, chunk_scores)
             ]
         }
         retrieval_context = " ".join(context_chunks)
@@ -508,9 +530,9 @@ class ExperimentRunExecutor:
             for local_idx, (item, result) in enumerate(zip(batch_items, all_results)):
                 with profiler.section("parsing"):
                     if reasoning_method == "cot":
-                        parsed_answer = cot_prompt_template.parse_response(result.text)
+                        parsed_answer, parse_method = cot_prompt_template.parse_response_with_method(result.text)
                     else:
-                        parsed_answer = naive_prompt_template.parse_response(result.text)
+                        parsed_answer, parse_method = naive_prompt_template.parse_response_with_method(result.text)
 
                 with profiler.section("metrics"):
                     score_result = self.score_response(
@@ -532,6 +554,7 @@ class ExperimentRunExecutor:
                         "is_exact_match": score_result["is_exact_match"],
                         "is_substring_match": score_result["is_substring_match"],
                         "parsed_answer": parsed_answer,
+                        "run_metadata": {"parse_method": parse_method},
                         "match_alias": score_result["match_alias"],
                         "tokens_input": result.tokens_input,
                         "tokens_output": result.tokens_output,

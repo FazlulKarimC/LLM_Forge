@@ -1,0 +1,17 @@
+{
+    "display_name": "LlmForge Multi-Hop QA (40)",
+    "internal_id": "multi_hop",
+    "source": "custom_authored",
+    "size": 40,
+    "description": "Multi-step reasoning questions requiring combination of 2+ facts.",
+    "supported_conclusions": [
+        "Relative comparison of CoT vs. naive on reasoning tasks",
+        "Regression detection for multi-hop performance"
+    ],
+    "unsupported_conclusions": [
+        "Absolute benchmark claims comparable to HotpotQA or MuSiQue",
+        "Generalization to open-domain multi-hop reasoning"
+    ],
+    "category": "reasoning",
+    "version": "1.0"
+}

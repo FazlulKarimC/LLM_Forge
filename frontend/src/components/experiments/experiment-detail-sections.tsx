@@ -173,10 +173,10 @@ export function ExperimentResultsDashboard({
                 <div className="mb-2 flex items-center justify-between text-sm"><span>Mean F1</span><span className="metric-value">{((metrics.quality.accuracy_f1 ?? 0) * 100).toFixed(1)}%</span></div>
                 <MetricBar value={(metrics.quality.accuracy_f1 ?? 0) * 100} />
               </div>
-              {metrics.quality.safety_score !== undefined ? (
+              {(metrics.quality.robustness_safety_score ?? metrics.quality.safety_score) !== undefined ? (
                 <div>
-                  <div className="mb-2 flex items-center justify-between text-sm"><span>Safety score</span><span className="metric-value">{(metrics.quality.safety_score * 100).toFixed(1)}%</span></div>
-                  <MetricBar value={metrics.quality.safety_score * 100} />
+                  <div className="mb-2 flex items-center justify-between text-sm"><span>Safety score</span><span className="metric-value">{(((metrics.quality.robustness_safety_score ?? metrics.quality.safety_score ?? 0) as number) * 100).toFixed(1)}%</span></div>
+                  <MetricBar value={((metrics.quality.robustness_safety_score ?? metrics.quality.safety_score ?? 0) as number) * 100} />
                 </div>
               ) : null}
             </div>
@@ -194,6 +194,94 @@ export function ExperimentResultsDashboard({
                 <div className="metric-value mt-2 text-3xl">{count}</div>
               </div>
             ))}
+          </div>
+        </Panel>
+      ) : null}
+
+      {/* Completion Quality — accuracy excluding failures + parse tiers */}
+      {metrics.quality.completion_quality || metrics.quality.accuracy_excluding_failures != null ? (
+        <Panel>
+          <PanelHeader label="Diagnostics" title="Completion quality" description="Model accuracy excluding infrastructure failures and parse degradation tiers." />
+          <div className="panel-body grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            {metrics.quality.accuracy_excluding_failures != null ? (
+              <MetricCard
+                label="Accuracy (excl. failures)"
+                tone="accent"
+                value={<AnimatedNumber value={(metrics.quality.accuracy_excluding_failures as number) * 100} suffix="%" className="text-3xl" />}
+                detail={`${metrics.quality.total_excluding_failures ?? "?"} non-failed runs scored`}
+              />
+            ) : null}
+            {metrics.quality.completion_quality ? (
+              <MetricCard
+                label="Completion tier"
+                tone={metrics.quality.completion_quality.label === "full" ? "success" : metrics.quality.completion_quality.label === "partial" ? "warning" : "danger"}
+                value={<span className="text-3xl metric-value capitalize">{metrics.quality.completion_quality.label ?? "unknown"}</span>}
+                detail={`${metrics.quality.completion_quality.total_failures ?? 0} failures in ${metrics.quality.completion_quality.total_runs ?? 0} runs (${((metrics.quality.completion_quality.failure_rate ?? 0) * 100).toFixed(1)}%)`}
+              />
+            ) : null}
+          </div>
+        </Panel>
+      ) : null}
+
+      {/* Retrieval Quality — RAG recall@k + evidence hit rate */}
+      {metrics.quality.retrieval_quality ? (
+        <Panel>
+          <PanelHeader label="RAG Diagnostics" title="Retrieval quality" description="How well the retriever found relevant evidence chunks." />
+          <div className="panel-body grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {metrics.quality.retrieval_quality.recall_at_k != null ? (
+              <MetricCard
+                label={`Recall@${metrics.quality.retrieval_quality.k ?? "k"}`}
+                tone="accent"
+                value={<AnimatedNumber value={(metrics.quality.retrieval_quality.recall_at_k) * 100} suffix="%" className="text-3xl" />}
+                detail="Fraction of gold evidence found in top-k chunks"
+              />
+            ) : null}
+            {metrics.quality.retrieval_quality.evidence_hit_rate != null ? (
+              <MetricCard
+                label="Evidence hit rate"
+                tone={metrics.quality.retrieval_quality.evidence_hit_rate >= 0.7 ? "success" : "warning"}
+                value={<AnimatedNumber value={(metrics.quality.retrieval_quality.evidence_hit_rate) * 100} suffix="%" className="text-3xl" />}
+                detail="Questions where at least one gold keyword matched"
+              />
+            ) : null}
+            {metrics.quality.retrieval_quality.total_evaluated != null ? (
+              <MetricCard
+                label="Evaluated"
+                value={<span className="text-3xl metric-value">{metrics.quality.retrieval_quality.total_evaluated}</span>}
+                detail="Questions with gold evidence annotations"
+              />
+            ) : null}
+          </div>
+        </Panel>
+      ) : null}
+
+      {/* Cost Efficiency — cost_per_sample + accuracy_per_dollar */}
+      {metrics.cost.cost_per_sample_usd != null || metrics.cost.accuracy_per_dollar != null ? (
+        <Panel>
+          <PanelHeader label="Efficiency" title="Cost efficiency" description="Normalized cost metrics for cross-model comparison." />
+          <div className="panel-body grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {metrics.cost.cost_per_sample_usd != null ? (
+              <MetricCard
+                label="Cost per sample"
+                value={<span className="text-3xl metric-value">${(metrics.cost.cost_per_sample_usd as number).toFixed(6)}</span>}
+                detail="Average cost per example run"
+              />
+            ) : null}
+            {metrics.cost.accuracy_per_dollar != null ? (
+              <MetricCard
+                label="Accuracy per dollar"
+                tone="accent"
+                value={<AnimatedNumber value={metrics.cost.accuracy_per_dollar as number} decimals={2} className="text-3xl" />}
+                detail="Accuracy points per $1 spent"
+              />
+            ) : null}
+            {metrics.cost.cost_per_correct_answer != null ? (
+              <MetricCard
+                label="Cost per correct answer"
+                value={<span className="text-3xl metric-value">${(metrics.cost.cost_per_correct_answer as number).toFixed(6)}</span>}
+                detail="Average cost for each correct result"
+              />
+            ) : null}
           </div>
         </Panel>
       ) : null}

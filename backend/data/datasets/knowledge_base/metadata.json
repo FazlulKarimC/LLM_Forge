@@ -1,0 +1,18 @@
+{
+    "display_name": "LlmForge Knowledge Base QA (50)",
+    "internal_id": "knowledge_base",
+    "source": "custom_authored",
+    "size": 50,
+    "description": "Questions grounded in indexed articles for RAG pipeline evaluation. Gold evidence annotations available for first 10 examples.",
+    "supported_conclusions": [
+        "Relative RAG vs. non-RAG comparison",
+        "Retrieval quality diagnostics (with gold evidence annotations)"
+    ],
+    "unsupported_conclusions": [
+        "Absolute retrieval benchmark claims",
+        "Generalization to open-domain QA benchmarks"
+    ],
+    "category": "rag_qa",
+    "version": "1.1",
+    "gold_evidence_coverage": "50/50 examples annotated"
+}

@@ -83,6 +83,9 @@ class RunResponse(BaseModel):
     routing_reason: Optional[str] = None
     cost_usd: Optional[float] = Field(None, ge=0)
     
+    # Audit metadata
+    run_metadata: Optional[Dict[str, Any]] = None
+
     # Attempt tracking
     attempt: Optional[int] = None
     

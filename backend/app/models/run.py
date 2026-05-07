@@ -129,6 +129,9 @@ class Run(Base):
     # ----- Grader verdicts (Phase: Trajectory Regression Gates) -----
     grader_results: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
 
+    # ----- Audit metadata (parse_method, etc.) -----
+    run_metadata: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+
     # ----- Routing telemetry (Phase: Adaptive Router) -----
     served_provider: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     routing_reason: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)

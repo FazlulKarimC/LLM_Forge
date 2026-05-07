@@ -3,469 +3,400 @@
         "id": "kb001",
         "question": "What is the estimated population of Paris?",
         "answer": "2,161,000",
-        "aliases": [
-            "2,161,000",
-            "2161000",
-            "about 2.16 million"
-        ]
+        "aliases": ["2,161,000", "2161000", "about 2.16 million"],
+        "evidence_source": "Paris",
+        "gold_chunk_keywords": ["population", "paris", "2,161,000"]
     },
     {
         "id": "kb002",
         "question": "In what year was construction of the Berlin Wall commenced?",
         "answer": "1961",
-        "aliases": [
-            "1961"
-        ]
+        "aliases": ["1961"],
+        "evidence_source": "Berlin Wall",
+        "gold_chunk_keywords": ["berlin wall", "1961", "construction"]
     },
     {
         "id": "kb003",
         "question": "For what discovery did Albert Einstein receive the Nobel Prize in Physics?",
         "answer": "the photoelectric effect",
-        "aliases": [
-            "the photoelectric effect",
-            "photoelectric effect",
-            "law of the photoelectric effect"
-        ]
+        "aliases": ["the photoelectric effect", "photoelectric effect", "law of the photoelectric effect"],
+        "evidence_source": "Albert Einstein",
+        "gold_chunk_keywords": ["einstein", "photoelectric", "nobel"]
     },
     {
         "id": "kb004",
         "question": "How many tributaries does the Amazon river system have?",
         "answer": "over 1,100",
-        "aliases": [
-            "over 1,100",
-            "1,100",
-            "more than 1100"
-        ]
+        "aliases": ["over 1,100", "1,100", "more than 1100"],
+        "evidence_source": "Amazon River",
+        "gold_chunk_keywords": ["amazon", "tributaries", "1,100"]
     },
     {
         "id": "kb005",
         "question": "Where was William Shakespeare born and raised?",
         "answer": "Stratford-upon-Avon",
-        "aliases": [
-            "Stratford-upon-Avon",
-            "Stratford upon Avon"
-        ]
+        "aliases": ["Stratford-upon-Avon", "Stratford upon Avon"],
+        "evidence_source": "William Shakespeare",
+        "gold_chunk_keywords": ["shakespeare", "stratford", "born"]
     },
     {
         "id": "kb006",
         "question": "What is the elevation of Mount Everest as established in 2020?",
         "answer": "8,848.86 m",
-        "aliases": [
-            "8,848.86 m",
-            "8848.86",
-            "8,848.86 meters"
-        ]
+        "aliases": ["8,848.86 m", "8848.86", "8,848.86 meters"],
+        "evidence_source": "Mount Everest",
+        "gold_chunk_keywords": ["everest", "8,848", "elevation"]
     },
     {
         "id": "kb007",
         "question": "What is the general equation for photosynthesis?",
         "answer": "6CO2 + 6H2O → C6H12O6 + 6O2",
-        "aliases": [
-            "6CO2 + 6H2O → C6H12O6 + 6O2",
-            "6CO2 + 6H2O = C6H12O6 + 6O2"
-        ]
+        "aliases": ["6CO2 + 6H2O → C6H12O6 + 6O2", "6CO2 + 6H2O = C6H12O6 + 6O2"],
+        "evidence_source": "Photosynthesis",
+        "gold_chunk_keywords": ["photosynthesis", "co2", "glucose"]
     },
     {
         "id": "kb008",
         "question": "In what year did Leonardo da Vinci die?",
         "answer": "1519",
-        "aliases": [
-            "1519"
-        ]
+        "aliases": ["1519"],
+        "evidence_source": "Leonardo da Vinci",
+        "gold_chunk_keywords": ["leonardo", "da vinci", "1519"]
     },
     {
         "id": "kb009",
         "question": "What is the total length of all sections of the Great Wall of China?",
         "answer": "approximately 21,196 km",
-        "aliases": [
-            "21,196 km",
-            "approximately 21,196 km",
-            "21196"
-        ]
+        "aliases": ["21,196 km", "approximately 21,196 km", "21196"],
+        "evidence_source": "Great Wall of China",
+        "gold_chunk_keywords": ["great wall", "21,196", "length"]
     },
     {
         "id": "kb010",
         "question": "Who made crucial contributions to the description of DNA's structure alongside Watson and Crick?",
         "answer": "Rosalind Franklin and Maurice Wilkins",
-        "aliases": [
-            "Rosalind Franklin and Maurice Wilkins",
-            "Rosalind Franklin",
-            "Franklin and Wilkins"
-        ]
+        "aliases": ["Rosalind Franklin and Maurice Wilkins", "Rosalind Franklin", "Franklin and Wilkins"],
+        "evidence_source": "DNA",
+        "gold_chunk_keywords": ["dna", "franklin", "wilkins", "watson"]
     },
     {
         "id": "kb011",
         "question": "What did Neil Armstrong name the site where he and Buzz Aldrin landed on the Moon?",
         "answer": "Tranquility Base",
-        "aliases": [
-            "Tranquility Base"
-        ]
+        "aliases": ["Tranquility Base"],
+        "evidence_source": "Apollo 11",
+        "gold_chunk_keywords": ["armstrong", "moon", "tranquility", "landing"]
     },
     {
         "id": "kb012",
         "question": "Who published the first widely recognized periodic table?",
         "answer": "Dmitri Mendeleev",
-        "aliases": [
-            "Dmitri Mendeleev",
-            "Mendeleev"
-        ]
+        "aliases": ["Dmitri Mendeleev", "Mendeleev"],
+        "evidence_source": "Periodic table",
+        "gold_chunk_keywords": ["mendeleev", "periodic table", "elements"]
     },
     {
         "id": "kb013",
         "question": "When was the Roman Republic established?",
         "answer": "around 509 BC",
-        "aliases": [
-            "509 BC",
-            "around 509 BC",
-            "approximately 509 BC"
-        ]
+        "aliases": ["509 BC", "around 509 BC", "approximately 509 BC"],
+        "evidence_source": "Roman Republic",
+        "gold_chunk_keywords": ["roman republic", "509", "established"]
     },
     {
         "id": "kb014",
         "question": "What are the four inner planets of the Solar System called?",
         "answer": "terrestrial planets",
-        "aliases": [
-            "terrestrial planets"
-        ]
+        "aliases": ["terrestrial planets"],
+        "evidence_source": "Solar System",
+        "gold_chunk_keywords": ["inner planets", "terrestrial", "mercury", "venus"]
     },
     {
         "id": "kb015",
         "question": "When did World War II begin with the invasion of Poland?",
         "answer": "September 1, 1939",
-        "aliases": [
-            "September 1, 1939",
-            "1 September 1939",
-            "1939"
-        ]
+        "aliases": ["September 1, 1939", "1 September 1939", "1939"],
+        "evidence_source": "World War II",
+        "gold_chunk_keywords": ["world war ii", "1939", "poland", "invasion"]
     },
     {
         "id": "kb016",
         "question": "What percentage of the Amazon rainforest is contained within Brazil?",
         "answer": "60%",
-        "aliases": [
-            "60%",
-            "60 percent",
-            "sixty percent"
-        ]
+        "aliases": ["60%", "60 percent", "sixty percent"],
+        "evidence_source": "Amazon rainforest",
+        "gold_chunk_keywords": ["amazon", "brazil", "60", "rainforest"]
     },
     {
         "id": "kb017",
         "question": "What book by Isaac Newton established classical mechanics?",
         "answer": "Philosophiae Naturalis Principia Mathematica",
-        "aliases": [
-            "Philosophiae Naturalis Principia Mathematica",
-            "Principia Mathematica",
-            "Principia"
-        ]
+        "aliases": ["Philosophiae Naturalis Principia Mathematica", "Principia Mathematica", "Principia"],
+        "evidence_source": "Isaac Newton",
+        "gold_chunk_keywords": ["newton", "principia", "mechanics"]
     },
     {
         "id": "kb018",
         "question": "What is the area of the Sahara Desert?",
         "answer": "9,200,000 square kilometres",
-        "aliases": [
-            "9,200,000 square kilometres",
-            "9,200,000 km²",
-            "9200000"
-        ]
+        "aliases": ["9,200,000 square kilometres", "9,200,000 km²", "9200000"],
+        "evidence_source": "Sahara",
+        "gold_chunk_keywords": ["sahara", "9,200,000", "area", "desert"]
     },
     {
         "id": "kb019",
         "question": "Where is the Mona Lisa permanently displayed?",
         "answer": "the Louvre Museum in Paris",
-        "aliases": [
-            "the Louvre Museum",
-            "Louvre Museum",
-            "the Louvre",
-            "Louvre"
-        ]
+        "aliases": ["the Louvre Museum", "Louvre Museum", "the Louvre", "Louvre"],
+        "evidence_source": "Mona Lisa",
+        "gold_chunk_keywords": ["mona lisa", "louvre", "paris", "displayed"]
     },
     {
         "id": "kb020",
         "question": "Who founded the International Olympic Committee (IOC)?",
         "answer": "Baron Pierre de Coubertin",
-        "aliases": [
-            "Baron Pierre de Coubertin",
-            "Pierre de Coubertin",
-            "Coubertin"
-        ]
+        "aliases": ["Baron Pierre de Coubertin", "Pierre de Coubertin", "Coubertin"],
+        "evidence_source": "Olympic Games",
+        "gold_chunk_keywords": ["olympic", "coubertin", "founded", "ioc"]
     },
     {
         "id": "kb021",
         "question": "How many times does the human heart beat per day approximately?",
         "answer": "100,000",
-        "aliases": [
-            "100,000",
-            "100000",
-            "approximately 100,000"
-        ]
+        "aliases": ["100,000", "100000", "approximately 100,000"],
+        "evidence_source": "Heart",
+        "gold_chunk_keywords": ["heart", "beats", "100,000", "day"]
     },
     {
         "id": "kb022",
         "question": "Who was the last active ruler of the Ptolemaic Kingdom of Egypt?",
         "answer": "Cleopatra VII",
-        "aliases": [
-            "Cleopatra VII",
-            "Cleopatra",
-            "Cleopatra VII Philopator"
-        ]
+        "aliases": ["Cleopatra VII", "Cleopatra", "Cleopatra VII Philopator"],
+        "evidence_source": "Cleopatra",
+        "gold_chunk_keywords": ["cleopatra", "ptolemaic", "egypt", "ruler"]
     },
     {
         "id": "kb023",
         "question": "Who commissioned the construction of the Taj Mahal?",
         "answer": "Shah Jahan",
-        "aliases": [
-            "Shah Jahan"
-        ]
+        "aliases": ["Shah Jahan"],
+        "evidence_source": "Taj Mahal",
+        "gold_chunk_keywords": ["taj mahal", "shah jahan", "commissioned"]
     },
     {
         "id": "kb024",
         "question": "Who independently conceived the theory of evolution through natural selection alongside Darwin?",
         "answer": "Alfred Russel Wallace",
-        "aliases": [
-            "Alfred Russel Wallace",
-            "Wallace",
-            "A. R. Wallace"
-        ]
+        "aliases": ["Alfred Russel Wallace", "Wallace", "A. R. Wallace"],
+        "evidence_source": "Natural selection",
+        "gold_chunk_keywords": ["wallace", "darwin", "natural selection", "evolution"]
     },
     {
         "id": "kb025",
         "question": "For which pharaoh was the Great Pyramid of Giza built as a tomb?",
         "answer": "Khufu",
-        "aliases": [
-            "Khufu",
-            "Pharaoh Khufu",
-            "Cheops"
-        ]
+        "aliases": ["Khufu", "Pharaoh Khufu", "Cheops"],
+        "evidence_source": "Great Pyramid of Giza",
+        "gold_chunk_keywords": ["pyramid", "giza", "khufu", "tomb"]
     },
     {
         "id": "kb026",
         "question": "According to Einstein's general theory of relativity, what causes gravity?",
         "answer": "the curvature of spacetime caused by mass and energy",
-        "aliases": [
-            "curvature of spacetime",
-            "the curvature of spacetime",
-            "spacetime curvature"
-        ]
+        "aliases": ["curvature of spacetime", "the curvature of spacetime", "spacetime curvature"],
+        "evidence_source": "General relativity",
+        "gold_chunk_keywords": ["relativity", "spacetime", "curvature", "gravity"]
     },
     {
         "id": "kb027",
         "question": "What are the two major tributaries of the Nile?",
         "answer": "the White Nile and the Blue Nile",
-        "aliases": [
-            "the White Nile and the Blue Nile",
-            "White Nile and Blue Nile"
-        ]
+        "aliases": ["the White Nile and the Blue Nile", "White Nile and Blue Nile"],
+        "evidence_source": "Nile",
+        "gold_chunk_keywords": ["nile", "white nile", "blue nile", "tributaries"]
     },
     {
         "id": "kb028",
         "question": "At what age did Mozart die?",
         "answer": "35",
-        "aliases": [
-            "35",
-            "thirty-five"
-        ]
+        "aliases": ["35", "thirty-five"],
+        "evidence_source": "Wolfgang Amadeus Mozart",
+        "gold_chunk_keywords": ["mozart", "died", "35", "age"]
     },
     {
         "id": "kb029",
         "question": "What percentage of Earth's atmosphere is oxygen?",
         "answer": "about 21%",
-        "aliases": [
-            "21%",
-            "about 21%",
-            "approximately 21 percent"
-        ]
+        "aliases": ["21%", "about 21%", "approximately 21 percent"],
+        "evidence_source": "Earth's atmosphere",
+        "gold_chunk_keywords": ["atmosphere", "oxygen", "21", "percent"]
     },
     {
         "id": "kb030",
         "question": "Who developed the printing press around 1440?",
         "answer": "Johannes Gutenberg",
-        "aliases": [
-            "Johannes Gutenberg",
-            "Gutenberg"
-        ]
+        "aliases": ["Johannes Gutenberg", "Gutenberg"],
+        "evidence_source": "Printing press",
+        "gold_chunk_keywords": ["gutenberg", "printing press", "1440"]
     },
     {
         "id": "kb031",
         "question": "What is the highest mountain in the Solar System?",
         "answer": "Olympus Mons",
-        "aliases": [
-            "Olympus Mons"
-        ]
+        "aliases": ["Olympus Mons"],
+        "evidence_source": "Mars",
+        "gold_chunk_keywords": ["olympus mons", "mars", "highest", "mountain"]
     },
     {
         "id": "kb032",
         "question": "At what age did Alexander the Great die?",
         "answer": "32",
-        "aliases": [
-            "32",
-            "thirty-two"
-        ]
+        "aliases": ["32", "thirty-two"],
+        "evidence_source": "Alexander the Great",
+        "gold_chunk_keywords": ["alexander", "died", "32", "age"]
     },
     {
         "id": "kb033",
         "question": "What is the deepest point in the world's oceans?",
         "answer": "the Mariana Trench",
-        "aliases": [
-            "the Mariana Trench",
-            "Mariana Trench"
-        ]
+        "aliases": ["the Mariana Trench", "Mariana Trench"],
+        "evidence_source": "Mariana Trench",
+        "gold_chunk_keywords": ["mariana trench", "deepest", "ocean"]
     },
     {
         "id": "kb034",
         "question": "Who was the first patient to receive insulin injections?",
         "answer": "Leonard Thompson",
-        "aliases": [
-            "Leonard Thompson"
-        ]
+        "aliases": ["Leonard Thompson"],
+        "evidence_source": "Insulin",
+        "gold_chunk_keywords": ["insulin", "leonard thompson", "first patient"]
     },
     {
         "id": "kb035",
         "question": "What is the lowest temperature ever recorded on Earth?",
         "answer": "−89.2°C",
-        "aliases": [
-            "−89.2°C",
-            "-89.2°C",
-            "-89.2 degrees Celsius"
-        ]
+        "aliases": ["−89.2°C", "-89.2°C", "-89.2 degrees Celsius"],
+        "evidence_source": "Antarctica",
+        "gold_chunk_keywords": ["temperature", "lowest", "89.2", "antarctica"]
     },
     {
         "id": "kb036",
         "question": "Who discovered the ABO blood group system?",
         "answer": "Karl Landsteiner",
-        "aliases": [
-            "Karl Landsteiner",
-            "Landsteiner"
-        ]
+        "aliases": ["Karl Landsteiner", "Landsteiner"],
+        "evidence_source": "Blood type",
+        "gold_chunk_keywords": ["landsteiner", "blood", "abo", "group"]
     },
     {
         "id": "kb037",
         "question": "Who was the king of the gods in Greek mythology?",
         "answer": "Zeus",
-        "aliases": [
-            "Zeus"
-        ]
+        "aliases": ["Zeus"],
+        "evidence_source": "Greek mythology",
+        "gold_chunk_keywords": ["zeus", "king", "gods", "greek"]
     },
     {
         "id": "kb038",
         "question": "What famous composition by Beethoven features the 'Ode to Joy'?",
         "answer": "Symphony No. 9",
-        "aliases": [
-            "Symphony No. 9",
-            "Ninth Symphony",
-            "9th Symphony"
-        ]
+        "aliases": ["Symphony No. 9", "Ninth Symphony", "9th Symphony"],
+        "evidence_source": "Ludwig van Beethoven",
+        "gold_chunk_keywords": ["beethoven", "symphony", "ode to joy", "ninth"]
     },
     {
         "id": "kb039",
         "question": "Who conducted one of the first clinical trials showing citrus fruits prevent scurvy?",
         "answer": "James Lind",
-        "aliases": [
-            "James Lind",
-            "Lind"
-        ]
+        "aliases": ["James Lind", "Lind"],
+        "evidence_source": "Scurvy",
+        "gold_chunk_keywords": ["lind", "scurvy", "citrus", "clinical trial"]
     },
     {
         "id": "kb040",
         "question": "What does the word 'Himalaya' mean in Sanskrit?",
         "answer": "abode of snow",
-        "aliases": [
-            "abode of snow"
-        ]
+        "aliases": ["abode of snow"],
+        "evidence_source": "Himalayas",
+        "gold_chunk_keywords": ["himalaya", "sanskrit", "abode", "snow"]
     },
     {
         "id": "kb041",
         "question": "What mathematical constant does the ratio of successive Fibonacci numbers converge to?",
         "answer": "the golden ratio",
-        "aliases": [
-            "the golden ratio",
-            "golden ratio",
-            "approximately 1.618"
-        ]
+        "aliases": ["the golden ratio", "golden ratio", "approximately 1.618"],
+        "evidence_source": "Fibonacci sequence",
+        "gold_chunk_keywords": ["fibonacci", "golden ratio", "1.618", "converge"]
     },
     {
         "id": "kb042",
         "question": "In what year was Genghis Khan proclaimed Great Khan?",
         "answer": "1206",
-        "aliases": [
-            "1206"
-        ]
+        "aliases": ["1206"],
+        "evidence_source": "Genghis Khan",
+        "gold_chunk_keywords": ["genghis khan", "1206", "great khan", "proclaimed"]
     },
     {
         "id": "kb043",
         "question": "What did Benjamin Franklin prove with his kite experiment in 1752?",
         "answer": "the electrical nature of lightning",
-        "aliases": [
-            "the electrical nature of lightning",
-            "lightning is electrical"
-        ]
+        "aliases": ["the electrical nature of lightning", "lightning is electrical"],
+        "evidence_source": "Benjamin Franklin",
+        "gold_chunk_keywords": ["franklin", "kite", "lightning", "electrical"]
     },
     {
         "id": "kb044",
         "question": "What is the name of the largest gold nugget ever found?",
         "answer": "the Welcome Stranger",
-        "aliases": [
-            "the Welcome Stranger",
-            "Welcome Stranger"
-        ]
+        "aliases": ["the Welcome Stranger", "Welcome Stranger"],
+        "evidence_source": "Gold nugget",
+        "gold_chunk_keywords": ["welcome stranger", "gold", "largest", "nugget"]
     },
     {
         "id": "kb045",
         "question": "When was Mahatma Gandhi assassinated?",
         "answer": "January 30, 1948",
-        "aliases": [
-            "January 30, 1948",
-            "30 January 1948",
-            "1948"
-        ]
+        "aliases": ["January 30, 1948", "30 January 1948", "1948"],
+        "evidence_source": "Mahatma Gandhi",
+        "gold_chunk_keywords": ["gandhi", "assassinated", "1948", "january"]
     },
     {
         "id": "kb046",
         "question": "What is considered Hubble Space Telescope's successor?",
         "answer": "the James Webb Space Telescope",
-        "aliases": [
-            "James Webb Space Telescope",
-            "JWST",
-            "the James Webb Space Telescope"
-        ]
+        "aliases": ["James Webb Space Telescope", "JWST", "the James Webb Space Telescope"],
+        "evidence_source": "Hubble Space Telescope",
+        "gold_chunk_keywords": ["hubble", "james webb", "successor", "telescope"]
     },
     {
         "id": "kb047",
         "question": "What blood type is considered the universal donor?",
         "answer": "O negative",
-        "aliases": [
-            "O negative",
-            "Type O negative",
-            "O-"
-        ]
+        "aliases": ["O negative", "Type O negative", "O-"],
+        "evidence_source": "Blood type",
+        "gold_chunk_keywords": ["blood type", "universal donor", "o negative"]
     },
     {
         "id": "kb048",
         "question": "What event likely caused the mass extinction of dinosaurs?",
         "answer": "an asteroid impact at Chicxulub, Mexico",
-        "aliases": [
-            "asteroid impact",
-            "an asteroid impact",
-            "Chicxulub asteroid",
-            "asteroid impact at Chicxulub"
-        ]
+        "aliases": ["asteroid impact", "an asteroid impact", "Chicxulub asteroid", "asteroid impact at Chicxulub"],
+        "evidence_source": "Cretaceous-Paleogene extinction",
+        "gold_chunk_keywords": ["asteroid", "chicxulub", "extinction", "dinosaurs"]
     },
     {
         "id": "kb049",
         "question": "Where was Nikola Tesla born?",
         "answer": "Smiljan, Austrian Empire",
-        "aliases": [
-            "Smiljan",
-            "Smiljan, Austrian Empire",
-            "modern-day Croatia"
-        ]
+        "aliases": ["Smiljan", "Smiljan, Austrian Empire", "modern-day Croatia"],
+        "evidence_source": "Nikola Tesla",
+        "gold_chunk_keywords": ["tesla", "born", "smiljan", "croatia"]
     },
     {
         "id": "kb050",
         "question": "Who shared the 1945 Nobel Prize with Alexander Fleming for developing penicillin?",
         "answer": "Howard Florey and Ernst Boris Chain",
-        "aliases": [
-            "Howard Florey and Ernst Boris Chain",
-            "Florey and Chain"
-        ]
+        "aliases": ["Howard Florey and Ernst Boris Chain", "Florey and Chain"],
+        "evidence_source": "Penicillin",
+        "gold_chunk_keywords": ["florey", "chain", "penicillin", "nobel", "fleming"]
     }
 ]

@@ -1,0 +1,17 @@
+{
+    "display_name": "LlmForge Commonsense QA (30)",
+    "internal_id": "commonsense_qa",
+    "source": "custom_authored",
+    "size": 30,
+    "description": "Everyday knowledge and reasoning questions for commonsense evaluation.",
+    "supported_conclusions": [
+        "Relative model comparison on commonsense reasoning",
+        "Regression detection between runs"
+    ],
+    "unsupported_conclusions": [
+        "Absolute benchmark claims comparable to CommonsenseQA (12K examples)",
+        "Broad commonsense reasoning capability assessment"
+    ],
+    "category": "commonsense",
+    "version": "1.0"
+}

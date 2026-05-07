@@ -25,6 +25,23 @@ def result_to_metrics_response(result: Result) -> MetricsResponse:
     cost_metrics = raw_metrics.get("cost", {})
     robustness_metrics = raw_metrics.get("robustness") or {}
     robustness_breakdown = robustness_metrics.get("breakdown") or {}
+    accuracy_metrics = raw_metrics.get("accuracy", {})
+    retrieval_quality = raw_metrics.get("retrieval_quality")
+    completion_quality_label = raw_metrics.get("completion_quality")
+
+    # Build structured completion_quality from the label string
+    completion_quality_obj = None
+    if completion_quality_label:
+        failure_modes = raw_metrics.get("failure_modes", {})
+        total_runs = accuracy_metrics.get("total_evaluated", 0)
+        total_failures = failure_modes.get("total_failures", 0)
+        completion_quality_obj = {
+            "label": completion_quality_label,
+            "failure_rate": total_failures / total_runs if total_runs > 0 else 0,
+            "total_failures": total_failures,
+            "total_runs": total_runs,
+        }
+
     return MetricsResponse(
         experiment_id=result.experiment_id,
         summary_text=raw_metrics.get("summary_text"),
@@ -41,6 +58,10 @@ def result_to_metrics_response(result: Result) -> MetricsResponse:
                 if robustness_breakdown.get("inconclusive_pct") is not None
                 else None
             ),
+            accuracy_excluding_failures=accuracy_metrics.get("accuracy_excluding_failures"),
+            total_excluding_failures=accuracy_metrics.get("total_excluding_failures"),
+            completion_quality=completion_quality_obj,
+            retrieval_quality=retrieval_quality if retrieval_quality else None,
         ),
         performance=PerformanceMetrics(
             latency_p50=result.latency_p50,
@@ -57,6 +78,8 @@ def result_to_metrics_response(result: Result) -> MetricsResponse:
             cost_per_correct_answer=cost_metrics.get("cost_per_correct_answer"),
             provider=cost_metrics.get("provider"),
             cost_source=cost_metrics.get("cost_source"),
+            cost_per_sample_usd=cost_metrics.get("cost_per_sample_usd"),
+            accuracy_per_dollar=cost_metrics.get("accuracy_per_dollar"),
         ),
         failure_modes=raw_metrics.get("failure_modes"),
         computed_at=result.computed_at,

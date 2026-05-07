@@ -36,6 +36,11 @@ class DatasetExample(TypedDict):
     aliases: List[str]
     category: NotRequired[str]
     expected_behavior: NotRequired[str]
+    evidence_source: NotRequired[str]
+    gold_chunk_keywords: NotRequired[List[str]]
+    expected_tools: NotRequired[List[str]]
+    must_use_tool: NotRequired[bool]
+    tool_answer_check: NotRequired[str]
 
 
 # =============================================================================
@@ -222,6 +227,18 @@ class DatasetService:
                 example["category"] = item["category"]
             if "expected_behavior" in item:
                 example["expected_behavior"] = item["expected_behavior"]
+            # Gold evidence fields for RAG retrieval quality evaluation
+            if "evidence_source" in item:
+                example["evidence_source"] = item["evidence_source"]
+            if "gold_chunk_keywords" in item:
+                example["gold_chunk_keywords"] = item["gold_chunk_keywords"]
+            # Expected tool metadata for ReAct agent evaluation
+            if "expected_tools" in item:
+                example["expected_tools"] = item["expected_tools"]
+            if "must_use_tool" in item:
+                example["must_use_tool"] = item["must_use_tool"]
+            if "tool_answer_check" in item:
+                example["tool_answer_check"] = item["tool_answer_check"]
             examples.append(example)
         
         return examples
@@ -291,3 +308,33 @@ class DatasetService:
             })
         
         return datasets
+
+    @classmethod
+    def get_dataset_metadata(cls, dataset_name: str) -> Optional[dict]:
+        """
+        Load per-dataset metadata.json if it exists.
+
+        Metadata files are co-located with the dataset JSON and contain
+        provenance information: display_name, source, supported_conclusions, etc.
+
+        Returns None if no metadata file exists.
+        """
+        if dataset_name == "triviaqa":
+            dataset_name = "trivia_qa"
+
+        if dataset_name in DATASET_REGISTRY:
+            dataset_file = DATASET_REGISTRY[dataset_name]["file"]
+            metadata_path = cls._datasets_dir() / Path(dataset_file).parent / "metadata.json"
+            if metadata_path.exists():
+                try:
+                    with open(metadata_path, "r", encoding="utf-8") as f:
+                        return json.load(f)
+                except Exception as exc:
+                    logger.warning("Failed to load metadata for %s: %s", dataset_name, exc)
+
+        return None
+
+    @classmethod
+    def load_dataset(cls, dataset_name: str) -> List[DatasetExample]:
+        """Load all examples from a dataset (no sampling). Alias for load() without num_samples."""
+        return cls.load(dataset_name)

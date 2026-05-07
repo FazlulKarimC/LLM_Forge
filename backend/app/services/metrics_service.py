@@ -104,8 +104,20 @@ class MetricsService:
         similarity_metrics = self._compute_semantic_similarity(runs)
         failure_modes = self._compute_failure_modes(runs)
         robustness_metrics = self._compute_robustness(runs)
+        retrieval_quality = self._compute_retrieval_quality(runs, experiment)
+
+        # Compute completion quality from failure rate
+        total_failures = failure_modes.get("total_failures", 0)
+        failure_rate = total_failures / len(runs) if runs else 0
+        if failure_rate == 0:
+            completion_quality = "full"
+        elif failure_rate <= 0.3:
+            completion_quality = "partial"
+        else:
+            completion_quality = "degraded"
 
         # Generate natural language summary
+        dataset_name = experiment.config.get("dataset_name", "unknown") if experiment and experiment.config else "unknown"
         summary_text = self._generate_summary(
             accuracy=accuracy,
             latency=latency,
@@ -114,12 +126,16 @@ class MetricsService:
             failure_modes=failure_modes,
             experiment_id=experiment_id,
             robustness=robustness_metrics,
+            dataset_name=dataset_name,
+            total_samples=len(runs),
+            completion_quality=completion_quality,
         )
 
         # Keys owned by this service — all other keys in raw_metrics are preserved
         _METRICS_OWNED_KEYS = {
             "summary_text", "accuracy", "latency", "cost", "faithfulness",
             "semantic_similarity", "failure_modes", "robustness", "attempt", "per_run",
+            "retrieval_quality", "completion_quality",
         }
 
         # Build raw metrics dict (only keys this service owns)
@@ -132,6 +148,8 @@ class MetricsService:
             "semantic_similarity": similarity_metrics,
             "failure_modes": failure_modes,
             "robustness": robustness_metrics,
+            "retrieval_quality": retrieval_quality,
+            "completion_quality": completion_quality,
             "attempt": max_attempt,
             "per_run": [
                 {
@@ -218,6 +236,17 @@ class MetricsService:
         )
         await self.db.flush()
 
+    @staticmethod
+    def _wilson_ci(successes: int, total: int, z: float = 1.96) -> tuple:
+        """Wilson score interval for binomial proportions — works well for small n."""
+        if total == 0:
+            return 0.0, 0.0
+        p = successes / total
+        denom = 1 + z * z / total
+        centre = (p + z * z / (2 * total)) / denom
+        margin = (z / denom) * ((p * (1 - p) / total + z * z / (4 * total * total)) ** 0.5)
+        return max(0.0, centre - margin), min(1.0, centre + margin)
+
     def _generate_summary(
         self,
         accuracy: dict,
@@ -227,13 +256,30 @@ class MetricsService:
         failure_modes: dict,
         experiment_id: UUID,
         robustness: Optional[dict] = None,
+        dataset_name: str = "unknown",
+        total_samples: int = 0,
+        completion_quality: str = "full",
     ) -> str:
         """
-        Generate a 3-4 sentence natural language summary from computed metrics.
+        Generate a natural language summary with uncertainty caveats.
+
+        Includes Wilson CI, dataset provenance, and completion quality.
         """
         acc = accuracy.get("accuracy_any", 0) * 100
         total = accuracy.get("total_evaluated", 0)
+        correct_count = int(acc / 100 * total) if total > 0 else 0
+        ci_lower, ci_upper = self._wilson_ci(correct_count, total)
         p50 = latency.get("p50", 0)
+
+        # Load dataset display name if metadata exists
+        display_name = dataset_name
+        try:
+            from app.services.dataset_service import DatasetService
+            meta = DatasetService.get_dataset_metadata(dataset_name)
+            if meta:
+                display_name = meta.get("display_name", dataset_name)
+        except Exception:
+            pass
         
         if "total_cost_usd" in cost:
             total_cost = cost.get("total_cost_usd") or 0.0
@@ -243,7 +289,17 @@ class MetricsService:
             total_cost = input_cost + output_cost
         cost_label = "Recorded" if cost.get("cost_source") == "observed_per_run" else "Estimated"
 
-        summary = f"This experiment achieved {acc:.1f}% overall correctness across {total} evaluated samples, with a median generation latency of {p50:.0f}ms. "
+        summary = f"This experiment achieved {acc:.1f}% correctness (95% CI: {ci_lower * 100:.1f}\u2013{ci_upper * 100:.1f}%) across {total} diagnostic samples. "
+        summary += f"Dataset: {display_name}. "
+
+        if completion_quality == "partial":
+            failure_pct = failure_modes.get("total_failures", 0) / total * 100 if total > 0 else 0
+            summary += f"Note: {failure_pct:.0f}% of runs had infrastructure failures. "
+        elif completion_quality == "degraded":
+            failure_pct = failure_modes.get("total_failures", 0) / total * 100 if total > 0 else 0
+            summary += f"WARNING: {failure_pct:.0f}% of runs failed \u2014 accuracy is severely impacted by infrastructure noise. "
+
+        summary += f"Median latency: {p50:.0f}ms. "
         
         # Add RAG/Faithfulness context if applicable
         if faithfulness.get("count", 0) > 0:
@@ -319,10 +375,20 @@ class MetricsService:
 
         total = len(runs)
 
+        # Accuracy excluding infrastructure failures (model performance only)
+        non_failure_runs = [r for r in runs if r.failure_mode is None]
+        non_failure_total = len(non_failure_runs)
+        non_failure_correct = sum(
+            1 for r in non_failure_runs
+            if (r.is_exact_match or r.is_substring_match or r.is_correct)
+        )
+
         return {
             "exact_match": exact_matches / total if total > 0 else 0.0,
             "substring": substring_matches / total if total > 0 else 0.0,
             "accuracy_any": (exact_matches + substring_matches) / total if total > 0 else 0.0,
+            "accuracy_excluding_failures": non_failure_correct / non_failure_total if non_failure_total > 0 else 0.0,
+            "total_excluding_failures": non_failure_total,
             "f1_mean": float(np.mean(f1_scores)) if f1_scores else 0.0,
             "f1_median": float(np.median(f1_scores)) if f1_scores else 0.0,
             "total_evaluated": total,
@@ -426,6 +492,8 @@ class MetricsService:
             "gpu_time_seconds": total_latency_ms / 1000.0,
             "total_cost_usd": total_cost_usd,
             "cost_per_correct_answer": cost_per_correct,
+            "cost_per_sample_usd": round(total_cost_usd / len(runs), 8) if len(runs) > 0 and total_cost_usd else 0,
+            "accuracy_per_dollar": round((correct_count / len(runs)) / total_cost_usd, 4) if total_cost_usd and total_cost_usd > 0 and len(runs) > 0 else None,
             "provider": provider,
             "cost_source": cost_source,
         }
@@ -459,14 +527,20 @@ class MetricsService:
 
         arr = np.array(scores)
         unsupported_rate = float(np.mean(arr < 0.5))
+        mean_score = float(np.mean(arr))
         return {
-            "mean": float(np.mean(arr)),
+            "mean": mean_score,
+            "context_support_score": mean_score,
             "unsupported_rate": unsupported_rate,
-            "hallucination_rate": unsupported_rate,
+            "hallucination_rate": unsupported_rate,  # legacy alias
             "count": len(scores),
             "min": float(np.min(arr)),
             "max": float(np.max(arr)),
             "method": "hf_zero_shot_context_support_proxy",
+            "methodology_note": (
+                "Based on NLI proxy (bart-large-mnli). This measures estimated "
+                "context support, not validated factual accuracy."
+            ),
             "threshold": 0.5,
         }
 
@@ -485,6 +559,98 @@ class MetricsService:
         from app.services.robustness_scorer import compute_safety_score
 
         return compute_safety_score(classifications)
+
+    def _compute_retrieval_quality(self, runs: List[Run], experiment) -> Optional[dict]:
+        """
+        Compute retrieval quality metrics for RAG experiments.
+
+        Uses gold evidence metadata (evidence_source, gold_chunk_keywords) from
+        the dataset to compute:
+        - recall_at_k: fraction of examples where gold source appeared in retrieved chunks
+        - evidence_hit_rate: fraction where a retrieved chunk contains any gold keyword
+        - avg_top_score: average score of top-ranked retrieved chunk
+
+        Returns None for non-RAG experiments or when no gold evidence is available.
+        """
+        config = experiment.config if experiment and experiment.config else {}
+        if not config.get("rag"):
+            return None
+
+        # Load dataset to get gold evidence
+        dataset_name = config.get("dataset_name", "")
+        if not dataset_name:
+            return None
+
+        try:
+            from app.services.dataset_service import DatasetService
+            dataset = DatasetService.load_dataset(dataset_name)
+        except Exception:
+            return None
+
+        # Build gold evidence lookup
+        gold_evidence = {}
+        for item in dataset:
+            if "evidence_source" in item or "gold_chunk_keywords" in item:
+                gold_evidence[item["id"]] = {
+                    "evidence_source": item.get("evidence_source", ""),
+                    "gold_chunk_keywords": item.get("gold_chunk_keywords", []),
+                }
+
+        if not gold_evidence:
+            return {"status": "no_gold_evidence", "annotated_count": 0}
+
+        source_hits = 0
+        keyword_hits = 0
+        annotated_evaluated = 0
+        top_scores = []
+
+        for run in runs:
+            if run.example_id not in gold_evidence:
+                continue
+
+            gold = gold_evidence[run.example_id]
+            chunks_data = (run.retrieved_chunks or {}).get("chunks", [])
+            if not chunks_data:
+                annotated_evaluated += 1
+                continue
+
+            annotated_evaluated += 1
+
+            # Collect top score
+            scores_list = [c.get("score") for c in chunks_data if c.get("score") is not None]
+            if scores_list:
+                top_scores.append(max(scores_list))
+
+            # Check evidence source in chunk titles
+            gold_source_lower = gold["evidence_source"].lower()
+            if gold_source_lower and any(
+                gold_source_lower in (c.get("title", "") or "").lower()
+                for c in chunks_data
+            ):
+                source_hits += 1
+
+            # Check gold keywords in chunk text
+            gold_keywords = [kw.lower() for kw in gold.get("gold_chunk_keywords", [])]
+            if gold_keywords:
+                for chunk in chunks_data:
+                    chunk_text_lower = (chunk.get("text", "") or "").lower()
+                    if any(kw in chunk_text_lower for kw in gold_keywords):
+                        keyword_hits += 1
+                        break
+
+        if annotated_evaluated == 0:
+            return {"status": "no_annotated_runs", "annotated_count": len(gold_evidence)}
+
+        return {
+            "status": "computed",
+            "annotated_count": len(gold_evidence),
+            "evaluated_count": annotated_evaluated,
+            "recall_at_k": round(source_hits / annotated_evaluated, 4),
+            "evidence_hit_rate": round(keyword_hits / annotated_evaluated, 4),
+            "avg_top_score": round(float(np.mean(top_scores)), 4) if top_scores else None,
+            "source_hits": source_hits,
+            "keyword_hits": keyword_hits,
+        }
 
     # =========================================================================
     # P1 #9: Aggregate semantic similarity

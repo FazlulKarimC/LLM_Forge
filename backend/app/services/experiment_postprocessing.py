@@ -49,7 +49,21 @@ class ExperimentPostProcessor:
         grader_result = await self.db.execute(grader_query)
         grader_runs = grader_result.scalars().all()
 
+        # Load dataset examples and build metadata lookup by example_id
+        # so graders like EXPECTED_TOOLS can access per-example metadata
+        example_meta_by_id: dict[str, Any] = {}
+        try:
+            from app.services.dataset_service import DatasetService
+            dataset_name = experiment_response.config.dataset_name
+            if dataset_name:
+                examples = DatasetService.load(dataset_name)
+                example_meta_by_id = {e["id"]: e for e in examples}
+        except Exception:
+            pass  # Graceful degradation: graders that need metadata will SKIP
+
         for run in grader_runs:
+            # Attach transient metadata (not persisted, consumed in-session only)
+            setattr(run, "example_metadata", example_meta_by_id.get(run.example_id, {}))
             verdicts = [
                 grader_engine.grade_run(run, rule, reasoning, has_rag)
                 for rule in graders_config.rules

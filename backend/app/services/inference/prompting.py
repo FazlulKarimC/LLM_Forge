@@ -9,7 +9,7 @@ Prompt formatting utilities for different reasoning methods.
 """
 
 import re
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Tuple
 
 
 class NaivePromptTemplate:
@@ -61,6 +61,11 @@ class NaivePromptTemplate:
             return "[No response generated]"
         
         return cleaned
+
+    @staticmethod
+    def parse_response_with_method(response: str) -> Tuple[str, str]:
+        """Parse response and return (answer, parse_method)."""
+        return NaivePromptTemplate.parse_response(response), "naive_first_line"
 
 
 class CoTPromptTemplate:
@@ -171,6 +176,44 @@ class CoTPromptTemplate:
         first_line = text.split("\n")[0].strip()
         cleaned = CoTPromptTemplate._clean_answer(first_line)
         return cleaned if cleaned else "[No response generated]"
+
+    @staticmethod
+    def parse_response_with_method(response: str) -> Tuple[str, str]:
+        """
+        Extract the final answer and report which extraction method was used.
+
+        Returns:
+            (answer, parse_method) where parse_method is one of:
+            - "explicit_pattern": matched a regex like 'The answer is X'
+            - "last_sentence_fallback": no pattern matched, used last sentence
+            - "first_line_fallback": ultimate fallback to first line
+        """
+        if not response or not response.strip():
+            return "[No response generated]", "no_response"
+
+        text = response.strip()
+        text_for_matching = text if text.endswith(".") else text + "."
+
+        # Try each pattern in priority order
+        for pattern in CoTPromptTemplate.ANSWER_PATTERNS:
+            matches = re.findall(pattern, text_for_matching)
+            if matches:
+                answer = matches[-1].strip()
+                answer = CoTPromptTemplate._clean_answer(answer)
+                if answer:
+                    return answer, "explicit_pattern"
+
+        # Fallback: last non-empty sentence
+        sentences = re.split(r'[.!?]\s+', text)
+        for sentence in reversed(sentences):
+            cleaned = sentence.strip().rstrip(".!?").strip()
+            if cleaned and len(cleaned) > 1:
+                return CoTPromptTemplate._clean_answer(cleaned), "last_sentence_fallback"
+
+        # Ultimate fallback
+        first_line = text.split("\n")[0].strip()
+        cleaned = CoTPromptTemplate._clean_answer(first_line)
+        return (cleaned if cleaned else "[No response generated]"), "first_line_fallback"
     
     @staticmethod
     def _clean_answer(answer: str) -> str:
@@ -229,6 +272,11 @@ class RAGPromptTemplate:
         """Parse response — same as NaivePromptTemplate."""
         return NaivePromptTemplate.parse_response(response)
 
+    @staticmethod
+    def parse_response_with_method(response: str) -> Tuple[str, str]:
+        """Parse response and return (answer, parse_method)."""
+        return NaivePromptTemplate.parse_response(response), "rag_first_line"
+
 
 class ReActPromptTemplate:
     """
@@ -260,5 +308,25 @@ class ReActPromptTemplate:
         
         # Fallback to CoT-style parsing
         return CoTPromptTemplate.parse_response(text)
+
+    @staticmethod
+    def parse_response_with_method(response: str) -> Tuple[str, str]:
+        """
+        Extract the final answer from agent output with method tracking.
+        """
+        if not response or not response.strip():
+            return "[No response generated]", "no_response"
+
+        text = response.strip()
+
+        # Try Answer: pattern (ReAct format)
+        answer_match = re.search(r"Answer:\s*(.+?)(?:\n|$)", text, re.DOTALL)
+        if answer_match:
+            answer = answer_match.group(1).strip().rstrip(".,;:!?")
+            if answer:
+                return answer, "react_answer_pattern"
+
+        # Fallback to CoT-style parsing with method tracking
+        return CoTPromptTemplate.parse_response_with_method(text)
 
 

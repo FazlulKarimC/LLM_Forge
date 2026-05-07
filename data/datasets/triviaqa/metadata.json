@@ -1,0 +1,17 @@
+{
+    "display_name": "LlmForge Trivia Diagnostic (100)",
+    "internal_id": "trivia_qa",
+    "source": "custom_authored",
+    "size": 100,
+    "description": "Hand-curated single-hop factoid QA for regression testing and model comparison.",
+    "supported_conclusions": [
+        "Relative model comparison on factoid recall",
+        "Regression detection between experiment runs"
+    ],
+    "unsupported_conclusions": [
+        "Absolute benchmark performance claims",
+        "Generalization to full TriviaQA distribution (~95K examples)"
+    ],
+    "category": "factoid_qa",
+    "version": "1.0"
+}
