@@ -5,9 +5,12 @@ Abstract base class for LLM inference engines.
 All inference implementations must follow this interface.
 
 Supported Engines:
-- TransformersEngine: HuggingFace Transformers (local)
-- VLLMEngine: vLLM for optimized inference (TODO)
-- APIEngine: External API calls (TODO)
+- HFAPIEngine: HuggingFace Inference Providers API
+- OpenRouterEngine: OpenRouter (free models available)
+- GroqEngine: Groq (fast inference)
+- OpenAIEngine: Custom OpenAI-compatible endpoints
+- MockEngine: Deterministic mock for testing
+- ProviderRouter: Multi-provider routing with fallback
 """
 
 from abc import ABC, abstractmethod
@@ -57,7 +60,7 @@ class InferenceEngine(ABC):
     Abstract base class for inference engines.
     
     Defines the interface that all inference implementations must follow.
-    This allows swapping between local models, vLLM, and API-based inference.
+    This allows swapping between API-based providers and mock engines.
     """
     
     @abstractmethod
@@ -70,9 +73,6 @@ class InferenceEngine(ABC):
         
         Raises:
             ModelLoadError: If model cannot be loaded
-        
-        TODO (Iteration 1): Implement for Transformers
-        TODO (Iteration 2): Add GPU memory management
         """
         pass
     
@@ -91,9 +91,6 @@ class InferenceEngine(ABC):
         
         Returns:
             Generated text with metadata
-        
-        TODO (Iteration 1): Implement basic generation
-        TODO (Iteration 2): Add batching support
         """
         pass
     
@@ -115,18 +112,12 @@ class InferenceEngine(ABC):
         
         Returns:
             List of generation results
-        
-        TODO (Iteration 2): Implement batching
         """
         pass
     
     @abstractmethod
     def unload_model(self) -> None:
-        """
-        Unload model and free GPU memory.
-        
-        TODO (Iteration 2): Implement cleanup
-        """
+        """Unload model and free resources."""
         pass
     
     @property

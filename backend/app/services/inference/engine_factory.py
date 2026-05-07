@@ -6,6 +6,7 @@ import logging
 from typing import Optional, Tuple
 
 from app.core.config import settings
+from app.services.inference.base import InferenceEngine
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +68,7 @@ def create_inference_engine(
     custom_base_url: Optional[str] = None,
     custom_api_key: Optional[str] = None,
     default_engine: Optional[str] = None,
-) -> Tuple[object, str]:
+) -> Tuple[InferenceEngine, str]:
     """Create the configured inference engine and a human-readable engine label."""
     from app.services.inference.mock_engine import MockEngine
 
@@ -82,6 +83,7 @@ def create_inference_engine(
     if provider_value == "custom":
         from app.services.inference.openai_engine import OpenAIEngine
 
+        assert custom_base_url is not None  # guaranteed by guard above
         return OpenAIEngine(
             base_url=custom_base_url,
             api_key=custom_api_key,

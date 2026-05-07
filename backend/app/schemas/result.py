@@ -2,10 +2,6 @@
 Result Pydantic Schemas
 
 Schemas for experiment results and metrics.
-
-TODO (Iteration 1): Add basic metrics
-TODO (Iteration 2): Add percentile calculations
-TODO (Iteration 3): Add statistical comparison
 """
 
 from datetime import datetime
@@ -142,7 +138,6 @@ class ComparisonResponse(BaseModel):
     experiments: List[ExperimentComparison]
     comparison_metrics: Dict[str, List[float]]  # metric_name -> [values per experiment]
     
-    # TODO (Iteration 3): Add statistical significance
     # p_values: Optional[Dict[str, float]] = None
 
 

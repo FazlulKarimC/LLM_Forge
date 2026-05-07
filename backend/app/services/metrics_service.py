@@ -109,12 +109,13 @@ class MetricsService:
         # Compute completion quality from failure rate
         total_failures = failure_modes.get("total_failures", 0)
         failure_rate = total_failures / len(runs) if runs else 0
+        from app.schemas.experiment import CompletionQuality
         if failure_rate == 0:
-            completion_quality = "full"
+            completion_quality = CompletionQuality.FULL.value
         elif failure_rate <= 0.3:
-            completion_quality = "partial"
+            completion_quality = CompletionQuality.PARTIAL.value
         else:
-            completion_quality = "degraded"
+            completion_quality = CompletionQuality.DEGRADED.value
 
         # Generate natural language summary
         dataset_name = experiment.config.get("dataset_name", "unknown") if experiment and experiment.config else "unknown"
@@ -326,8 +327,7 @@ class MetricsService:
         
     def _compute_failure_modes(self, runs: List[Run]) -> dict:
         """Aggregate failure modes across runs."""
-        from collections import Counter
-        counts = Counter()
+        counts = collections.Counter()
         error_messages = []
         for r in runs:
             if r.failure_mode:

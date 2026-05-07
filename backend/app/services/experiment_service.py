@@ -1,4 +1,4 @@
-﻿"""
+"""
 Experiment Service
 
 Business logic for experiment management.
@@ -186,6 +186,48 @@ class ExperimentService:
             return self._to_response(experiment)
         return None
     
+    def _build_list_conditions(
+        self,
+        status: Optional[ExperimentStatus],
+        method: Optional[str],
+        model: Optional[str],
+        tag: Optional[str],
+    ) -> List[Any]:
+        """Build shared WHERE conditions for list and list_slim queries."""
+        conditions: List[Any] = [Experiment.deleted_at.is_(None)]
+        if status:
+            conditions.append(Experiment.status == status)
+        if method:
+            conditions.append(Experiment.method == method)
+        if model:
+            conditions.append(Experiment.model_name.ilike(f"%{model}%"))
+        if tag:
+            from sqlalchemy.dialects.postgresql import JSONB
+            conditions.append(Experiment.tags.cast(JSONB).contains([tag]))
+        return conditions
+
+    async def _paginated_experiments(
+        self,
+        conditions: list,
+        skip: int,
+        limit: int,
+    ):
+        """Execute count + paginated fetch for a set of WHERE conditions."""
+        count_query = select(func.count(Experiment.id)).where(and_(*conditions))
+        total_result = await self.db.execute(count_query)
+        total = total_result.scalar() or 0
+
+        query = (
+            select(Experiment)
+            .where(and_(*conditions))
+            .order_by(Experiment.created_at.desc())
+            .offset(skip)
+            .limit(limit)
+        )
+        result = await self.db.execute(query)
+        experiments = result.scalars().all()
+        return total, experiments
+
     async def list(
         self,
         status: Optional[ExperimentStatus] = None,
@@ -209,37 +251,8 @@ class ExperimentService:
         Returns:
             Paginated list of experiments
         """
-        # Build base query (exclude soft-deleted)
-        conditions = [Experiment.deleted_at.is_(None)]
-        
-        # Apply filters
-        if status:
-            conditions.append(Experiment.status == status)
-        if method:
-            conditions.append(Experiment.method == method)
-        if model:
-            conditions.append(Experiment.model_name.ilike(f"%{model}%"))
-        if tag:
-            # JSONB array containment - works on PostgreSQL
-            from sqlalchemy import cast, type_coerce
-            from sqlalchemy.dialects.postgresql import JSONB
-            conditions.append(Experiment.tags.cast(JSONB).contains([tag]))
-        
-        # Count total matching
-        count_query = select(func.count(Experiment.id)).where(and_(*conditions))
-        total_result = await self.db.execute(count_query)
-        total = total_result.scalar() or 0
-        
-        # Fetch paginated results
-        query = (
-            select(Experiment)
-            .where(and_(*conditions))
-            .order_by(Experiment.created_at.desc())
-            .offset(skip)
-            .limit(limit)
-        )
-        result = await self.db.execute(query)
-        experiments = result.scalars().all()
+        conditions = self._build_list_conditions(status, method, model, tag)
+        total, experiments = await self._paginated_experiments(conditions, skip, limit)
         
         return ExperimentListResponse(
             total=total,
@@ -258,31 +271,8 @@ class ExperimentService:
         limit: int = 20,
     ) -> ExperimentSlimListResponse:
         """List experiments as slim list items (no full config, run_manifest, etc.)."""
-        conditions = [Experiment.deleted_at.is_(None)]
-
-        if status:
-            conditions.append(Experiment.status == status)
-        if method:
-            conditions.append(Experiment.method == method)
-        if model:
-            conditions.append(Experiment.model_name.ilike(f"%{model}%"))
-        if tag:
-            from sqlalchemy.dialects.postgresql import JSONB
-            conditions.append(Experiment.tags.cast(JSONB).contains([tag]))
-
-        count_query = select(func.count(Experiment.id)).where(and_(*conditions))
-        total_result = await self.db.execute(count_query)
-        total = total_result.scalar() or 0
-
-        query = (
-            select(Experiment)
-            .where(and_(*conditions))
-            .order_by(Experiment.created_at.desc())
-            .offset(skip)
-            .limit(limit)
-        )
-        result = await self.db.execute(query)
-        experiments = result.scalars().all()
+        conditions = self._build_list_conditions(status, method, model, tag)
+        total, experiments = await self._paginated_experiments(conditions, skip, limit)
 
         return ExperimentSlimListResponse(
             total=total,
@@ -469,8 +459,8 @@ class ExperimentService:
     async def _load_examples(self, experiment_response: ExperimentResponse, exp_obj: Optional[Experiment]):
         return await self._runtime_helper().load_examples(experiment_response, exp_obj)
 
-    def _load_cot_examples(self, reasoning_method: str):
-        return self._runtime_helper().load_cot_examples(reasoning_method)
+    async def _load_cot_examples(self, reasoning_method: str):
+        return await self._runtime_helper().load_cot_examples(reasoning_method)
 
     async def _resolve_prompt_templates(self, **kwargs):
         return await self._runtime_helper().resolve_prompt_templates(**kwargs)
@@ -563,7 +553,7 @@ class ExperimentService:
 
             # Step 4: Load dataset.
             examples = await self._load_examples(experiment_response, exp_obj)
-            cot_examples = self._load_cot_examples(reasoning_method)
+            cot_examples = await self._load_cot_examples(reasoning_method)
             use_robustness_scoring = self._uses_robustness_scoring(
                 experiment_response.config.dataset_name
             )

@@ -3,10 +3,6 @@ Run SQLAlchemy Model
 
 Stores individual LLM inference calls.
 Each experiment has many runs (one per dataset example).
-
-TODO (Iteration 1): Add basic logging
-TODO (Iteration 2): Add token counting
-TODO (Iteration 3): Add trace data for agents
 """
 
 import enum

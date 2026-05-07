@@ -3,10 +3,6 @@ Experiment Pydantic Schemas
 
 Defines the structure for experiment configurations.
 This is the heart of the config-driven approach.
-
-TODO (Iteration 1): Add basic validation
-TODO (Iteration 2): Add model-specific constraints
-TODO (Iteration 3): Add config versioning
 """
 
 from datetime import datetime
@@ -173,6 +169,17 @@ class OptimizationConfig(BaseModel):
         default=True,
         description="Time each execution phase"
     )
+
+
+class CompletionQuality(str, Enum):
+    """Completion quality tier derived from failure rate.
+
+    Used in metrics_service.py and rendered by the frontend
+    experiment-detail-sections.tsx CompletionQualityPanel.
+    """
+    FULL = "full"           # 0% failure rate
+    PARTIAL = "partial"     # <= 30% failure rate
+    DEGRADED = "degraded"   # > 30% failure rate
 
 
 class GraderType(str, Enum):

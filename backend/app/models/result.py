@@ -3,9 +3,6 @@ Result SQLAlchemy Model
 
 Stores aggregated metrics for completed experiments.
 
-TODO (Iteration 1): Add accuracy metrics
-TODO (Iteration 2): Add faithfulness and latency
-TODO (Iteration 3): Add cost proxy metrics
 """
 
 import uuid

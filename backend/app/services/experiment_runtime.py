@@ -5,13 +5,14 @@ just before an experiment attempt runs: engines, datasets, prompts, RAG, agent
 tools, generation settings, and effective execution provenance.
 """
 
+import asyncio
 import hashlib
 import json
 import logging
 import re
 import time as _time
 from pathlib import Path
-from typing import Optional
+from typing import Optional, cast
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -161,6 +162,7 @@ class ExperimentRuntimeBuilder:
         if use_rag:
             from app.services.rag_service import RAGPipeline, FaithfulnessScorer
 
+            assert rag_config is not None  # guaranteed by use_rag check above
             logger.info("[EXECUTE] Initializing RAG pipeline (method=%s)", rag_config.retrieval_method.value)
             rag_pipeline = RAGPipeline()
             rag_pipeline.load_knowledge_base(chunk_size=rag_config.chunk_size)
@@ -190,13 +192,13 @@ class ExperimentRuntimeBuilder:
         sample_ids_list = [example.get("id", str(index)) for index, example in enumerate(examples)]
 
         if exp_obj:
-            exp_obj.dataset_hash = dataset_hash
-            exp_obj.sample_ids = sample_ids_list
+            exp_obj.dataset_hash = dataset_hash  # type: ignore[assignment]
+            exp_obj.sample_ids = sample_ids_list  # type: ignore[assignment]
             await self.db.flush()
 
         return examples
 
-    def load_cot_examples(self, reasoning_method: str):
+    async def load_cot_examples(self, reasoning_method: str):
         """Load few-shot CoT examples when chain-of-thought prompting is enabled."""
         if reasoning_method != "cot":
             return None
@@ -206,8 +208,11 @@ class ExperimentRuntimeBuilder:
             logger.warning("[EXECUTE] CoT examples file not found (%s), using zero-shot CoT", cot_path)
             return None
 
-        with cot_path.open("r", encoding="utf-8") as handle:
-            cot_examples = json.load(handle)
+        def _read_cot():
+            with cot_path.open("r", encoding="utf-8") as handle:
+                return json.load(handle)
+
+        cot_examples = await asyncio.to_thread(_read_cot)
         logger.info("[EXECUTE] Loaded %s CoT few-shot examples", len(cot_examples))
         return cot_examples
 
@@ -249,17 +254,17 @@ class ExperimentRuntimeBuilder:
 
         if use_rag:
             rag_prompt_template = VersionedPromptTemplate(
-                prompt_version.template_text,
+                cast(str, prompt_version.template_text),
                 rag_prompt_template.parse_response,
             )
         elif reasoning_method == "cot":
             cot_prompt_template = VersionedPromptTemplate(
-                prompt_version.template_text,
+                cast(str, prompt_version.template_text),
                 cot_prompt_template.parse_response,
             )
         else:
             naive_prompt_template = VersionedPromptTemplate(
-                prompt_version.template_text,
+                cast(str, prompt_version.template_text),
                 naive_prompt_template.parse_response,
             )
 
@@ -323,17 +328,17 @@ class ExperimentRuntimeBuilder:
             routing_config=routing_config,
             configured_hyperparameters=configured_hp,
             effective_hyperparameters=effective_hp,
-            dataset_hash=exp_obj.dataset_hash,
-            sample_ids=exp_obj.sample_ids,
+            dataset_hash=cast(Optional[str], exp_obj.dataset_hash),
+            sample_ids=cast(Optional[list], exp_obj.sample_ids),
             sample_count=len(examples),
             execution_mode="batched" if use_batching and not use_rag else "sequential",
             rag_enabled=use_rag,
             optimization=opt_config,
         )
-        manifest = dict(exp_obj.run_manifest or experiment_response.run_manifest or {})
+        manifest = dict(cast(dict, exp_obj.run_manifest or experiment_response.run_manifest or {}))
         manifest["effective_execution"] = effective_execution
         manifest["effective_manifest_hash"] = effective_manifest_hash
-        exp_obj.run_manifest = manifest
+        exp_obj.run_manifest = manifest  # type: ignore[assignment]
         flag_modified(exp_obj, "run_manifest")
         await self.db.flush()
 

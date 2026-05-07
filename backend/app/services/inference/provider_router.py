@@ -32,6 +32,19 @@ from app.services.inference.provider_stats import ProviderStatsTracker, RoutingP
 
 logger = logging.getLogger(__name__)
 
+# Shared set of error substrings that indicate a transient provider failure
+# worth retrying on the next engine in the fallback chain.
+RETRYABLE_KEYWORDS: frozenset[str] = frozenset((
+    "429",
+    "rate limit",
+    "too many requests",
+    "connection",
+    "timeout",
+    "unavailable",
+    "temporarily overloaded",
+    "server error",
+    "5xx",
+))
 
 class ProviderRouter(InferenceEngine):
     """
@@ -105,20 +118,7 @@ class ProviderRouter(InferenceEngine):
             return False
 
         err_lower = (result.error_message or "").lower()
-        return any(
-            keyword in err_lower
-            for keyword in (
-                "429",
-                "rate limit",
-                "too many requests",
-                "connection",
-                "timeout",
-                "unavailable",
-                "temporarily overloaded",
-                "server error",
-                "5xx",
-            )
-        )
+        return any(keyword in err_lower for keyword in RETRYABLE_KEYWORDS)
 
     @staticmethod
     def _should_record_error(result: GenerationResult) -> bool:
@@ -226,7 +226,7 @@ class ProviderRouter(InferenceEngine):
                 self._record_result_stats(engine_name, result)
 
                 if self._is_retryable_result(result):
-                    last_error = result.error_message or result.failure_mode.value
+                    last_error = result.error_message or (result.failure_mode.value if result.failure_mode else "unknown")
                     if not self._strict_comparison and index < len(engines_to_try) - 1:
                         logger.warning(
                             "Provider %s returned retryable failure (%s), trying next provider...",
@@ -252,17 +252,7 @@ class ProviderRouter(InferenceEngine):
 
                 last_error = str(exc)
                 err_lower = str(exc).lower()
-                is_retryable = any(
-                    keyword in err_lower
-                    for keyword in (
-                        "429",
-                        "rate limit",
-                        "too many requests",
-                        "connection",
-                        "timeout",
-                        "unavailable",
-                    )
-                )
+                is_retryable = any(keyword in err_lower for keyword in RETRYABLE_KEYWORDS)
 
                 if not self._strict_comparison and is_retryable and index < len(engines_to_try) - 1:
                     logger.warning(

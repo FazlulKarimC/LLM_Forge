@@ -20,12 +20,31 @@ Grader taxonomy:
 import logging
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Protocol, Union, runtime_checkable
 from uuid import UUID
 
 from app.schemas.experiment import GraderRule, GraderType, GradersConfig
 
 logger = logging.getLogger(__name__)
+
+
+@runtime_checkable
+class GradableRun(Protocol):
+    """Structural interface for objects passable to GraderEngine.
+
+    Any object (Run ORM model, mock, dataclass) that exposes these
+    attributes satisfies the protocol — no inheritance needed.
+    """
+
+    id: Any
+    agent_trace: Optional[dict]
+    failure_mode: Any  # FailureMode enum or None
+    retrieved_chunks: Any  # dict | list | None
+    latency_ms: Optional[float]
+    tokens_input: Optional[int]
+    tokens_output: Optional[int]
+    score: Optional[float]
+    example_id: Optional[str]
 
 
 class VerdictStatus(str, Enum):
@@ -40,8 +59,8 @@ class GraderVerdict:
     """Result of a single grader applied to a single run."""
     grader_name: str
     status: VerdictStatus
-    value: Any = None
-    threshold: Any = None
+    value: Union[None, int, float, str, list, dict] = None
+    threshold: Union[None, int, float, str, list] = None
     reason: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
@@ -78,7 +97,7 @@ class GraderEngine:
 
     def grade_run(
         self,
-        run: Any,
+        run: GradableRun,
         rule: GraderRule,
         reasoning_method: str,
         has_rag: bool,
@@ -108,7 +127,7 @@ class GraderEngine:
 
     def grade_all_runs(
         self,
-        runs: List[Any],
+        runs: List[GradableRun],
         config: GradersConfig,
         reasoning_method: str,
         has_rag: bool,
@@ -134,7 +153,7 @@ class GraderEngine:
     # =========================================================================
 
     def _grade_max_turns(
-        self, run: Any, rule: GraderRule, reasoning_method: str, has_rag: bool,
+        self, run: GradableRun, rule: GraderRule, reasoning_method: str, has_rag: bool,
     ) -> GraderVerdict:
         """Agent didn't exceed N iterations. SKIP for non-ReAct."""
         if reasoning_method != "react":
@@ -166,7 +185,7 @@ class GraderEngine:
         )
 
     def _grade_required_tools(
-        self, run: Any, rule: GraderRule, reasoning_method: str, has_rag: bool,
+        self, run: GradableRun, rule: GraderRule, reasoning_method: str, has_rag: bool,
     ) -> GraderVerdict:
         """Agent used specific tools. SKIP for non-ReAct."""
         if reasoning_method != "react":
@@ -213,7 +232,7 @@ class GraderEngine:
         )
 
     def _grade_forbidden_failure_modes(
-        self, run: Any, rule: GraderRule, reasoning_method: str, has_rag: bool,
+        self, run: GradableRun, rule: GraderRule, reasoning_method: str, has_rag: bool,
     ) -> GraderVerdict:
         """No specific failure modes occurred. Never skipped."""
         forbidden = set(rule.params.get("modes", []))
@@ -244,7 +263,7 @@ class GraderEngine:
         )
 
     def _grade_must_use_retrieval_when_rag(
-        self, run: Any, rule: GraderRule, reasoning_method: str, has_rag: bool,
+        self, run: GradableRun, rule: GraderRule, reasoning_method: str, has_rag: bool,
     ) -> GraderVerdict:
         """RAG experiments retrieved context. SKIP on non-RAG."""
         if not has_rag:
@@ -279,7 +298,7 @@ class GraderEngine:
         )
 
     def _grade_latency_budget_ms(
-        self, run: Any, rule: GraderRule, reasoning_method: str, has_rag: bool,
+        self, run: GradableRun, rule: GraderRule, reasoning_method: str, has_rag: bool,
     ) -> GraderVerdict:
         """Per-sample latency under threshold. Never skipped."""
         max_latency = rule.params.get("max", 5000)
@@ -301,7 +320,7 @@ class GraderEngine:
         )
 
     def _grade_token_budget(
-        self, run: Any, rule: GraderRule, reasoning_method: str, has_rag: bool,
+        self, run: GradableRun, rule: GraderRule, reasoning_method: str, has_rag: bool,
     ) -> GraderVerdict:
         """Tokens within budget. Never skipped."""
         max_tokens = rule.params.get("max", 1500)
@@ -318,7 +337,7 @@ class GraderEngine:
         )
 
     def _grade_min_f1_score(
-        self, run: Any, rule: GraderRule, reasoning_method: str, has_rag: bool,
+        self, run: GradableRun, rule: GraderRule, reasoning_method: str, has_rag: bool,
     ) -> GraderVerdict:
         """F1 score above minimum. Never skipped."""
         min_score = rule.params.get("min", 0.5)
@@ -340,7 +359,7 @@ class GraderEngine:
         )
 
     def _grade_expected_tools(
-        self, run: Any, rule: GraderRule, reasoning_method: str, has_rag: bool,
+        self, run: GradableRun, rule: GraderRule, reasoning_method: str, has_rag: bool,
     ) -> GraderVerdict:
         """
         Check agent used the expected tools from dataset metadata.

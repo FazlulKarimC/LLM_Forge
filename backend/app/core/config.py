@@ -12,9 +12,6 @@ Environment Variables:
     ENVIRONMENT: development | staging | production
     CORS_ORIGINS: Comma-separated list of allowed CORS origins (e.g., "http://localhost:3000,https://example.com")
 
-TODO (Iteration 1): Add validation for required secrets
-TODO (Iteration 2): Add config for model loading preferences
-TODO (Iteration 3): Add feature flags system
 """
 
 from pathlib import Path
@@ -66,7 +63,6 @@ class Settings(BaseSettings):
     # ----- Database (NeonDB) -----
     DATABASE_URL: str = ""  # Required: postgresql://...
     
-    # TODO (Iteration 1): Add connection pool settings
     DB_POOL_SIZE: int = 5
     DB_MAX_OVERFLOW: int = 10
     

@@ -8,6 +8,7 @@ from uuid import UUID
 import numpy as np
 
 from app.schemas.experiment import ExperimentResponse
+from app.schemas.run_record import RunRecordDict, build_run_record
 
 logger = logging.getLogger(__name__)
 
@@ -267,28 +268,27 @@ class ExperimentRunExecutor:
             score_result["is_correct"] = False
             score_result["score"] = 0.0
 
-        return {
-            "example_id": item["id"],
-            "prompt": f"[Agent] {item['question']}",
-            "raw_output": agent_result.answer,
-            "expected_output": item["answer"],
-            "is_correct": score_result["is_correct"],
-            "score": score_result["score"],
-            "is_exact_match": score_result["is_exact_match"],
-            "is_substring_match": score_result["is_substring_match"],
-            "parsed_answer": parsed_answer,
-            "match_alias": score_result["match_alias"],
-            "tokens_input": agent_result.total_tokens_input,
-            "tokens_output": agent_result.total_tokens_output,
-            "latency_ms": agent_result.total_latency_ms,
-            "gpu_memory_mb": None,
-            "agent_trace": agent_result.trace_as_dict(),
-            "tool_calls": agent_result.tool_calls,
-            "failure_mode": agent_failure_mode,
-            "error_message": agent_error_message,
-            "grader_results": score_result["grader_results"],
-            "attempt": current_attempt,
-        }
+        return build_run_record(
+            example_id=item["id"],
+            attempt=current_attempt,
+            prompt=f"[Agent] {item['question']}",
+            raw_output=agent_result.answer,
+            expected_output=item["answer"],
+            is_correct=score_result["is_correct"],
+            score=score_result["score"],
+            is_exact_match=score_result["is_exact_match"],
+            is_substring_match=score_result["is_substring_match"],
+            parsed_answer=parsed_answer,
+            match_alias=score_result["match_alias"],
+            tokens_input=agent_result.total_tokens_input,
+            tokens_output=agent_result.total_tokens_output,
+            latency_ms=agent_result.total_latency_ms,
+            agent_trace=agent_result.trace_as_dict(),
+            tool_calls=agent_result.tool_calls,
+            failure_mode=agent_failure_mode,
+            error_message=agent_error_message,
+            grader_results=score_result["grader_results"],
+        )
 
     async def build_standard_run_record(
         self,
@@ -393,33 +393,33 @@ class ExperimentRunExecutor:
         ctx_relevance = self.score_context_relevance(item["question"], context_chunks, profiler)
         sem_sim = self.score_semantic_similarity(parsed_answer, item.get("answer"), profiler)
 
-        return {
-            "example_id": item["id"],
-            "prompt": prompt,
-            "raw_output": result.text,
-            "expected_output": item["answer"],
-            "is_correct": score_result["is_correct"],
-            "score": score_result["score"],
-            "is_exact_match": score_result["is_exact_match"],
-            "is_substring_match": score_result["is_substring_match"],
-            "parsed_answer": parsed_answer,
-            "match_alias": score_result["match_alias"],
-            "semantic_similarity": sem_sim,
-            "tokens_input": result.tokens_input,
-            "tokens_output": result.tokens_output,
-            "latency_ms": result.latency_ms,
-            "gpu_memory_mb": result.gpu_memory_mb,
-            "faithfulness_score": faithfulness,
-            "retrieved_chunks": retrieved_chunk_payload,
-            "context_relevance_score": ctx_relevance,
-            "served_provider": result.served_provider,
-            "routing_reason": result.routing_reason,
-            "cost_usd": result.cost_usd,
-            "failure_mode": result.failure_mode,
-            "error_message": result.error_message,
-            "grader_results": score_result["grader_results"],
-            "attempt": current_attempt,
-        }
+        return build_run_record(
+            example_id=item["id"],
+            attempt=current_attempt,
+            prompt=prompt,
+            raw_output=result.text,
+            expected_output=item["answer"],
+            is_correct=score_result["is_correct"],
+            score=score_result["score"],
+            is_exact_match=score_result["is_exact_match"],
+            is_substring_match=score_result["is_substring_match"],
+            parsed_answer=parsed_answer,
+            match_alias=score_result["match_alias"],
+            semantic_similarity=sem_sim,
+            tokens_input=result.tokens_input,
+            tokens_output=result.tokens_output,
+            latency_ms=result.latency_ms,
+            gpu_memory_mb=result.gpu_memory_mb,
+            faithfulness_score=faithfulness,
+            retrieved_chunks=retrieved_chunk_payload,
+            context_relevance_score=ctx_relevance,
+            served_provider=result.served_provider,
+            routing_reason=result.routing_reason,
+            cost_usd=result.cost_usd,
+            failure_mode=result.failure_mode,
+            error_message=result.error_message,
+            grader_results=score_result["grader_results"],
+        )
 
     async def flush_runs(self, run_service, experiment_id: UUID, runs_batch_data: List[dict[str, Any]], *, force: bool = False):
         """Flush buffered run rows to the database in consistent batch sizes."""
@@ -544,30 +544,30 @@ class ExperimentRunExecutor:
                     )
 
                 runs_batch_data.append(
-                    {
-                        "example_id": item["id"],
-                        "prompt": prompts[local_idx],
-                        "raw_output": result.text,
-                        "expected_output": item["answer"],
-                        "is_correct": score_result["is_correct"],
-                        "score": score_result["score"],
-                        "is_exact_match": score_result["is_exact_match"],
-                        "is_substring_match": score_result["is_substring_match"],
-                        "parsed_answer": parsed_answer,
-                        "run_metadata": {"parse_method": parse_method},
-                        "match_alias": score_result["match_alias"],
-                        "tokens_input": result.tokens_input,
-                        "tokens_output": result.tokens_output,
-                        "latency_ms": result.latency_ms,
-                        "gpu_memory_mb": result.gpu_memory_mb,
-                        "served_provider": result.served_provider,
-                        "routing_reason": result.routing_reason,
-                        "cost_usd": result.cost_usd,
-                        "failure_mode": result.failure_mode,
-                        "error_message": result.error_message,
-                        "grader_results": score_result["grader_results"],
-                        "attempt": current_attempt,
-                    }
+                    build_run_record(
+                        example_id=item["id"],
+                        attempt=current_attempt,
+                        prompt=prompts[local_idx],
+                        raw_output=result.text,
+                        expected_output=item["answer"],
+                        is_correct=score_result["is_correct"],
+                        score=score_result["score"],
+                        is_exact_match=score_result["is_exact_match"],
+                        is_substring_match=score_result["is_substring_match"],
+                        parsed_answer=parsed_answer,
+                        match_alias=score_result["match_alias"],
+                        tokens_input=result.tokens_input,
+                        tokens_output=result.tokens_output,
+                        latency_ms=result.latency_ms,
+                        gpu_memory_mb=result.gpu_memory_mb,
+                        served_provider=result.served_provider,
+                        routing_reason=result.routing_reason,
+                        cost_usd=result.cost_usd,
+                        failure_mode=result.failure_mode,
+                        error_message=result.error_message,
+                        grader_results=score_result["grader_results"],
+                        run_metadata={"parse_method": parse_method},
+                    )
                 )
 
             if runs_batch_data:

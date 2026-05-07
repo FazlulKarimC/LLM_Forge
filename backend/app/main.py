@@ -69,9 +69,6 @@ async def lifespan(app: FastAPI):
         - Cleanup GPU memory
         - Flush pending logs
     
-    TODO (Iteration 1): Implement database initialization
-    TODO (Iteration 2): Add model preloading with GPU memory management
-    TODO (Iteration 3): Add graceful shutdown with request draining
     """
     # Startup
     logger.info(f"Starting {settings.PROJECT_NAME} v{settings.VERSION} (env={settings.ENVIRONMENT})")

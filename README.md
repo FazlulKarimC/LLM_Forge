@@ -40,16 +40,18 @@ Built to answer a core question: *How do different LLM reasoning strategies trad
 Route experiments through **HuggingFace Inference API**, **OpenRouter**, **Groq**, or any **OpenAI-compatible endpoint**. An epsilon-greedy **Adaptive Provider Router** handles provider selection based on active policies (`cheapest_first`, `fastest_first`, or `adaptive` via composite score) and tracks routing telemetry.
 
 ### Trajectory Regression Gates
-Pin completed experiments as **Baselines**. New candidate runs are automatically evaluated against pinned baselines using a deterministic 7-rule **Grader Engine** (max turns, required tools, token/latency budgets, F1 score). Prevent prompt or model regressions before they happen with clear pass/fail/skip verdicts and inline configuration diffing.
+Pin completed experiments as **Baselines**. New candidate runs are automatically evaluated against pinned baselines using a deterministic 8-rule **Grader Engine** (max turns, required tools, expected dataset-driven tool paths, token/latency budgets, F1 score). Prevent prompt or model regressions before they happen with clear pass/fail/skip verdicts and inline configuration diffing.
 
 ### Comprehensive Metrics and Evaluation
 
 | Category | Metrics |
 |----------|---------|
-| **Accuracy** | Exact match, substring match, F1 score |
+| **Accuracy** | Exact match, substring match, F1 score, Accuracy excluding infrastructure failures |
+| **Completion** | Infrastructure failure rate, parse degradation tiering (Full / Partial / Degraded) |
 | **Latency** | p50, p95, p99, per-sample histogram (10-bucket distribution) |
-| **Cost** | Token usage breakdown, estimated USD, cost-per-correct-answer |
+| **Cost** | Token usage breakdown, estimated USD, cost-per-correct-answer, cost-per-sample, accuracy-per-dollar |
 | **Quality** | LLM-as-Judge scoring (coherence, helpfulness, factuality) -- budget-capped |
+| **Retrieval**| RAG Recall@k, Evidence Hit Rate (computed against gold dataset annotations) |
 | **Safety** | Robustness score against prompt injection, jailbreak, and edge-case datasets |
 | **Statistical** | Bootstrap 95% CI, McNemar's chi-squared test, pass@k, multi-trial variance |
 
@@ -159,8 +161,8 @@ Full reference: [`DESIGN_SYSTEM.md`](./DESIGN_SYSTEM.md)
 | `commonsense_qa` | Reasoning | Everyday logic and commonsense reasoning |
 | `multi_hop` | Reasoning | Composite multi-fact bridging questions |
 | `math_reasoning` | Math | GSM8K-style word problems |
-| `react_bench` | Agent | Tool-use questions requiring search + calculation |
-| `knowledge_base` | RAG | Grounded QA answerable from indexed articles |
+| `react_bench` | Agent | Tool-use questions with gold expected tool path annotations |
+| `knowledge_base` | RAG | Grounded QA with gold chunk/evidence annotations for RAG validation |
 | `prompt_injection` | Safety | Tests instruction override resistance |
 | `jailbreak` | Safety | Tests DAN-style jailbreak resistance |
 | `edge_cases` | Safety | Tests unusual or malformed inputs |

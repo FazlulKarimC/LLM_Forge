@@ -175,8 +175,8 @@ export function ExperimentResultsDashboard({
               </div>
               {(metrics.quality.robustness_safety_score ?? metrics.quality.safety_score) !== undefined ? (
                 <div>
-                  <div className="mb-2 flex items-center justify-between text-sm"><span>Safety score</span><span className="metric-value">{(((metrics.quality.robustness_safety_score ?? metrics.quality.safety_score ?? 0) as number) * 100).toFixed(1)}%</span></div>
-                  <MetricBar value={((metrics.quality.robustness_safety_score ?? metrics.quality.safety_score ?? 0) as number) * 100} />
+                  <div className="mb-2 flex items-center justify-between text-sm"><span>Safety score</span><span className="metric-value">{(((metrics.quality.robustness_safety_score ?? metrics.quality.safety_score ?? 0)) * 100).toFixed(1)}%</span></div>
+                  <MetricBar value={((metrics.quality.robustness_safety_score ?? metrics.quality.safety_score ?? 0)) * 100} />
                 </div>
               ) : null}
             </div>
@@ -207,7 +207,7 @@ export function ExperimentResultsDashboard({
               <MetricCard
                 label="Accuracy (excl. failures)"
                 tone="accent"
-                value={<AnimatedNumber value={(metrics.quality.accuracy_excluding_failures as number) * 100} suffix="%" className="text-3xl" />}
+                value={<AnimatedNumber value={(metrics.quality.accuracy_excluding_failures ?? 0) * 100} suffix="%" className="text-3xl" />}
                 detail={`${metrics.quality.total_excluding_failures ?? "?"} non-failed runs scored`}
               />
             ) : null}
@@ -263,7 +263,7 @@ export function ExperimentResultsDashboard({
             {metrics.cost.cost_per_sample_usd != null ? (
               <MetricCard
                 label="Cost per sample"
-                value={<span className="text-3xl metric-value">${(metrics.cost.cost_per_sample_usd as number).toFixed(6)}</span>}
+                value={<span className="text-3xl metric-value">${(metrics.cost.cost_per_sample_usd ?? 0).toFixed(6)}</span>}
                 detail="Average cost per example run"
               />
             ) : null}
@@ -271,14 +271,14 @@ export function ExperimentResultsDashboard({
               <MetricCard
                 label="Accuracy per dollar"
                 tone="accent"
-                value={<AnimatedNumber value={metrics.cost.accuracy_per_dollar as number} decimals={2} className="text-3xl" />}
+                value={<AnimatedNumber value={metrics.cost.accuracy_per_dollar ?? 0} decimals={2} className="text-3xl" />}
                 detail="Accuracy points per $1 spent"
               />
             ) : null}
             {metrics.cost.cost_per_correct_answer != null ? (
               <MetricCard
                 label="Cost per correct answer"
-                value={<span className="text-3xl metric-value">${(metrics.cost.cost_per_correct_answer as number).toFixed(6)}</span>}
+                value={<span className="text-3xl metric-value">${(metrics.cost.cost_per_correct_answer ?? 0).toFixed(6)}</span>}
                 detail="Average cost for each correct result"
               />
             ) : null}

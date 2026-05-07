@@ -27,7 +27,7 @@ export interface OptimizationConfig {
 
 export interface GraderRule {
     name: string;
-    type: 'max_turns' | 'required_tools' | 'forbidden_failure_modes' | 'must_use_retrieval_when_rag' | 'latency_budget_ms' | 'token_budget' | 'min_f1_score';
+    type: 'max_turns' | 'required_tools' | 'forbidden_failure_modes' | 'must_use_retrieval_when_rag' | 'latency_budget_ms' | 'token_budget' | 'min_f1_score' | 'expected_tools';
     params?: Record<string, unknown>;
 }
 

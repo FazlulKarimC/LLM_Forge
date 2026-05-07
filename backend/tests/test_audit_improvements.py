@@ -337,6 +337,7 @@ class TestExpectedToolsGrader:
         rule = GraderRule(name="tool_check", type=GraderType.EXPECTED_TOOLS, params={})
         verdict = engine.grade_run(run, rule, "react", False)
         assert verdict.status == VerdictStatus.FAIL
+        assert isinstance(verdict.value, dict)
         assert verdict.value["hit_rate"] == 0.5
 
 # ─── Judge Seed Determinism ─────────────────────────────────────────────────
@@ -514,7 +515,8 @@ class TestRunMetadataColumn:
         # Ensure parse_method is NOT a top-level key in batch data
         assert '"parse_method": parse_method,' not in source, \
             "parse_method should be inside run_metadata, not a top-level key"
-        assert '"run_metadata": {"parse_method": parse_method}' in source
+        # Should be passed via build_run_record's run_metadata kwarg
+        assert 'run_metadata={"parse_method": parse_method}' in source
 
 
 # ─── P1 Wiring: Metrics API response ───────────────────────────────────────

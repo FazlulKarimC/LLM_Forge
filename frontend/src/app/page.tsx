@@ -54,32 +54,24 @@ const FRAGMENT_SRC = `
   }
 `;
 
-/**
- * Parse a CSS color value (oklch, hex, rgb) into [r, g, b] floats 0..1.
- * Falls back to a neutral gray on failure.
- */
-function cssColorToGL(cssValue: string): [number, number, number] {
-  if (typeof document === "undefined") return [0.5, 0.5, 0.5];
-  const el = document.createElement("div");
-  el.style.color = cssValue;
-  el.style.display = "none";
-  document.body.appendChild(el);
-  const computed = getComputedStyle(el).color;
-  document.body.removeChild(el);
-  const m = computed.match(/[\d.]+/g);
-  if (!m || m.length < 3) return [0.5, 0.5, 0.5];
-  return [parseFloat(m[0]) / 255, parseFloat(m[1]) / 255, parseFloat(m[2]) / 255];
-}
-
 function getThemeColors() {
-  const style = getComputedStyle(document.documentElement);
-  const primary = style.getPropertyValue("--primary").trim();
-  const accent = style.getPropertyValue("--accent").trim();
-  const bg = style.getPropertyValue("--background").trim();
+  if (typeof window === "undefined") {
+    return { colorA: [0.851, 0.549, 0.337] as [number, number, number], colorB: [0.337, 0.635, 0.620] as [number, number, number], bg: [0.035, 0.035, 0.043] as [number, number, number] };
+  }
+
+  let isLight = false;
+  try {
+    isLight = JSON.parse(window.localStorage.getItem("llmforge.theme.light") ?? "false");
+  } catch {
+    // ignore
+  }
+
   return {
-    colorA: cssColorToGL(primary || "oklch(0.79 0.09 84)"),
-    colorB: cssColorToGL(accent || "oklch(0.74 0.08 182)"),
-    bg: cssColorToGL(bg || "oklch(0.145 0.008 255)"),
+    colorA: [0.851, 0.549, 0.337] as [number, number, number], // Primary
+    colorB: [0.337, 0.635, 0.620] as [number, number, number], // Accent
+    bg: isLight 
+      ? [0.988, 0.988, 0.992] as [number, number, number]  // Light background
+      : [0.035, 0.035, 0.043] as [number, number, number], // Dark background
   };
 }
 
@@ -167,9 +159,7 @@ function useShader(canvasRef: React.RefObject<HTMLCanvasElement | null>) {
       cancelAnimationFrame(frameId);
       observer.disconnect();
       window.removeEventListener("resize", resize);
-      gl.getExtension("WEBGL_lose_context")?.loseContext();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 }
 
