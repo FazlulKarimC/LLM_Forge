@@ -1,4 +1,5 @@
 import * as Sentry from "@sentry/nextjs";
+import { getContextHeaders } from "@/lib/request-context";
 
 export class ApiError extends Error {
     public statusCode: number;
@@ -162,6 +163,8 @@ export async function fetchWithHandling(
         maxRetries = safeMethod ? SAFE_METHOD_MAX_RETRIES : UNSAFE_METHOD_MAX_RETRIES,
     } = config;
     const externalSignal = options.signal;
+    // Retried requests keep the original identity and project.
+    const contextHeaders = url.startsWith(`${API_BASE_URL}/`) ? await getContextHeaders() : {};
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
         const start = Date.now();
@@ -175,6 +178,7 @@ export async function fetchWithHandling(
             }
 
             const headers = new Headers(options.headers);
+            for (const [name, value] of Object.entries(contextHeaders)) headers.set(name, value);
             const hasBody = options.body !== undefined && options.body !== null;
             if (hasBody && !headers.has("Content-Type") && !(options.body instanceof FormData)) {
                 headers.set("Content-Type", "application/json");

@@ -26,6 +26,8 @@ class Experiment(Base):
     """
     __tablename__ = "experiments"
 
+    project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True)
+
     # Primary key
     id = Column(
         UUID(as_uuid=True),

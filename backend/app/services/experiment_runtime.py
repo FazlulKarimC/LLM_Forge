@@ -28,8 +28,9 @@ logger = logging.getLogger(__name__)
 class VersionedPromptTemplate:
     """Adapter that executes an immutable PromptVersion template."""
 
-    def __init__(self, template_text: str, parser):
+    def __init__(self, template_text: str, parser, template_format: str = "fstring"):
         self.template_text = template_text
+        self.template_format = template_format
         self._parser = parser
 
     @staticmethod
@@ -50,19 +51,18 @@ class VersionedPromptTemplate:
         cot_examples = self._format_cot_examples(extra) if isinstance(extra, list) and not context else ""
         values = {
             "question": question,
+            "query": question,
             "input": question,
             "context": context,
             "context_chunks": context,
             "cot_examples": cot_examples,
             "examples": cot_examples,
         }
-        try:
-            return self.template_text.format(**values)
-        except KeyError as exc:
-            placeholder = exc.args[0]
-            raise ValueError(
-                f"PromptVersion template references unsupported placeholder {{{placeholder}}}"
-            ) from exc
+        from app.services.prompt_templates import compile_template, template_variables
+        for placeholder in template_variables(self.template_text, self.template_format):
+            if placeholder not in values:
+                raise ValueError(f"PromptVersion template references unsupported placeholder {{{placeholder}}}")
+        return compile_template(self.template_text, values, self.template_format)
 
     def parse_response(self, response: str) -> str:
         return self._parser(response)
@@ -256,16 +256,19 @@ class ExperimentRuntimeBuilder:
             rag_prompt_template = VersionedPromptTemplate(
                 cast(str, prompt_version.template_text),
                 rag_prompt_template.parse_response,
+                getattr(prompt_version, "template_format", "fstring") or "fstring",
             )
         elif reasoning_method == "cot":
             cot_prompt_template = VersionedPromptTemplate(
                 cast(str, prompt_version.template_text),
                 cot_prompt_template.parse_response,
+                getattr(prompt_version, "template_format", "fstring") or "fstring",
             )
         else:
             naive_prompt_template = VersionedPromptTemplate(
                 cast(str, prompt_version.template_text),
                 naive_prompt_template.parse_response,
+                getattr(prompt_version, "template_format", "fstring") or "fstring",
             )
 
         return naive_prompt_template, cot_prompt_template, rag_prompt_template

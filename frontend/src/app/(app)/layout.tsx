@@ -1,4 +1,6 @@
 import { AppShell } from "@/components/app-shell";
+import { AuthSetup } from "@/components/auth-setup";
+import { WorkspaceProvider } from "@/components/workspace-provider";
 
 /**
  * (app) route-group layout — wraps all dashboard and experiment routes
@@ -10,7 +12,6 @@ export default function AppLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  return (
-    <AppShell>{children}</AppShell>
-  );
+  if (!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || !process.env.CLERK_SECRET_KEY) return <AuthSetup />;
+  return <WorkspaceProvider><AppShell>{children}</AppShell></WorkspaceProvider>;
 }

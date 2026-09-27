@@ -22,6 +22,9 @@ import {
 
 import { Keycap } from "@/components/ui/primitives";
 import { cn } from "@/lib/utils";
+import { UserButton } from "@clerk/nextjs";
+import { WorkspaceSwitcher } from "@/components/workspace-provider";
+import { FileText, Database, Settings } from "lucide-react";
 
 type NavItem = {
   href: string;
@@ -31,6 +34,10 @@ type NavItem = {
 };
 
 const navItems: NavItem[] = [
+  { href: "/prompts", label: "Prompts", icon: FileText, match: (p) => p.startsWith("/prompts") },
+  { href: "/datasets", label: "Datasets", icon: Database, match: (p) => p.startsWith("/datasets") },
+  { href: "/evaluations", label: "Evaluations", icon: FlaskConical, match: (p) => p.startsWith("/evaluations") },
+  { href: "/settings", label: "Settings", icon: Settings, match: (p) => p.startsWith("/settings") },
   {
     href: "/dashboard",
     label: "Overview",
@@ -39,7 +46,7 @@ const navItems: NavItem[] = [
   },
   {
     href: "/experiments",
-    label: "Experiments",
+    label: "Benchmarks",
     icon: FlaskConical,
     match: (pathname) =>
       pathname === "/experiments" ||
@@ -201,7 +208,7 @@ function CommandPalette({
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname() ?? "/";
-  const isAppRoute = pathname.startsWith("/dashboard") || pathname.startsWith("/experiments");
+  const isAppRoute = true;
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [collapsed, setCollapsed] = usePersistentState("llmforge.sidebar.collapsed", false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
@@ -344,6 +351,8 @@ export function AppShell({ children }: { children: ReactNode }) {
         <div className="min-w-0 overflow-y-auto">
           <header className="sticky top-0 z-40 border-b border-(--border) bg-[color-mix(in_oklab,var(--background)_78%,transparent)] backdrop-blur-xl">
             <div className="page-width flex flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-6">
+              <WorkspaceSwitcher />
+              <UserButton />
               <div className="flex shrink-0 items-center gap-2">
                 <button
                   type="button"

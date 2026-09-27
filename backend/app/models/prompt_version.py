@@ -10,7 +10,7 @@ import hashlib
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from sqlalchemy import Column, String, Text, Integer, ForeignKey, DateTime
+from sqlalchemy import Column, String, Text, Integer, ForeignKey, DateTime, UniqueConstraint, CheckConstraint
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 
 from app.core.database import Base
@@ -24,6 +24,15 @@ class PromptVersion(Base):
     Versions are linked via parent_id to form a history chain.
     """
     __tablename__ = "prompt_versions"
+    __table_args__ = (
+        UniqueConstraint("prompt_id", "version", name="uq_prompt_version_number"),
+        CheckConstraint("template_format IN ('mustache', 'fstring')", name="ck_prompt_template_format"),
+    )
+
+    prompt_id = Column(PG_UUID(as_uuid=True), ForeignKey("prompts.id", ondelete="CASCADE"), nullable=False, index=True)
+    template_format = Column(String(16), nullable=False, default="fstring")
+
+    project_id = Column(PG_UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True)
 
     id = Column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
     name = Column(String(255), nullable=False, index=True)

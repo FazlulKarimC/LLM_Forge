@@ -14,6 +14,8 @@ from unittest.mock import AsyncMock, patch, MagicMock
 from app.main import app
 from app.core.config import settings
 
+pytestmark = pytest.mark.usefixtures("legacy_route_identity")
+
 
 @pytest.fixture
 def client():

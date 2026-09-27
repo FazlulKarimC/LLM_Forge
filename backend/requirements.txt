@@ -7,6 +7,7 @@ fastapi>=0.109.0
 uvicorn[standard]>=0.27.0
 pydantic>=2.5.0
 pydantic-settings>=2.1.0
+PyJWT[crypto]>=2.10,<3
 
 # --- Database ---
 sqlalchemy[asyncio]>=2.0.25
@@ -27,6 +28,7 @@ httpx>=0.26.0
 requests>=2.31.0
 tenacity>=8.2.0
 typing-extensions>=4.8.0
+regex>=2024.11.6
 
 # --- Background Tasks (RQ + Upstash Redis) ---
 rq>=1.16.0

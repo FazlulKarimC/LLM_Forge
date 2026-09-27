@@ -45,6 +45,7 @@ data/processed/
 .pytest_cache/
 .coverage
 htmlcov/
+artifacts/
 
 # Python Virtual Environment
 venv/

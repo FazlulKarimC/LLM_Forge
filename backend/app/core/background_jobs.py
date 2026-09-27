@@ -25,10 +25,11 @@ async def _cleanup_expired_jobs(session) -> None:
     )
 
 
-async def create_job(kind: str, metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+async def create_job(kind: str, metadata: Optional[Dict[str, Any]] = None, *, project_id=None) -> Dict[str, Any]:
     async with async_session_maker() as session:
         await _cleanup_expired_jobs(session)
         job = BackgroundJobRecord(
+            project_id=project_id,
             job_id=uuid4().hex,
             kind=kind,
             status="queued",
@@ -75,12 +76,13 @@ async def mark_job_failed(job_id: str, error: str) -> Optional[Dict[str, Any]]:
     return await update_job(job_id, status="failed", error=error)
 
 
-async def get_job(job_id: str) -> Optional[Dict[str, Any]]:
+async def get_job(job_id: str, *, project_id=None) -> Optional[Dict[str, Any]]:
     async with async_session_maker() as session:
         await _cleanup_expired_jobs(session)
         await session.commit()
-        result = await session.execute(
-            select(BackgroundJobRecord).where(BackgroundJobRecord.job_id == job_id)
-        )
+        query = select(BackgroundJobRecord).where(BackgroundJobRecord.job_id == job_id)
+        if project_id is not None:
+            query = query.where(BackgroundJobRecord.project_id == project_id)
+        result = await session.execute(query)
         job = result.scalar_one_or_none()
         return job.to_payload() if job is not None else None

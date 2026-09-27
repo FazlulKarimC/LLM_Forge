@@ -65,6 +65,12 @@ class Settings(BaseSettings):
     
     DB_POOL_SIZE: int = 5
     DB_MAX_OVERFLOW: int = 10
+
+    # Clerk session verification. No development authentication bypass.
+    CLERK_ISSUER_URL: str = ""
+    CLERK_AUTHORIZED_PARTIES: str = "http://localhost:3000"
+    CLERK_AUDIENCE: str = ""
+    CLERK_JWT_PUBLIC_KEY: str = ""  # Optional PEM for networkless verification
     
     # ----- Vector Database (Qdrant) -----
     QDRANT_URL: str = "http://localhost:6333"

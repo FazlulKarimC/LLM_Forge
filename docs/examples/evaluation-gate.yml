@@ -1,0 +1,41 @@
+# Copy to .github/workflows/evaluation-gate.yml in an application using LLMForge.
+# Use a reachable persistent backend, an evaluation-scoped key, and existing
+# Echo demo prompt v1 / Greetings dataset v1 from the Phase 3 walkthrough.
+name: Prompt contract gate
+on:
+  workflow_dispatch:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  evaluate:
+    # Fork PRs cannot read repository secrets. Test those locally instead.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/checkout@v4
+        with:
+          repository: FazlulKarimC/LLM_Forge
+          path: .llmforge
+          # For reproducible CI, add ref: <your verified LLMForge commit SHA>.
+      - run: python -m pip install ./.llmforge/sdk/python
+      - name: Evaluate pinned prompt contract
+        env:
+          LLMFORGE_URL: ${{ vars.LLMFORGE_URL }}
+          LLMFORGE_API_KEY: ${{ secrets.LLMFORGE_API_KEY }}
+        run: >-
+          python -m llmforge evaluate
+          --prompt "Echo demo" --version 1
+          --dataset Greetings --dataset-version 1
+          --min-pass-rate 1 --timeout 180
+          --output artifacts/evaluation.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: evaluation-results
+          path: artifacts/evaluation.json
+          if-no-files-found: ignore

@@ -119,6 +119,7 @@ class RegressionService:
         if experiment.baseline_id:
             query = select(Experiment).where(
                 Experiment.id == experiment.baseline_id,
+                Experiment.project_id == experiment.project_id,
                 Experiment.deleted_at.is_(None),
             )
             result = await self.db.execute(query)
@@ -128,6 +129,7 @@ class RegressionService:
         
         base_conditions = [
             Experiment.is_baseline == True,
+            Experiment.project_id == experiment.project_id,
             Experiment.deleted_at.is_(None),
             Experiment.dataset_name == experiment.dataset_name,
             Experiment.model_name == experiment.model_name,
@@ -165,6 +167,8 @@ class RegressionService:
         
         if not candidate_exp or not baseline_exp:
             raise ValueError("Both experiments must exist for regression check")
+        if candidate_exp.project_id != baseline_exp.project_id:
+            raise ValueError("Both experiments must belong to the same project")
         
         # Determine attempts
         baseline_attempt = baseline_exp.pinned_attempt or baseline_exp.current_attempt
@@ -312,6 +316,7 @@ class RegressionService:
         # Unpin existing baselines for the same lineage
         existing_query = select(Experiment).where(
             Experiment.is_baseline == True,
+            Experiment.project_id == experiment.project_id,
             Experiment.dataset_name == experiment.dataset_name,
             Experiment.model_name == experiment.model_name,
             Experiment.deleted_at.is_(None),

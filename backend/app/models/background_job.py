@@ -7,7 +7,7 @@ This keeps pollable jobs durable across restarts on free-tier hosting.
 
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, JSON, String, Text
+from sqlalchemy import DateTime, ForeignKey, JSON, String, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -17,6 +17,8 @@ class BackgroundJobRecord(Base):
     """Durable background job state persisted in the primary database."""
 
     __tablename__ = "background_jobs"
+
+    project_id = mapped_column(Uuid, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True)
 
     job_id: Mapped[str] = mapped_column(String(32), primary_key=True)
     kind: Mapped[str] = mapped_column(String(64), nullable=False, index=True)

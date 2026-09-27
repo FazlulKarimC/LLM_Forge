@@ -11,12 +11,17 @@ This module initializes the FastAPI application with:
 import logging
 import logging.config
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.api import experiments, results, health
 from app.api import prompts as prompts_api
+from app.api import workspaces
+from app.api import prompt_library, project_keys, sdk_prompts
+from app.api import datasets, evaluations
+from app.api import sdk_evaluations
+from app.core.tenancy import get_project_context
 from app.core.middleware import RequestContextMiddleware
 from app.core.custom_exceptions import AppException
 from fastapi.exceptions import RequestValidationError
@@ -92,68 +97,7 @@ async def lifespan(app: FastAPI):
 
     logger.info(f"CORS allowed origins: {settings.cors_origins_list}")
 
-    # ── Startup recovery: reset stuck experiments ──
-    # If the server was killed (e.g. HF Spaces sleep/restart) while experiments
-    # were running, they stay stuck in QUEUED/RUNNING forever. Reset them to FAILED.
-    try:
-        from app.core.database import async_session_maker
-        from sqlalchemy import update, or_
-        from app.models.experiment import Experiment
-        from app.schemas.experiment import ExperimentStatus
-
-        async with async_session_maker() as session:
-            result = await session.execute(
-                update(Experiment)
-                .where(
-                    Experiment.deleted_at.is_(None),
-                    or_(
-                        Experiment.status == ExperimentStatus.QUEUED,
-                        Experiment.status == ExperimentStatus.RUNNING
-                    )
-                )
-                .values(
-                    status=ExperimentStatus.FAILED,
-                    error_message="Interrupted by server restart"
-                )
-            )
-            await session.commit()
-            if result.rowcount > 0:
-                logger.warning("Reset %d stuck experiments to FAILED on startup", result.rowcount)
-    except Exception as e:
-        logger.error("Failed to reset stuck experiments on startup: %s", e)
-
-    # Clean up stale worker heartbeats
-    try:
-        from app.core.database import async_session_maker as _session_maker2
-        from app.core.worker_heartbeat import cleanup_stale_worker_heartbeats
-
-        async with _session_maker2() as session:
-            deleted = await cleanup_stale_worker_heartbeats(session)
-            if deleted:
-                logger.info("Cleaned up %d stale worker heartbeats on startup", deleted)
-    except Exception as e:
-        logger.error("Failed to clean up stale worker heartbeats: %s", e)
-
-    try:
-        from app.core.database import async_session_maker
-        from sqlalchemy import update
-        from app.models.background_job import BackgroundJobRecord
-
-        async with async_session_maker() as session:
-            job_result = await session.execute(
-                update(BackgroundJobRecord)
-                .where(BackgroundJobRecord.status.in_(("queued", "running")))
-                .values(
-                    status="failed",
-                    error="Interrupted by server restart"
-                )
-            )
-            await session.commit()
-            if job_result.rowcount > 0:
-                logger.warning("Reset %d interrupted background jobs to FAILED on startup", job_result.rowcount)
-    except Exception as e:
-        logger.error("Failed to reset interrupted background jobs on startup: %s", e)
-
+    # Startup must not mutate work owned by another API/worker instance.
     yield
 
     # Shutdown
@@ -196,23 +140,33 @@ def create_application() -> FastAPI:
     app.add_exception_handler(Exception, global_exception_handler)
     
     # Register routers
+    app.include_router(sdk_evaluations.router, prefix=f"{settings.API_V1_PREFIX}/sdk/evaluations")
+    app.include_router(datasets.router, prefix=f"{settings.API_V1_PREFIX}/datasets", dependencies=[Depends(get_project_context)])
+    app.include_router(evaluations.router, prefix=f"{settings.API_V1_PREFIX}/evaluations", dependencies=[Depends(get_project_context)])
+    app.include_router(prompt_library.router, prefix=f"{settings.API_V1_PREFIX}/prompt-library", dependencies=[Depends(get_project_context)])
+    app.include_router(project_keys.router, prefix=f"{settings.API_V1_PREFIX}/project-keys", dependencies=[Depends(get_project_context)])
+    app.include_router(sdk_prompts.router, prefix=f"{settings.API_V1_PREFIX}/sdk/prompts")
     app.include_router(health.router, tags=["Health"])
     app.include_router(
         experiments.router,
         prefix=f"{settings.API_V1_PREFIX}/experiments",
         tags=["Experiments"],
+        dependencies=[Depends(get_project_context)],
     )
     app.include_router(
         results.router,
         prefix=f"{settings.API_V1_PREFIX}/results",
         tags=["Results"],
+        dependencies=[Depends(get_project_context)],
     )
     app.include_router(
         prompts_api.router,
         prefix=f"{settings.API_V1_PREFIX}/prompts",
         tags=["Prompts"],
+        dependencies=[Depends(get_project_context)],
     )
     
+    app.include_router(workspaces.router, prefix=f"{settings.API_V1_PREFIX}/workspaces")
     return app
 
 

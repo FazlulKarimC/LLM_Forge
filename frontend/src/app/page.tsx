@@ -160,7 +160,7 @@ function useShader(canvasRef: React.RefObject<HTMLCanvasElement | null>) {
       observer.disconnect();
       window.removeEventListener("resize", resize);
     };
-  }, []);
+  }, [canvasRef]);
 }
 
 /* ─── animation variants ─── */
@@ -185,28 +185,28 @@ const wordPull = {
   }),
 };
 
-const headlineWords = ["Run,", "compare,", "and", "optimize", "LLM", "experiments."];
+const headlineWords = ["Version,", "test,", "and", "release", "better", "prompts."];
 
 const features = [
   {
     icon: LayoutDashboard,
-    title: "Operational dashboard",
-    description: "Experiment status, throughput, latency, and failure analysis — all in one dense, keyboard-navigable view.",
+    title: "Versioned prompt releases",
+    description: "Save immutable prompt versions, test a candidate in the playground, and promote it to staging or production.",
   },
   {
     icon: GitCompareArrows,
-    title: "Side-by-side comparison",
-    description: "Accuracy, statistical significance, disagreement cases, and output diffs between any two runs.",
+    title: "Reproducible evaluations",
+    description: "Import fixed test cases, check outputs with assertions or a rubric judge, and compare prompt versions case by case.",
   },
   {
     icon: ShieldCheck,
-    title: "Multi-method evaluation",
-    description: "Benchmark Naive, Chain-of-Thought, ReAct, and RAG pipelines against the same dataset in one workspace.",
+    title: "Python SDK and CI gates",
+    description: "Fetch released prompts in your application, submit its checks, and fail CI when a prompt breaks your quality threshold.",
   },
   {
     icon: TimerReset,
-    title: "Cost and latency tracking",
-    description: "Wall time, token usage, caching efficiency, and per-sample cost alongside every quality metric.",
+    title: "A demo without model credits",
+    description: "Walk through prompt regressions using an explicit echo mode, then bring a provider key for live generation and judging.",
   },
 ];
 
@@ -225,10 +225,11 @@ export default function LandingPage() {
             </div>
             <div className="min-w-0">
               <div className="truncate text-sm font-semibold uppercase tracking-[0.18em] text-(--muted-foreground)">LLMForge</div>
-              <div className="truncate text-lg font-semibold tracking-[-0.04em]">Evaluation Console</div>
+              <div className="truncate text-lg font-semibold tracking-[-0.04em]">Prompt & Evaluation Workspace</div>
             </div>
           </Link>
           <div className="flex shrink-0 items-center gap-2">
+            <Link href="/docs" className="btn-ghost">Docs</Link>
             <a href="https://github.com/FazlulKarimC/LLM_Forge" target="_blank" rel="noreferrer" className="btn-ghost hidden sm:inline-flex">
               Repository
             </a>
@@ -267,7 +268,7 @@ export default function LandingPage() {
               className="inline-flex items-center gap-2 page-eyebrow"
             >
               <Command className="size-3.5" />
-              LLM Evaluation Platform
+              From prompt draft to tested release
             </motion.div>
 
             {/* headline — word-by-word animated */}
@@ -281,7 +282,7 @@ export default function LandingPage() {
                   variants={wordPull}
                   className="inline-block mr-[0.28em]"
                   style={
-                    word === "optimize" || word === "LLM"
+                    word === "release" || word === "prompts."
                       ? { color: "color-mix(in oklab, var(--primary) 90%, white 10%)" }
                       : undefined
                   }
@@ -299,9 +300,9 @@ export default function LandingPage() {
               variants={fadeUp}
               className="mx-auto max-w-2xl text-lg leading-8 text-(--muted-foreground)"
             >
-              Configure reasoning methods, run side-by-side A/B comparisons,
-              inspect statistical significance, and track latency and token cost
-              — all from one console.
+              Catch prompt regressions before they reach your application.
+              Develop a prompt, evaluate it against saved test cases,
+              and fetch a tested version through the Python SDK.
             </motion.p>
 
             {/* buttons */}
@@ -312,12 +313,12 @@ export default function LandingPage() {
               variants={fadeUp}
               className="flex flex-col sm:flex-row items-center justify-center gap-3"
             >
-              <Link href="/dashboard" className="btn-primary w-full sm:w-auto justify-center">
-                Open dashboard
+              <Link href="/prompts" className="btn-primary w-full sm:w-auto justify-center">
+                Open workspace
                 <ArrowRight className="size-4" />
               </Link>
-              <Link href="/experiments/new" className="btn-secondary w-full sm:w-auto justify-center">
-                Create experiment
+              <Link href="/docs#demo" className="btn-secondary w-full sm:w-auto justify-center">
+                Follow the demo
               </Link>
             </motion.div>
 
@@ -329,10 +330,10 @@ export default function LandingPage() {
               variants={fadeUp}
               className="flex flex-wrap justify-center gap-3 text-sm text-(--muted-foreground)"
             >
-              <span className="chip">Chain-of-Thought</span>
-              <span className="chip">A/B Comparison</span>
-              <span className="chip">Metrics Dashboard</span>
-              <span className="chip">RAG Evaluation</span>
+              <span className="chip">Prompt versions</span>
+              <span className="chip">Dataset assertions</span>
+              <span className="chip">LLM judge</span>
+              <span className="chip">Python SDK</span>
             </motion.div>
           </div>
         </div>
@@ -364,31 +365,31 @@ export default function LandingPage() {
           <div className="grid gap-0 lg:grid-cols-[0.95fr_1.05fr]">
             <div className="border-b border-(--border) p-6 lg:border-b-0 lg:border-r">
               <div className="section-label">Platform</div>
-              <h2 className="mt-3 text-3xl font-semibold tracking-[-0.05em]">Everything you need to evaluate LLMs.</h2>
+              <h2 className="mt-3 text-3xl font-semibold tracking-[-0.05em]">Turn a prompt change into a testable decision.</h2>
               <p className="mt-4 max-w-xl text-sm leading-7 text-(--muted-foreground)">
-                From experiment configuration to statistical comparison — a single workspace for the entire evaluation lifecycle.
+                A support classifier is a useful example: changing a prompt can alter labels or break JSON output. Keep those contracts in a versioned dataset, inspect failures, and release a version your application can pin.
               </p>
             </div>
             <div className="grid gap-4 p-6 sm:grid-cols-2">
               <div className="rounded-[18px] border border-(--border) bg-(--surface-2) p-4">
-                <div className="section-label">Configure</div>
-                <div className="mt-2 text-lg font-semibold">Structured experiment setup</div>
-                <p className="mt-2 text-sm leading-7 text-(--muted-foreground)">Pick a model, reasoning method, dataset, and run parameters from a structured form — no YAML guesswork.</p>
+                <div className="section-label">1 · Develop</div>
+                <div className="mt-2 text-lg font-semibold">A saved prompt candidate</div>
+                <p className="mt-2 text-sm leading-7 text-(--muted-foreground)">Edit variables, try provider models in the playground, and save an immutable version.</p>
               </div>
               <div className="rounded-[18px] border border-(--border) bg-(--surface-2) p-4">
-                <div className="section-label">Compare</div>
-                <div className="mt-2 text-lg font-semibold">Side-by-side analysis</div>
-                <p className="mt-2 text-sm leading-7 text-(--muted-foreground)">View accuracy, latency, token cost, and statistical significance between any two completed runs.</p>
+                <div className="section-label">2 · Evaluate</div>
+                <div className="mt-2 text-lg font-semibold">Fixed inputs, visible failures</div>
+                <p className="mt-2 text-sm leading-7 text-(--muted-foreground)">Run the candidate on a dataset revision. Inspect assertion results, judge reasons, usage, and errors.</p>
               </div>
               <div className="rounded-[18px] border border-(--border) bg-(--surface-2) p-4">
-                <div className="section-label">Monitor</div>
-                <div className="mt-2 text-lg font-semibold">Real-time observability</div>
-                <p className="mt-2 text-sm leading-7 text-(--muted-foreground)">Readiness checks, queue status, cold-start handling, and per-experiment progress from one dashboard.</p>
+                <div className="section-label">3 · Release</div>
+                <div className="mt-2 text-lg font-semibold">Move a label, keep history</div>
+                <p className="mt-2 text-sm leading-7 text-(--muted-foreground)">Promote a saved version to staging or production. Roll back by moving the label to a previous version.</p>
               </div>
               <div className="rounded-[18px] border border-(--border) bg-(--surface-2) p-4">
-                <div className="section-label">Inspect</div>
-                <div className="mt-2 text-lg font-semibold">Reasoning trace viewer</div>
-                <p className="mt-2 text-sm leading-7 text-(--muted-foreground)">Drill into Chain-of-Thought, ReAct, and naive outputs at the individual sample level to understand why.</p>
+                <div className="section-label">4 · Integrate</div>
+                <div className="mt-2 text-lg font-semibold">Application code and CI</div>
+                <p className="mt-2 text-sm leading-7 text-(--muted-foreground)">Compile prompts with the SDK, submit your own evaluation results, and gate changes on a pass-rate threshold.</p>
               </div>
             </div>
           </div>
@@ -404,7 +405,7 @@ export default function LandingPage() {
                 LLMForge
               </div>
               <p className="max-w-lg text-lg leading-8 text-(--muted-foreground)">
-                Open-source LLM evaluation console.
+                A personal engineering project for prompt management and reproducible evaluation.
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-4">
@@ -414,8 +415,8 @@ export default function LandingPage() {
               <Link href="/experiments" className="btn-ghost">
                 Experiments
               </Link>
-              <Link href="/experiments/new" className="btn-ghost">
-                New experiment
+              <Link href="/docs" className="btn-ghost">
+                SDK & demo guide
               </Link>
               <a href="https://github.com/FazlulKarimC/LLM_Forge" target="_blank" rel="noreferrer" className="btn-ghost">
                 <Github className="size-4" />

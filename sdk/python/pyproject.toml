@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "llmforge-sdk"
+version = "0.1.0"
+description = "Prompt releases and reproducible evaluation gates for LLMForge"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["httpx>=0.26,<1"]
+
+[project.optional-dependencies]
+test = ["pytest>=8"]
+
+[project.scripts]
+llmforge = "llmforge.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+llmforge = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

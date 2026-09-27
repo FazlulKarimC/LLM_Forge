@@ -1,11 +1,11 @@
 """
-Tests for New Features (Phases 1-5)
+Regression tests for benchmark summaries, provenance, pricing and exports.
 
 Covers:
-- Phase 1.3: Auto-generated experiment summaries
-- Phase 2: Reproducibility (run manifest, tags)
-- Phase 3: Cost & performance visibility (pricing, cost metrics)
-- Phase 5: Export & sharing (tag filtering API)
+- Auto-generated experiment summaries
+- Reproducibility (run manifest, tags)
+- Cost and performance visibility (pricing, cost metrics)
+- Export and sharing (tag filtering API)
 """
 
 import pytest
@@ -19,6 +19,8 @@ from fastapi.testclient import TestClient
 from app.core.pricing import get_model_pricing, estimate_cost, ModelPricing, DEFAULT_PRICING
 from app.services.metrics_service import MetricsService
 from app.schemas.experiment import ExperimentCreate, ExperimentConfig, ExperimentResponse, ExperimentStatus
+
+pytestmark = pytest.mark.usefixtures("legacy_route_identity")
 
 
 # =============================================================================

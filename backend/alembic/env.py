@@ -28,6 +28,9 @@ from app.models.result import Result
 from app.models.run import Run
 from app.models.prompt_version import PromptVersion
 from app.models.worker_heartbeat import WorkerHeartbeatRecord
+from app.models.workspace import User, Organization, OrganizationMembership, Project
+from app.models.prompt import Prompt, PromptLabel, ProjectAPIKey
+from app.models.evaluation import Dataset, DatasetRevision, EvaluationRun, EvaluationResult
 
 # Alembic Config object
 config = context.config
@@ -82,7 +85,7 @@ async def run_async_migrations() -> None:
     # Convert postgresql:// to postgresql+asyncpg://
     async_url = re.sub(r'^postgresql:', 'postgresql+asyncpg:', database_url)
     
-    engine = create_async_engine(async_url, echo=True, poolclass=pool.NullPool)
+    engine = create_async_engine(async_url, echo=False, poolclass=pool.NullPool)
 
     async with engine.connect() as connection:
         await connection.run_sync(do_run_migrations)

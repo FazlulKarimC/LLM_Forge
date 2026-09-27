@@ -2,7 +2,7 @@ import logging
 import time
 from typing import Optional, List
 
-from openai import OpenAI, APIConnectionError, APIError, NotFoundError, RateLimitError
+from openai import OpenAI, AsyncOpenAI, APIConnectionError, APIError, NotFoundError, RateLimitError
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_not_exception_type
 
 from app.services.inference.base import (
@@ -32,6 +32,7 @@ class OpenAIEngine(InferenceEngine):
         api_key: Optional[str] = "dummy_key",
         model_name: str = "custom-model",
         provider_id: str = "custom",
+        async_only: bool = False,
     ):
         """
         Initialize the OpenAI-compatible engine.
@@ -48,7 +49,7 @@ class OpenAIEngine(InferenceEngine):
         self._api_key = api_key or "dummy_key"
         self._model_name = model_name
         self._provider_id = provider_id
-        self._client = self._make_client()
+        self._client = None if async_only else self._make_client()
         self._is_loaded = True
         logger.info(f"OpenAIEngine initialized: base_url={self._base_url}, model={self._model_name}")
 
@@ -173,6 +174,35 @@ class OpenAIEngine(InferenceEngine):
                 error_message=str(e),
             )
     
+    async def generate_async(self, prompt: str, config: GenerationConfig) -> GenerationResult:
+        """Playground generation: one bounded call, no retries or provider fallback.
+
+        Exceptions propagate so the API can return a sanitized, actionable error.
+        This intentionally leaves benchmark generation/retry behavior unchanged.
+        """
+        start = time.perf_counter()
+        kwargs = {
+            "model": self._model_name,
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": config.temperature,
+            "max_completion_tokens": config.max_tokens,
+        }
+        # OpenRouter's compatibility contract still accepts max_tokens.
+        if self._provider_id == "openrouter":
+            kwargs["max_tokens"] = kwargs.pop("max_completion_tokens")
+        async with AsyncOpenAI(base_url=self._base_url, api_key=self._api_key, timeout=25.0, max_retries=0) as client:
+            response = await client.chat.completions.create(**kwargs)
+        if not response.choices:
+            raise RuntimeError("Provider returned no completion choices")
+        return GenerationResult(
+            text=response.choices[0].message.content or "",
+            tokens_input=response.usage.prompt_tokens if response.usage else None,
+            tokens_output=response.usage.completion_tokens if response.usage else None,
+            latency_ms=(time.perf_counter() - start) * 1000,
+            finish_reason=response.choices[0].finish_reason or "unknown",
+            served_provider=self._provider_id,
+        )
+
     def generate_batch(
         self,
         prompts: List[str],

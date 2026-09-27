@@ -2,7 +2,7 @@
 
 # LlmForge
 
-**A full-stack experimentation platform for systematically evaluating LLM reasoning strategies**
+**Version prompts, evaluate fixed test cases, and release tested prompts through Python and CI**
 
 [![CI](https://github.com/FazlulKarimC/LLM_Forge/actions/workflows/ci.yml/badge.svg)](https://github.com/FazlulKarimC/LLM_Forge/actions/workflows/ci.yml)
 
@@ -15,7 +15,7 @@
 [![Redis](https://img.shields.io/badge/Redis-Upstash-dc382d?logo=redis&logoColor=white)](https://upstash.com)
 [![Tests](https://img.shields.io/badge/Tests-469+-22c55e?logo=pytest&logoColor=white)](#testing)
 
-*Compare Naive Prompting, Chain-of-Thought, RAG, and ReAct Agents side-by-side with statistical significance testing, execution provenance, and a research-grade dashboard.*
+*A personal engineering project for reproducible prompt development, with a separate reasoning-benchmark workflow.*
 
 </div>
 
@@ -23,7 +23,19 @@
 
 ## Overview
 
-LlmForge is a config-driven platform for designing, executing, and comparing LLM experiments. Each experiment combines a **reasoning method**, **dataset**, **model**, **inference provider**, and **hyperparameters** — all version-controlled in a database with full execution provenance. After execution, the platform computes quality, performance, and cost metrics, surfacing them through an interactive dashboard with per-sample inspection, latency distributions, and side-by-side statistical comparison with methodology-aware caveats.
+The main workflow is **prompt draft → saved version → dataset evaluation → release label → application SDK**. Clerk sign-in and project membership isolate workspaces. Immutable prompt versions and dataset revisions keep tests reproducible; assertions and optional rubric judging show which cases changed. A small Python SDK fetches releases, submits application-computed results, and provides a CI quality gate.
+
+Start with the public `/docs` page or these repository guides:
+
+- [Workspace and auth setup](docs/PHASE_1_SETUP.md)
+- [Prompt management and playground](docs/PHASE_2_PROMPTS.md)
+- [Datasets and evaluations demo](docs/PHASE_3_EVALUATIONS.md)
+- [Python SDK and CI workflow](docs/PHASE_4_SDK.md)
+- [SDK package reference](sdk/python/README.md)
+
+The SDK installs from this repository with `python -m pip install -e ./sdk/python`; it has not been published to PyPI. Create an evaluation-enabled project key for CI, and pin prompt/dataset versions for a reproducible gate. Default and existing keys remain read-only.
+
+The legacy Experiments workflow also combines a **reasoning method**, **dataset**, **model**, **inference provider**, and **hyperparameters** with execution provenance. It computes quality, performance, and cost metrics, with per-sample inspection and statistical comparisons that surface methodology caveats.
 
 Built to answer a core question: *How do different LLM reasoning strategies trade off accuracy, latency, and token cost on real QA benchmarks?*
 
@@ -36,6 +48,13 @@ Built to answer a core question: *How do different LLM reasoning strategies trad
 ---
 
 ## Key Features
+
+### Authenticated Workspaces
+
+Clerk sign-in protects the app and API. Each user starts with a personal organization
+and project; owners can create more in Settings. Benchmark, prompt and background
+job access is scoped to the selected project and verified organization membership.
+Follow [Phase 1 setup](docs/PHASE_1_SETUP.md) to configure Clerk before launching the app.
 
 ### Four Reasoning Strategies
 
@@ -69,6 +88,10 @@ graph TD
 Pin completed experiments as **Baselines** with strict lineage tracking. New candidate runs are automatically evaluated against pinned baselines using a deterministic 8-rule **Grader Engine** (max turns, required tools, expected dataset-driven tool paths, token/latency budgets, F1 score). Strict comparison routing mode prevents provider/fallback contamination from skewing regression verdicts. Clear pass/fail/skip verdicts with inline configuration diffing.
 
 ### Prompt Versioning
+
+The [prompt hub](docs/PHASE_2_PROMPTS.md) adds an editor, immutable version history,
+mustache/brace variables, a model playground, staging/production promotion, and
+read-only project keys for SDK fetching. Releases can roll back to any saved version.
 
 Immutable **PromptVersion** records are stored in the database and applied during execution — not just metadata. The prompt version hash is included in every run manifest for reproducibility. Unsupported strategy + version combinations fail loudly instead of silently ignoring the saved prompt.
 
@@ -342,6 +365,10 @@ curl http://localhost:8000/api/v1/results/{id}/export
 ---
 
 ## Testing
+
+See [the testing guide](docs/TESTING.md) for isolated backend fixtures, SDK test groups, frontend checks and the database-backed SDK smoke test.
+
+Dataset imports, versioned test cases, assertions, optional LLM judging, and run comparison are available. Follow the [Phase 3 evaluation walkthrough](docs/PHASE_3_EVALUATIONS.md) for a provider-free demo.
 
 ```bash
 cd backend
