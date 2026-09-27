@@ -26,6 +26,9 @@ def _jwks_client(issuer: str):
 
 
 def verify_session_token(token: str) -> Identity:
+    # Project API keys only authorize SDK routes, regardless of Clerk configuration.
+    if token.startswith("lf_live_"):
+        raise HTTPException(401, "A Clerk session is required", headers={"WWW-Authenticate": "Bearer"})
     issuer = settings.CLERK_ISSUER_URL.rstrip("/")
     parsed = urlparse(issuer)
     if parsed.scheme != "https" or not parsed.hostname or parsed.query or parsed.fragment:

@@ -56,6 +56,28 @@ def test_valid_session(signed_token):
     assert verify_session_token(signed_token()).subject == "user_alice"
 
 
+def test_project_key_is_rejected_without_clerk_configuration(monkeypatch):
+    from fastapi import HTTPException
+
+    monkeypatch.setattr(settings, "CLERK_ISSUER_URL", "")
+    monkeypatch.setattr(settings, "CLERK_JWT_PUBLIC_KEY", "")
+    monkeypatch.setattr(settings, "CLERK_AUTHORIZED_PARTIES", "")
+    with pytest.raises(HTTPException) as caught:
+        verify_session_token("lf_live_test_key")
+    assert caught.value.status_code == 401
+    assert caught.value.headers == {"WWW-Authenticate": "Bearer"}
+
+
+def test_session_auth_reports_missing_clerk_configuration(signed_token, monkeypatch):
+    from fastapi import HTTPException
+
+    token = signed_token()
+    monkeypatch.setattr(settings, "CLERK_ISSUER_URL", "")
+    with pytest.raises(HTTPException) as caught:
+        verify_session_token(token)
+    assert caught.value.status_code == 503
+
+
 @pytest.mark.parametrize(
     "claims",
     [

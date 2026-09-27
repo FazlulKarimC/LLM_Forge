@@ -95,7 +95,7 @@ class TestExperimentCoreEndpoints:
 
     def test_prompt_routes_are_mounted_once(self):
         """Prompt routes should live at /api/v1/prompts, not /api/v1/prompts/prompts."""
-        paths = {route.path for route in app.routes}
+        paths = app.openapi()["paths"]
         assert "/api/v1/prompts" in paths
         assert "/api/v1/prompts/prompts" not in paths
 
