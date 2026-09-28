@@ -73,7 +73,8 @@ async def _execute_inline(
             await svc.execute(
                 experiment_id, 
                 custom_base_url=custom_base_url, 
-                custom_api_key=custom_api_key
+                custom_api_key=custom_api_key,
+                require_queued=True,
             )
     except Exception as e:
         # svc.execute() sets FAILED status internally, but if its commit
@@ -82,15 +83,12 @@ async def _execute_inline(
         logger.error(f"[INLINE] Execution failed for {experiment_id}: {e}")
         try:
             async with async_session_maker() as fallback_session:
-                from app.schemas.experiment import ExperimentStatus
                 fallback_svc = ExperimentService(fallback_session)
-                await fallback_svc.update_status(
-                    experiment_id,
-                    ExperimentStatus.FAILED,
-                    error_message=f"Execution failed: {str(e)[:400]}"
+                changed = await fallback_svc._fail_active_attempt(
+                    experiment_id, f"Execution failed: {str(e)[:400]}"
                 )
-                await fallback_session.commit()
-                logger.info(f"[INLINE] Safety-net: set {experiment_id} to FAILED")
+                if changed:
+                    logger.info(f"[INLINE] Safety-net: set {experiment_id} to FAILED")
         except Exception as fallback_err:
             logger.error(f"[INLINE] Safety-net commit also failed: {fallback_err}")
 
@@ -277,6 +275,25 @@ async def run_experiment(
         raise
     
     return await service.get(experiment_id)
+
+
+@router.post("/{experiment_id}/interrupt", response_model=ExperimentResponse)
+async def interrupt_experiment(
+    experiment_id: UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    """Explicitly stop a queued/running run; its partial results remain available."""
+    service = ExperimentService(db)
+    try:
+        result = await service.interrupt(experiment_id)
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    if result is None:
+        raise ResourceNotFoundException(
+            resource_type="Experiment", resource_id=experiment_id
+        )
+    await db.commit()
+    return result
 
 
 @router.delete("/{experiment_id}", status_code=204)

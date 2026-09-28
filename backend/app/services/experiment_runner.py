@@ -451,6 +451,7 @@ class ExperimentRunExecutor:
         naive_prompt_template,
         cot_prompt_template,
         use_robustness_scoring: bool,
+        ensure_active=None,
     ) -> dict[str, int]:
         """Execute the non-RAG non-agent fast path using batched generation."""
         logger.info("[EXECUTE] Using batched execution (batch_size=%s)", batch_size)
@@ -458,6 +459,8 @@ class ExperimentRunExecutor:
         cache_seed = self.generation_seed(gen_config)
 
         for batch_start in range(0, len(examples), batch_size):
+            if ensure_active:
+                await ensure_active()
             batch_end = min(batch_start + batch_size, len(examples))
             batch_items = examples[batch_start:batch_end]
             logger.info(
@@ -506,6 +509,8 @@ class ExperimentRunExecutor:
                         uncached_prompts,
                         gen_config,
                     )
+                if ensure_active:
+                    await ensure_active()
 
                 if cache:
                     for uncached_idx, gen_result in zip(uncached_indices, batch_gen_results):
@@ -571,6 +576,8 @@ class ExperimentRunExecutor:
                 )
 
             if runs_batch_data:
+                if ensure_active:
+                    await ensure_active()
                 await run_service.create_runs_batch(experiment_id, runs_batch_data)
 
             batch_stats["batches_processed"] += 1
@@ -605,6 +612,7 @@ class ExperimentRunExecutor:
         cot_prompt_template,
         rag_prompt_template,
         react_prompt_template,
+        ensure_active=None,
     ) -> dict[str, int]:
         """Execute the sequential path used by RAG and agent experiments."""
         if use_batching:
@@ -612,6 +620,8 @@ class ExperimentRunExecutor:
 
         runs_batch_data: List[dict[str, Any]] = []
         for index, item in enumerate(examples):
+            if ensure_active:
+                await ensure_active()
             logger.info("[EXECUTE] Processing %s/%s: %s", index + 1, len(examples), item["id"])
 
             if reasoning_method == "react" and react_agent is not None:
@@ -648,7 +658,11 @@ class ExperimentRunExecutor:
                 )
 
             runs_batch_data.append(run_record)
+            if ensure_active:
+                await ensure_active()
             await self.flush_runs(run_service, experiment_id, runs_batch_data)
 
+        if ensure_active:
+            await ensure_active()
         await self.flush_runs(run_service, experiment_id, runs_batch_data, force=True)
         return {"batches_processed": 0, "total_prompts_batched": 0}

@@ -128,6 +128,10 @@ export async function runExperiment(
     });
 }
 
+export async function interruptExperiment(id: string): Promise<Experiment> {
+    return fetchAPI<Experiment>(`/experiments/${id}/interrupt`, { method: 'POST' });
+}
+
 /**
  * Delete an experiment (soft delete).
  */

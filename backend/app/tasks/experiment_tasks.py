@@ -79,5 +79,6 @@ async def _run_experiment_async(
         await service.execute(
             experiment_id, 
             custom_base_url=custom_base_url, 
-            custom_api_key=custom_api_key
+            custom_api_key=custom_api_key,
+            require_queued=True,
         )

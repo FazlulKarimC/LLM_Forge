@@ -29,7 +29,7 @@ Provides epsilon-greedy auto-routing across `HF Inference API`, `OpenRouter`, `G
 Each candidate run is passed through a comprehensive `GraderEngine` employing deterministic bounds checks such as specific token/latency budgets, explicit tool dependencies, or hard F1-score floors. The system isolates and flags regressions against pinned baseline experiments to ensure deployment safety.
 
 ### Reliability & Error Tracking
-Experiment and job metadata is stored in Postgres. Execution is best-effort: experiments run inline via FastAPI `BackgroundTasks` unless RQ is available. A backend restart can interrupt inline work; the current startup path does not automatically reconcile legacy experiment status. Evaluation runs are marked failed when their next authorized read finds 120 seconds without progress. RAG experiments preflight collections before running.
+Experiment and job metadata is stored in Postgres. Execution is best-effort: experiments run inline via FastAPI `BackgroundTasks` unless RQ is available. A backend restart can interrupt inline work; startup does not change runs owned by another process. If a legacy experiment remains queued or running, open its detail page and use **Stop run** to mark it failed and retain partial results, then run it again. Evaluation runs are marked failed when their next authorized read finds 120 seconds without progress. RAG experiments preflight collections before running.
 
 ---
 
@@ -120,4 +120,4 @@ The RQ worker writes a heartbeat to the `worker_heartbeats` table every 30 secon
 python worker.py
 ```
 
-The worker is optional. Without it, experiments run inline via FastAPI `BackgroundTasks`. This fallback avoids a Redis dependency, but it is not a durable queue: if the API process restarts mid-job, the in-flight work is lost. Legacy experiment status may remain queued or running until repaired.
+The worker is optional. Without it, experiments run inline via FastAPI `BackgroundTasks`. This fallback avoids a Redis dependency, but it is not a durable queue: if the API process restarts mid-job, the in-flight work is lost. Use the explicit **Stop run** action to release a stranded status; a worker still running will stop before its next example, while an in-flight call may finish.

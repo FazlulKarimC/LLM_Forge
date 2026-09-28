@@ -116,7 +116,6 @@ class ExperimentPostProcessor:
         result_obj.raw_metrics = existing_raw
         flag_modified(result_obj, "raw_metrics")
         await self.db.flush()
-        await self.db.commit()
         logger.info("[EXECUTE] Optimization report saved to raw_metrics")
 
     async def run_auto_regression_check(self, experiment_id: UUID) -> None:

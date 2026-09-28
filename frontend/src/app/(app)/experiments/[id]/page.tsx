@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { use } from "react";
+import { use, useState } from "react";
 import {
   LoaderCircle,
   Pin,
@@ -17,6 +17,7 @@ import { toast } from "sonner";
 import {
   ApiError,
   getExperiment,
+  interruptExperiment,
   resolveRunExperimentCredentials,
   runExperiment,
   setBaseline,
@@ -67,6 +68,7 @@ function regressionBadge(status?: "not_checked" | "pass" | "fail" | "inconclusiv
 export default function ExperimentDetailPage({ params }: Props) {
   const { id } = use(params);
   const queryClient = useQueryClient();
+  const [interruptRequested, setInterruptRequested] = useState(false);
 
   const experimentQuery = useQuery({
     queryKey: ["experiment", id],
@@ -96,6 +98,18 @@ export default function ExperimentDetailPage({ params }: Props) {
     onError: (error: Error) => {
       toast.error(`Failed to start experiment: ${error.message}`);
     },
+  });
+
+  const interruptMutation = useMutation({
+    mutationFn: () => interruptExperiment(id),
+    onSuccess: () => {
+      setInterruptRequested(false);
+      queryClient.invalidateQueries({ queryKey: ["experiment", id] });
+      queryClient.invalidateQueries({ queryKey: ["experiments"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
+      toast.success("Experiment interrupted; partial results were kept");
+    },
+    onError: (error: Error) => toast.error(`Could not interrupt experiment: ${error.message}`),
   });
 
   if (experimentQuery.isLoading) {
@@ -205,8 +219,27 @@ export default function ExperimentDetailPage({ params }: Props) {
               {experiment.status === "completed" ? "Run again" : "Run experiment"}
             </button>
           ) : null}
+          {isActive ? (
+            <button type="button" className="btn-secondary" onClick={() => setInterruptRequested(true)}>
+              Stop run
+            </button>
+          ) : null}
         </div>
       </PageHeader>
+
+      {isActive && interruptRequested ? (
+        <div className="alert alert-warning flex-wrap">
+          <p className="flex-1 text-sm">
+            Stop this run and mark it failed? Partial results stay available. An in-flight provider call may finish, but no new examples will start.
+          </p>
+          <button type="button" className="btn-danger" disabled={interruptMutation.isPending} onClick={() => interruptMutation.mutate()}>
+            {interruptMutation.isPending ? "Stopping…" : "Confirm stop"}
+          </button>
+          <button type="button" className="btn-secondary" disabled={interruptMutation.isPending} onClick={() => setInterruptRequested(false)}>
+            Keep running
+          </button>
+        </div>
+      ) : null}
 
       {experiment.error_message ? (
         <div className="alert alert-danger">

@@ -32,6 +32,10 @@ from app.services.experiment_runtime import sanitize_error_message as _sanitize_
 logger = logging.getLogger(__name__)
 
 
+class ExecutionInterrupted(Exception):
+    """This attempt was stopped before it could start another model call."""
+
+
 class ExperimentService:
     """
     Service for experiment management.
@@ -359,6 +363,26 @@ class ExperimentService:
         await self.db.flush()
         await self.db.refresh(experiment)
         return self._to_response(experiment)
+
+    async def interrupt(self, experiment_id: UUID) -> Optional[ExperimentResponse]:
+        """Stop a queued/running experiment while preserving completed attempts."""
+        experiment = await self.db.scalar(
+            select(Experiment)
+            .where(Experiment.id == experiment_id, Experiment.deleted_at.is_(None))
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        if experiment is None:
+            return None
+        if experiment.status not in (ExperimentStatus.QUEUED, ExperimentStatus.RUNNING):
+            raise ValueError("Only a queued or running experiment can be interrupted")
+        experiment.status = ExperimentStatus.FAILED
+        experiment.completed_at = datetime.now(timezone.utc)
+        experiment.error_message = (
+            "Interrupted by user. An in-flight provider call may finish, but no new examples will start."
+        )
+        await self.db.flush()
+        return self._to_response(experiment)
     
     async def delete(self, experiment_id: UUID) -> bool:
         """
@@ -388,7 +412,9 @@ class ExperimentService:
         await self.db.flush()
         return True
 
-    async def _prepare_execution_attempt(self, experiment_id: UUID):
+    async def _prepare_execution_attempt(
+        self, experiment_id: UUID, *, require_queued: bool = False
+    ):
         """Create a new non-destructive attempt and mark the experiment as running."""
         from sqlalchemy import select as _sel, func as _fn
         from app.models.run import Run as _Run
@@ -399,8 +425,15 @@ class ExperimentService:
         )
         current_attempt = (max_attempt_q.scalar() or 0) + 1
 
-        exp_row = await self.db.execute(_sel(_Exp).where(_Exp.id == experiment_id))
+        exp_row = await self.db.execute(
+            _sel(_Exp).where(_Exp.id == experiment_id).with_for_update()
+        )
         exp_obj = exp_row.scalar_one_or_none()
+        if require_queued and (
+            exp_obj is None
+            or getattr(exp_obj, "status", None) != ExperimentStatus.QUEUED
+        ):
+            raise ExecutionInterrupted("Experiment is no longer queued")
         if exp_obj:
             exp_obj.current_attempt = current_attempt
             exp_obj.regression_status = RegressionStatus.NOT_CHECKED.value
@@ -410,6 +443,58 @@ class ExperimentService:
         await self.db.commit()
         logger.info("[EXECUTE] Status: RUNNING (attempt %s)", current_attempt)
         return current_attempt, exp_obj
+
+    async def _ensure_active_attempt(self, experiment_id: UUID, attempt: int) -> None:
+        """Observe user interruption through a fresh session between model calls."""
+        from app.core.database import async_session_maker
+
+        async with async_session_maker() as session:
+            state = (
+                await session.execute(
+                    select(Experiment.status, Experiment.current_attempt).where(
+                        Experiment.id == experiment_id
+                    )
+                )
+            ).one_or_none()
+        if state != (ExperimentStatus.RUNNING, attempt):
+            raise ExecutionInterrupted("Experiment attempt was interrupted")
+
+    async def _lock_active_attempt(self, experiment_id: UUID, attempt: int) -> None:
+        """Hold the experiment row lock while persisting final metrics and status."""
+        row = await self.db.scalar(
+            select(Experiment)
+            .where(Experiment.id == experiment_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        if row is None or row.status != ExperimentStatus.RUNNING or row.current_attempt != attempt:
+            raise ExecutionInterrupted("Experiment attempt was interrupted")
+
+    async def _finish_active_attempt(self, experiment_id: UUID, attempt: int) -> None:
+        """Serialize completion with the user-triggered interrupt action."""
+        await self._lock_active_attempt(experiment_id, attempt)
+        await self.update_status(experiment_id, ExperimentStatus.COMPLETED)
+        await self.db.commit()
+
+    async def _fail_active_attempt(
+        self, experiment_id: UUID, error_message: str, attempt: int | None = None
+    ) -> bool:
+        """Fail only a still-active run, leaving a user interruption intact."""
+        row = await self.db.scalar(
+            select(Experiment)
+            .where(Experiment.id == experiment_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        if row is None or row.status not in (ExperimentStatus.QUEUED, ExperimentStatus.RUNNING):
+            return False
+        if attempt is not None and row.current_attempt != attempt:
+            return False
+        await self.update_status(
+            experiment_id, ExperimentStatus.FAILED, error_message=error_message
+        )
+        await self.db.commit()
+        return True
 
     def _runtime_helper(self):
         helper = getattr(self, "_runtime", None)
@@ -502,7 +587,9 @@ class ExperimentService:
         self, 
         experiment_id: UUID, 
         custom_base_url: Optional[str] = None, 
-        custom_api_key: Optional[str] = None
+        custom_api_key: Optional[str] = None,
+        *,
+        require_queued: bool = False,
     ) -> None:
         """
         Execute an experiment.
@@ -540,7 +627,12 @@ class ExperimentService:
             # Step 2: Initialize services for a new execution attempt.
             run_service = RunService(self.db)
             metrics_svc = MetricsService(self.db)
-            current_attempt, exp_obj = await self._prepare_execution_attempt(experiment_id)
+            current_attempt, exp_obj = await self._prepare_execution_attempt(
+                experiment_id, require_queued=require_queued
+            )
+
+            async def ensure_active():
+                await self._ensure_active_attempt(experiment_id, current_attempt)
             reasoning_method = experiment_response.config.reasoning_method.value
             logger.info("[EXECUTE] Reasoning method: %s", reasoning_method)
             wall_start, opt_config, cache, profiler, opt_report = self._create_optimization_runtime(experiment_response)
@@ -615,6 +707,7 @@ class ExperimentService:
                     naive_prompt_template=naive_prompt_template,
                     cot_prompt_template=cot_prompt_template,
                     use_robustness_scoring=use_robustness_scoring,
+                    ensure_active=ensure_active,
                 )
             else:
                 batch_stats = await self._execute_sequential_runs(
@@ -642,10 +735,13 @@ class ExperimentService:
                     cot_prompt_template=cot_prompt_template,
                     rag_prompt_template=rag_prompt_template,
                     react_prompt_template=ReActPromptTemplate,
+                    ensure_active=ensure_active,
                 )
 
+            await ensure_active()
             logger.info("[EXECUTE] Committing %s runs to database...", len(examples))
             await self.db.commit()
+            await self._lock_active_attempt(experiment_id, current_attempt)
             await self._apply_graders(
                 experiment_id=experiment_id,
                 experiment_response=experiment_response,
@@ -666,23 +762,33 @@ class ExperimentService:
             )
 
             engine.unload_model()
-            await self.update_status(experiment_id, ExperimentStatus.COMPLETED)
-            await self.db.commit()
+            await self._finish_active_attempt(experiment_id, current_attempt)
             await self._run_auto_regression_check(experiment_id)
             logger.info(
                 "[EXECUTE] Execution completed (wall time: %.0fms)",
                 opt_report.total_wall_time_ms,
             )
 
+        except ExecutionInterrupted:
+            await self.db.rollback()
+            logger.info("[EXECUTE] Experiment attempt %s stopped", experiment_id)
+            return
         except Exception as e:
             logger.exception("[EXECUTE] Execution failed: %s: %s", type(e).__name__, e)
             error_message = _sanitize_error_message(e)
-            await self.update_status(
-                experiment_id,
-                ExperimentStatus.FAILED,
-                error_message=error_message
-            )
-            await self.db.commit()
+            if require_queued and "current_attempt" in locals():
+                await self.db.rollback()
+                if not await self._fail_active_attempt(
+                    experiment_id, error_message, current_attempt
+                ):
+                    return
+            else:
+                await self.update_status(
+                    experiment_id,
+                    ExperimentStatus.FAILED,
+                    error_message=error_message
+                )
+                await self.db.commit()
             
             raise
 
