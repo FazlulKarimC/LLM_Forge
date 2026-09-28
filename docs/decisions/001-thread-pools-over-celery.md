@@ -13,9 +13,9 @@ However, a core constraint of this project is to run on **100% free-tier infrast
 Deploying a Redis instance plus a Celery worker on free tiers adds significant operational overhead, introduces points of failure, and often requires paid databases for reliable hosting.
 
 ### Decision
-We use Python's built-in `asyncio.to_thread()` combined with FastAPI's `BackgroundTasks` to execute experiments within the same single Docker container hosted on Hugging Face Spaces.
+The current implementation dispatches experiments through an `auto` backend: RQ when Redis and a worker are available, otherwise FastAPI `BackgroundTasks` in the API process. Blocking provider work can use thread pools within execution.
 
-The Vercel frontend only triggers the job via a fast, short-lived HTTP POST `/api/v1/experiments/{id}/execute` endpoint and immediately receives a `202 Accepted` response. The heavy lifting happens exclusively on the HF Space backend.
+The frontend starts a benchmark with POST `/api/v1/experiments/{id}/run`; execution runs on the backend. The response returns the queued experiment.
 
 ### Consequences
 - **Positive:** Zero external infrastructure dependencies. The entire app ships as a single container, making it trivial for reviewers to deploy a clone.

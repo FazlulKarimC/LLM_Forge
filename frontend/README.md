@@ -50,7 +50,7 @@ src/
 ## 🚀 Getting Started
 
 ### Prerequisites
-- Node.js 18+
+- Node.js 20.9+
 - The LlmForge FastAPI backend **must** be running (default `http://localhost:8000`), as the frontend aggressively calls the API to poll run statuses.
 
 ### Installation

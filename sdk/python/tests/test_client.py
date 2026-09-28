@@ -130,3 +130,8 @@ def test_sdk_selector_validation(sdk_client):
             forge.get_prompt("Echo", version=0)
         with pytest.raises(ValueError):
             forge.get_dataset("Cases", version=False)
+        for reserved in (".", ".."):
+            with pytest.raises(ValueError):
+                forge.get_prompt(reserved)
+            with pytest.raises(ValueError):
+                forge.get_dataset(reserved)

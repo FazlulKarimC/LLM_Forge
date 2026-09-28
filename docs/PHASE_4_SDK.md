@@ -55,7 +55,7 @@ Copy [evaluation-gate.yml](examples/evaluation-gate.yml) to your application's `
 
 The workflow installs the SDK from source, evaluates pinned versions, and uploads the JSON report even when the quality gate fails. Exit codes: 0 pass, 1 quality regression/case errors, 2 operational/configuration failure. A gate never accepts provider errors just because a lower pass-rate threshold was chosen. For live providers add `LLMFORGE_PROVIDER_API_KEY` as a secret and select provider/model explicitly.
 
-Repository CI validates the SDK on Python 3.10/3.12 and builds its wheel. Backend CI applies database migrations before running tests. Frontend CI checks types, lint, tests and the production build. These checks gate changes; publishing a wheel or deploying the application remains a separate explicit action.
+Repository CI validates the SDK on Python 3.10/3.12, builds and installs its wheel, applies migrations to a disposable PostgreSQL database, and runs the SDK/CLI smoke test. Frontend CI checks types, lint, tests, and the production build. A push to `main` syncs the backend to Hugging Face only after these jobs succeed; the deployed database still needs its own migration procedure. The SDK is not published to PyPI.
 
 ## Architecture and interview discussion
 

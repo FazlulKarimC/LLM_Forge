@@ -29,7 +29,7 @@ Provides epsilon-greedy auto-routing across `HF Inference API`, `OpenRouter`, `G
 Each candidate run is passed through a comprehensive `GraderEngine` employing deterministic bounds checks such as specific token/latency budgets, explicit tool dependencies, or hard F1-score floors. The system isolates and flags regressions against pinned baseline experiments to ensure deployment safety.
 
 ### Reliability & Error Tracking
-To support execution in constrained serverless setups, durable state for experiments and background-job metadata is stored in Postgres. Actual execution is still best-effort: experiments run inline via FastAPI `BackgroundTasks` unless RQ is available, and interrupted in-process jobs are marked failed on restart rather than resumed automatically. The latest integration funnels failure stack traces down to Sentry. RAG experiments include intelligent preflight collections checks to fail fast gracefully.
+Experiment and job metadata is stored in Postgres. Execution is best-effort: experiments run inline via FastAPI `BackgroundTasks` unless RQ is available. A backend restart can interrupt inline work; the current startup path does not automatically reconcile legacy experiment status. Evaluation runs are marked failed when their next authorized read finds 120 seconds without progress. RAG experiments preflight collections before running.
 
 ---
 
@@ -66,7 +66,7 @@ backend/
 python -m venv venv
 # Windows: .\venv\Scripts\activate 
 # macOS/Linux: source venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements.txt -c constraints.txt
 ```
 
 ### Database & Launch
@@ -77,6 +77,12 @@ Prepare local or dev DB tables and run the server:
 alembic upgrade head
 uvicorn app.main:app --reload --port 8000
 ```
+
+Apply migrations to the intended deployment database before starting a new
+backend image. CI applies migrations only to its disposable PostgreSQL service;
+it does not migrate the hosted database. Review historical migrations before
+using a database with existing data: the workspace reset migration
+`i2j3k4l5m6n7` intentionally truncates legacy benchmark tables.
 
 ---
 
@@ -114,4 +120,4 @@ The RQ worker writes a heartbeat to the `worker_heartbeats` table every 30 secon
 python worker.py
 ```
 
-The worker is optional. Without it, experiments run inline via FastAPI `BackgroundTasks`. This fallback is resilient for free-tier hosting, but it is not a durable queue: if the API process restarts mid-job, the in-flight work is lost and the corresponding records are marked failed on startup.
+The worker is optional. Without it, experiments run inline via FastAPI `BackgroundTasks`. This fallback avoids a Redis dependency, but it is not a durable queue: if the API process restarts mid-job, the in-flight work is lost. Legacy experiment status may remain queued or running until repaired.

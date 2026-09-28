@@ -1,11 +1,8 @@
 """
 FastAPI Application Entry Point
 
-This module initializes the FastAPI application with:
-- CORS middleware for frontend communication
-- API routers for experiments, results, and metrics
-- Lifespan events for startup/shutdown
-- Health check endpoint
+This module configures CORS, exception handling, project-scoped API routers,
+and application startup/shutdown logging.
 """
 
 import logging
@@ -21,6 +18,7 @@ from app.api import workspaces
 from app.api import prompt_library, project_keys, sdk_prompts
 from app.api import datasets, evaluations
 from app.api import sdk_evaluations
+from app.api import demo
 from app.core.tenancy import get_project_context
 from app.core.middleware import RequestContextMiddleware
 from app.core.custom_exceptions import AppException
@@ -64,22 +62,14 @@ async def lifespan(app: FastAPI):
     """
     Application lifespan manager.
     
-    Startup:
-        - Initialize database connection pool
-        - Load ML models into memory (if configured)
-        - Connect to vector database
-    
-    Shutdown:
-        - Close database connections
-        - Cleanup GPU memory
-        - Flush pending logs
-    
+    Log configuration and preflight warnings. Database sessions are opened on
+    demand; no provider or vector connection is established here.
     """
     # Startup
-    logger.info(f"Starting {settings.PROJECT_NAME} v{settings.VERSION} (env={settings.ENVIRONMENT})")
-    logger.info(f"Inference engine: {settings.INFERENCE_ENGINE}")
-    logger.info(f"Queue backend mode: {settings.QUEUE_BACKEND_MODE}")
-    logger.info(f"Data directory: {settings.data_dir}")
+    logger.info("Starting %s v%s (env=%s)", settings.PROJECT_NAME, settings.VERSION, settings.ENVIRONMENT)
+    logger.info("Inference engine: %s", settings.INFERENCE_ENGINE)
+    logger.info("Queue backend mode: %s", settings.QUEUE_BACKEND_MODE)
+    logger.info("Data directory: %s", settings.data_dir)
 
     # Preflight checks
     if settings.ENVIRONMENT != "development":
@@ -95,7 +85,7 @@ async def lifespan(app: FastAPI):
             "All inference calls will fail. Set HF_TOKEN in your environment."
         )
 
-    logger.info(f"CORS allowed origins: {settings.cors_origins_list}")
+    logger.info("CORS allowed origins: %s", settings.cors_origins_list)
 
     # Startup must not mutate work owned by another API/worker instance.
     yield
@@ -128,6 +118,7 @@ def create_application() -> FastAPI:
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
+        expose_headers=["X-Request-ID", "Retry-After"],
     )
     
     # Add our custom Request ID middleware
@@ -167,6 +158,7 @@ def create_application() -> FastAPI:
     )
     
     app.include_router(workspaces.router, prefix=f"{settings.API_V1_PREFIX}/workspaces")
+    app.include_router(demo.router, prefix=f"{settings.API_V1_PREFIX}/demo", dependencies=[Depends(get_project_context)])
     return app
 
 

@@ -84,8 +84,8 @@ them. Open Settings to create another organization or project.
    must not be available, including when an old detail URL is pasted.
 5. Sign out; protected pages redirect to sign-in and API calls return 401.
 
-Prompt/dataset/evaluation navigation is present, but their new workflows are
-clearly labeled as future phases. Existing benchmark functionality remains usable.
+Prompt versioning, datasets, evaluations, and SDK workflows are now implemented.
+See the Phase 2–4 guides for the current demo sequence.
 
 ## API contract
 

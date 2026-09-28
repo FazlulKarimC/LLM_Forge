@@ -4,6 +4,7 @@ from uuid import UUID
 
 import httpx
 import pytest
+from pydantic import ValidationError
 from app.core.auth import get_current_user
 from app.core.project_keys import hash_key
 from app.models.prompt import ProjectAPIKey
@@ -11,6 +12,7 @@ from app.models.workspace import OrganizationMembership
 from app.services.experiment_runtime import VersionedPromptTemplate
 from app.services.inference.base import GenerationResult
 from app.services.prompt_templates import compile_template, template_variables
+from app.schemas.prompt import PromptCreate
 from openai import AuthenticationError
 from sqlalchemy import select
 
@@ -66,6 +68,12 @@ def test_missing_variables_and_compiled_size_limit():
         "Question: {{question}}", lambda text: text, "mustache"
     )
     assert adapter.format("Is this compiled?") == "Question: Is this compiled?"
+
+
+@pytest.mark.parametrize("name", [".", ".."])
+def test_reserved_prompt_names_are_rejected(name):
+    with pytest.raises(ValidationError):
+        PromptCreate(name=name, template_text="{{query}}")
 
 
 async def new_prompt(client, headers, name="support-answer", text="Answer {{query}}"):

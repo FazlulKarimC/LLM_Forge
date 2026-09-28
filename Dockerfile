@@ -1,7 +1,7 @@
 # Dockerfile for Hugging Face Spaces / Vercel alternative
-# Uses Python 3.10 slim image
+# Keep the optional root image aligned with backend CI and constraints.
 
-FROM python:3.10-slim
+FROM python:3.12-slim
 
 # Set working directory to /app
 WORKDIR /app
@@ -13,9 +13,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Copy backend requirements
 COPY backend/requirements.txt .
+COPY backend/constraints.txt .
 
 # Install dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt -c constraints.txt
 
 # Copy the backend code into the container
 COPY backend/ .

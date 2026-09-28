@@ -16,6 +16,7 @@ import asyncio
 import logging
 
 from fastapi import APIRouter, Depends
+from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -58,7 +59,7 @@ async def readiness_check(db: AsyncSession = Depends(get_db)):
     Checks (run concurrently):
         - Database connection (NeonDB)
         - Vector database connection (Qdrant Cloud)
-        - Model API availability (HuggingFace token)
+        - Optional server provider configuration (not credential validation)
         - Task dispatch / Upstash / RQ worker status
     
     Returns:
@@ -67,9 +68,9 @@ async def readiness_check(db: AsyncSession = Depends(get_db)):
     # Run all checks concurrently to minimize latency
     db_result, vector_result, model_result, dispatch_result = await asyncio.gather(
         _check_database(db),
-        _check_vector_db(),
+        asyncio.wait_for(_check_vector_db(), timeout=6),
         _check_models(),
-        _check_dispatch(),
+        asyncio.wait_for(_check_dispatch(), timeout=6),
         return_exceptions=True,
     )
 
@@ -83,7 +84,7 @@ async def readiness_check(db: AsyncSession = Depends(get_db)):
 
     # Vector DB
     if isinstance(vector_result, Exception):
-        checks["vector_db"] = f"unhealthy: {str(vector_result)[:120]}"
+        checks["vector_db"] = "unhealthy: timed out" if isinstance(vector_result, TimeoutError) else f"unhealthy: {str(vector_result)[:120]}"
     else:
         checks["vector_db"] = vector_result
 
@@ -95,29 +96,32 @@ async def readiness_check(db: AsyncSession = Depends(get_db)):
 
     # Dispatch (task_dispatch, upstash, rq_worker)
     if isinstance(dispatch_result, Exception):
-        checks["task_dispatch"] = f"unhealthy: {str(dispatch_result)[:120]}"
+        checks["task_dispatch"] = "unhealthy: timed out" if isinstance(dispatch_result, TimeoutError) else f"unhealthy: {str(dispatch_result)[:120]}"
         checks["upstash"] = "unknown"
         checks["rq_worker"] = "unknown"
     else:
         checks.update(dispatch_result)
 
     database_ready = checks.get("database") in _CRITICAL_READY_VALUES
-    models_ready = checks.get("models") in _CRITICAL_READY_VALUES
     dispatch_ready = checks.get("task_dispatch") in _READY_TASK_DISPATCH_STATUSES
-    ready = database_ready and models_ready and dispatch_ready
+    ready = database_ready and dispatch_ready
 
     optional_degraded = any(
         checks.get(key) not in ("healthy", "not_configured")
-        for key in ("upstash", "rq_worker")
+        for key in ("upstash", "rq_worker", "models", "vector_db")
+        if checks.get(key) != "configured"
     )
     critical_degraded = checks.get("task_dispatch") in {"inline_only", "fallback_inline"}
     degraded = ready and (optional_degraded or critical_degraded)
 
-    return {
-        "status": "ready" if ready else "not_ready",
-        "mode": "degraded" if degraded else ("healthy" if ready else "down"),
-        "checks": checks,
-    }
+    return JSONResponse(
+        status_code=200 if ready else 503,
+        content={
+            "status": "ready" if ready else "not_ready",
+            "mode": "degraded" if degraded else ("healthy" if ready else "down"),
+            "checks": checks,
+        },
+    )
 
 
 # ── Individual check coroutines ─────────────────────────────────────────
@@ -130,6 +134,7 @@ async def _check_database(db: AsyncSession) -> str:
         await db.execute(text("SELECT 1"))
         return "healthy"
     except Exception as e:
+        await db.rollback()
         return f"unhealthy: {str(e)[:120]}"
 
 
@@ -158,35 +163,12 @@ async def _check_vector_db() -> str:
 
 
 async def _check_models() -> str:
-    """
-    Check whether at least one configured provider path is usable.
+    """Report server provider configuration without a potentially slow API call."""
+    from app.core.config import settings
 
-    Hugging Face gets a live token validation because the SDK is already present.
-    OpenRouter and Groq are treated as configured/usable when their API keys are
-    present so /ready does not incorrectly fail a deployment that intentionally
-    routes away from Hugging Face.
-    """
-    try:
-        from app.core.config import settings as _settings
-
-        configured_non_hf = any(
-            (_settings.OPENROUTER_API_KEY, _settings.GROQ_API_KEY)
-        )
-        if _settings.HF_TOKEN:
-            from huggingface_hub import HfApi
-
-            api = HfApi(token=_settings.HF_TOKEN)
-            loop = asyncio.get_event_loop()
-            await loop.run_in_executor(None, api.whoami)
-            return "healthy"
-
-        if configured_non_hf:
-            return "healthy"
-
-        if not _settings.HF_TOKEN:
-            return "not_configured"
-    except Exception as e:
-        return f"unhealthy: {str(e)[:120]}"
+    return "configured" if any(
+        (settings.HF_TOKEN, settings.OPENROUTER_API_KEY, settings.GROQ_API_KEY)
+    ) else "not_configured"
 
 
 async def _check_dispatch() -> dict:

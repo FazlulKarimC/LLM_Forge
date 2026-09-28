@@ -14,7 +14,6 @@ from typing import List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Query, Request
-from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -39,7 +38,7 @@ async def _active_run_count(service: ExperimentService) -> int:
 
     try:
         stats = await service.get_stats()
-    except (SQLAlchemyError, Exception) as exc:
+    except Exception as exc:
         logger.warning("Failing closed on concurrency check because stats query failed: %s", exc)
         return MAX_CONCURRENT_RUNS
 

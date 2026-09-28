@@ -1,0 +1,25 @@
+# Direct backend versions verified in the local Python 3.12 environment.
+# CI and the deployed image install these same versions through requirements.txt.
+fastapi==0.128.0
+uvicorn==0.40.0
+pydantic==2.12.5
+pydantic-settings==2.12.0
+PyJWT==2.15.0
+SQLAlchemy==2.0.45
+asyncpg==0.31.0
+alembic==1.17.2
+huggingface-hub==1.2.3
+openai==2.21.0
+numpy==2.4.2
+statsmodels==0.14.6
+python-dotenv==1.2.1
+httpx==0.28.1
+requests==2.32.5
+tenacity==9.1.2
+typing-extensions==4.15.0
+regex==2026.9.10
+rq==2.6.1
+redis==7.1.0
+qdrant-client==1.16.2
+rank-bm25==0.2.2
+sentry-sdk==2.57.0

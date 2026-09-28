@@ -20,7 +20,11 @@ jobs:
       - run: python -m pip install -e './sdk/python[test]'
       - run: python -m pytest sdk/python/tests -q
       - run: python -m pip wheel --no-deps ./sdk/python -w dist
-      - run: python -m llmforge --help
+      - name: Check installed SDK wheel
+        run: |
+          python -m venv /tmp/llmforge-wheel-check
+          /tmp/llmforge-wheel-check/bin/pip install dist/llmforge_sdk-*.whl
+          /tmp/llmforge-wheel-check/bin/python -m llmforge --help
 
   backend-test:
     runs-on: ubuntu-latest
@@ -46,15 +50,19 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
-        python-version: "3.11"
+        python-version: "3.12"
         cache: "pip"
+        cache-dependency-path: |
+          backend/requirements.txt
+          backend/constraints.txt
         
     - name: Install dependencies
       working-directory: ./backend
       run: |
         python -m pip install --upgrade pip
-        pip install -r requirements.txt
+        pip install -r requirements.txt -c constraints.txt
         pip install pytest pytest-asyncio aiosqlite
+        pip install -e ../sdk/python
         
     - name: Apply database migrations
       working-directory: ./backend
@@ -71,6 +79,23 @@ jobs:
         DEMO_MODE: true
       run: |
         pytest -v tests/
+
+    - name: Smoke test SDK and CI gate against PostgreSQL
+      working-directory: ./backend
+      env:
+        DATABASE_URL: postgresql+asyncpg://llmforge:llmforge_password@localhost:5432/llmforge_test
+        INFERENCE_ENGINE: mock
+        DEMO_MODE: true
+      run: |
+        uvicorn app.main:app --host 127.0.0.1 --port 8000 &
+        server_pid=$!
+        trap 'kill $server_pid' EXIT
+        for attempt in $(seq 1 30); do
+          if curl --fail --silent http://127.0.0.1:8000/health > /dev/null; then break; fi
+          sleep 1
+        done
+        curl --fail --silent http://127.0.0.1:8000/health > /dev/null
+        python -m scripts.smoke_sdk
 
   frontend-build:
     runs-on: ubuntu-latest
@@ -106,3 +131,9 @@ jobs:
       env:
         NEXT_PUBLIC_API_URL: http://localhost:8000/api/v1
       run: npm run build
+
+  sync-to-hub:
+    if: github.event_name == 'push'
+    needs: [python-sdk, backend-test, frontend-build]
+    uses: ./.github/workflows/hf-sync.yml
+    secrets: inherit

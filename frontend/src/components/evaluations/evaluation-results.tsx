@@ -8,7 +8,7 @@ export function RunSummary({ detail }: { detail: EvaluationDetail }) {
         {run.config.prompt_name} v{run.config.prompt_version} ·{" "}
         {run.config.dataset_name} v{run.config.dataset_version}
       </h2>
-      <p className="text-sm text-slate-400">
+      <p className="text-sm text-(--muted-foreground)">
         {run.status} · {run.completed}/{run.total} processed · {run.passed}{" "}
         passed · {run.completed - run.passed - run.errors} failed checks ·{" "}
         {run.errors} errors · {run.config.provider} / {run.config.model}
@@ -28,7 +28,7 @@ export function RunSummary({ detail }: { detail: EvaluationDetail }) {
         </pre>
       )}
       {run.error && (
-        <p role="alert" className="text-red-400">
+        <p role="alert" className="text-(--destructive)">
           {run.error}
         </p>
       )}
@@ -51,17 +51,36 @@ export function ResultsGrid({
       (filter === "errors" && !!r.error) ||
       (filter === "failed" && !r.passed && !r.error),
   );
+  const priorCases = new Map(comparison?.results.map((result) => [result.case_index, result]) ?? []);
+  const transitions = { improved: 0, regressed: 0, unchanged: 0, errors: 0 };
+  if (comparison) {
+    for (const current of detail.results) {
+      const prior = priorCases.get(current.case_index);
+      if (!prior) continue;
+      if (current.error || prior.error) transitions.errors++;
+      else if (current.passed && !prior.passed) transitions.improved++;
+      else if (!current.passed && prior.passed) transitions.regressed++;
+      else transitions.unchanged++;
+    }
+  }
+  const sameChecks = JSON.stringify(detail.run.config.assertions ?? []) ===
+    JSON.stringify(comparison?.run.config.assertions ?? []);
   return (
     <div className="overflow-x-auto mt-5">
       {comparison && (
         <div className="mb-3">
-          <p className="text-xs text-slate-400">Comparison</p>
+          <p className="text-xs text-(--muted-foreground)">Comparison</p>
           <RunSummary detail={comparison} />
+          <p role="status" className="mt-2 text-sm">
+            Compared with the selected run: {transitions.improved} improved, {transitions.regressed} regressed,
+            {transitions.unchanged} unchanged, {transitions.errors} involving errors.
+          </p>
+          {!sameChecks && <p className="text-sm text-(--warning)">These runs use different assertions; pass/fail changes may reflect the checks rather than the outputs.</p>}
         </div>
       )}
       <table className="w-full min-w-[800px] text-sm text-left">
         <thead>
-          <tr className="border-b border-slate-700">
+          <tr className="border-b border-(--border)">
             <th className="p-3">Case / inputs</th>
             <th className="p-3">Reference</th>
             <th className="p-3">Output / checks</th>
@@ -77,7 +96,7 @@ export function ResultsGrid({
             return (
               <tr
                 key={result.case_index}
-                className="align-top border-b border-slate-700"
+                className="align-top border-b border-(--border)"
               >
                 <td className="p-3 max-w-64">
                   <strong>
@@ -115,7 +134,7 @@ export function ResultsGrid({
         </tbody>
       </table>
       {!rows.length && (
-        <p className="text-slate-400 p-3">No matching results yet.</p>
+        <p className="text-(--muted-foreground) p-3">No matching results yet.</p>
       )}
     </div>
   );
@@ -130,15 +149,15 @@ function ResultCell({
       <span
         className={
           result.error
-            ? "text-amber-400"
+            ? "text-(--warning)"
             : result.passed
-              ? "text-emerald-400"
-              : "text-red-400"
+              ? "text-(--success)"
+              : "text-(--destructive)"
         }
       >
         {result.error ? "Error" : result.passed ? "Passed" : "Failed checks"}
       </span>
-      {result.error && <p className="text-amber-400 mt-2">{result.error}</p>}
+      {result.error && <p className="text-(--warning) mt-2">{result.error}</p>}
       <pre className="whitespace-pre-wrap break-words text-xs mt-2">
         {result.output}
       </pre>

@@ -110,3 +110,29 @@ class TestReadinessDispatch:
         data = response.json()
         assert data["status"] == "ready"
         assert data["mode"] == "healthy"
+
+    def test_mock_workflow_ready_without_server_provider_key(self, client):
+        with patch("app.api.health._check_database", return_value="healthy"), \
+             patch("app.api.health._check_vector_db", return_value="not_configured"), \
+             patch("app.api.health._check_models", return_value="not_configured"), \
+             patch("app.api.health._check_dispatch", return_value={
+                 "task_dispatch": "inline_only",
+                 "upstash": "not_configured",
+                 "rq_worker": "not_configured",
+             }):
+            response = client.get("/ready")
+        assert response.status_code == 200
+        assert response.json()["status"] == "ready"
+
+    def test_database_failure_returns_unavailable(self, client):
+        with patch("app.api.health._check_database", return_value="unhealthy: offline"), \
+             patch("app.api.health._check_vector_db", return_value="not_configured"), \
+             patch("app.api.health._check_models", return_value="not_configured"), \
+             patch("app.api.health._check_dispatch", return_value={
+                 "task_dispatch": "inline_only",
+                 "upstash": "not_configured",
+                 "rq_worker": "not_configured",
+             }):
+            response = client.get("/ready")
+        assert response.status_code == 503
+        assert response.json()["status"] == "not_ready"

@@ -20,8 +20,7 @@ export function Providers({ children }: { children: ReactNode }) {
                 defaultOptions: {
                     queries: {
                         staleTime: 60_000,           // 1 minute
-                        retry: 1,                    // down from default 3
-                        retryDelay: 2000,            // fixed 2s backoff
+                        retry: false,                // read requests retry in api-client
                         refetchOnWindowFocus: false,  // already set
                         refetchOnReconnect: false,    // prevents burst on reconnect
                     },

@@ -4,7 +4,7 @@ import {
   ResultsGrid,
   RunSummary,
 } from "@/components/evaluations/evaluation-results";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { listPrompts, getVersions, type Provider } from "@/lib/prompt-api";
@@ -75,40 +75,69 @@ export function EvaluationsWorkbench() {
   const [compareId, setCompareId] = useState("");
   const [runOffset, setRunOffset] = useState(0);
   const [filter, setFilter] = useState("all");
+  const [urlReady, setUrlReady] = useState(false);
+  useEffect(() => {
+    const restore = () => {
+      const params = new URLSearchParams(window.location.search);
+      setPromptId(params.get("prompt") ?? "");
+      setVersionId(params.get("version") ?? "");
+      setDatasetId(params.get("dataset") ?? "");
+      setRevisionId(params.get("revision") ?? "");
+      setRunId(params.get("run") ?? "");
+      setCompareId(params.get("compare") ?? "");
+      setUrlReady(true);
+    };
+    restore();
+    window.addEventListener("popstate", restore);
+    return () => window.removeEventListener("popstate", restore);
+  }, []);
+  useEffect(() => {
+    if (!urlReady) return;
+    const params = new URLSearchParams(window.location.search);
+    for (const [key, value] of Object.entries({
+      prompt: promptId, version: versionId, dataset: datasetId,
+      revision: revisionId, run: runId, compare: compareId,
+    })) {
+      if (value) params.set(key, value);
+      else params.delete(key);
+    }
+    const search = params.toString();
+    window.history.replaceState(null, "", `${window.location.pathname}${search ? `?${search}` : ""}`);
+  }, [urlReady, promptId, versionId, datasetId, revisionId, runId, compareId]);
   const prompts = useQuery({
     queryKey: ["prompt-library", "", false, promptOffset],
-    queryFn: () => listPrompts("", false, promptOffset),
+    queryFn: ({ signal }) => listPrompts("", false, promptOffset, signal),
   });
   const versions = useQuery({
     queryKey: ["eval-versions", promptId, versionOffset],
-    queryFn: () => getVersions(promptId, versionOffset),
+    queryFn: ({ signal }) => getVersions(promptId, versionOffset, signal),
     enabled: !!promptId,
   });
   const datasets = useQuery({
     queryKey: ["datasets", false, datasetOffset],
-    queryFn: () => listDatasets(false, datasetOffset),
+    queryFn: ({ signal }) => listDatasets(false, datasetOffset, signal),
   });
   const revisions = useQuery({
     queryKey: ["dataset-history", datasetId, revisionOffset],
-    queryFn: () => listRevisions(datasetId, revisionOffset),
+    queryFn: ({ signal }) => listRevisions(datasetId, revisionOffset, signal),
     enabled: !!datasetId,
   });
   const runs = useQuery({
     queryKey: ["evaluations", runOffset],
-    queryFn: () => listEvaluations(runOffset),
+    queryFn: ({ signal }) => listEvaluations(runOffset, signal),
     refetchInterval: (query) =>
       query.state.data?.items.some(isActive) ? 2500 : false,
   });
   const detail = useQuery({
     queryKey: ["evaluation", runId],
-    queryFn: () => getEvaluation(runId),
+    queryFn: ({ signal }) => getEvaluation(runId, signal),
     enabled: !!runId,
     refetchInterval: (query) =>
       query.state.data && isActive(query.state.data.run) ? 2500 : false,
   });
   const comparison = useQuery({
     queryKey: ["evaluation", compareId],
-    queryFn: () => getEvaluation(compareId),
+    queryFn: ({ signal }) => getEvaluation(compareId, signal),
     enabled: !!compareId,
     refetchInterval: (query) =>
       query.state.data && isActive(query.state.data.run) ? 2500 : false,
@@ -132,7 +161,7 @@ export function EvaluationsWorkbench() {
     <div className="space-y-6 max-w-7xl mx-auto">
       <div>
         <h1 className="text-2xl font-semibold">Evaluations</h1>
-        <p className="text-sm text-slate-400">
+        <p className="text-sm text-(--muted-foreground)">
           Compare saved prompt versions against fixed test cases.{" "}
           <Link className="underline" href="/datasets">
             Manage datasets
@@ -140,7 +169,7 @@ export function EvaluationsWorkbench() {
         </p>
       </div>
       {error && (
-        <p role="alert" className="text-red-400">
+        <p role="alert" className="text-(--destructive)">
           {error}
         </p>
       )}
@@ -155,7 +184,7 @@ export function EvaluationsWorkbench() {
       ]
         .filter(Boolean)
         .map((e, i) => (
-          <p key={i} role="alert" className="text-red-400">
+          <p key={i} role="alert" className="text-(--destructive)">
             {errorText(e)}
           </p>
         ))}
@@ -184,6 +213,8 @@ export function EvaluationsWorkbench() {
                       {p.name}
                     </option>
                   ))}
+                  {promptId && !prompts.data?.items.some((p) => p.id === promptId) &&
+                    <option value={promptId}>Selected prompt ({promptId})</option>}
                 </select>
               </label>
               <PageControls
@@ -210,6 +241,8 @@ export function EvaluationsWorkbench() {
                       v{v.version} · {v.variables.join(", ") || "No variables"}
                     </option>
                   ))}
+                  {versionId && !versions.data?.some((v) => v.id === versionId) &&
+                    <option value={versionId}>Selected saved version ({versionId})</option>}
                 </select>
               </label>
               <PageControls
@@ -240,6 +273,8 @@ export function EvaluationsWorkbench() {
                       {d.name}
                     </option>
                   ))}
+                  {datasetId && !datasets.data?.items.some((d) => d.id === datasetId) &&
+                    <option value={datasetId}>Selected dataset ({datasetId})</option>}
                 </select>
               </label>
               <PageControls
@@ -268,6 +303,8 @@ export function EvaluationsWorkbench() {
                       v{r.version} · {r.cases.length} cases
                     </option>
                   ))}
+                  {revisionId && !revisions.data?.some((r) => r.id === revisionId) &&
+                    <option value={revisionId}>Selected revision ({revisionId})</option>}
                 </select>
               </label>
               <PageControls
@@ -418,7 +455,7 @@ export function EvaluationsWorkbench() {
             >
               Add assertion
             </button>
-            <p className="text-xs text-slate-400">
+            <p className="text-xs text-(--muted-foreground)">
               All checks must pass. Exact match includes whitespace. Regex uses
               search. JSON comparisons ignore object key order; dot paths access
               keys and numeric array indexes.
@@ -436,8 +473,8 @@ export function EvaluationsWorkbench() {
             Add LLM judge (one additional provider call per case)
           </label>
           {judgeEnabled && (
-            <div className="space-y-3 border border-slate-700 rounded-xl p-4">
-              <p className="text-xs text-slate-400">
+            <div className="space-y-3 border border-(--border) rounded-xl p-4">
+              <p className="text-xs text-(--muted-foreground)">
                 Judge scores are model opinions from 0–1. They may vary and can
                 be influenced by candidate content. Review reasons alongside
                 deterministic checks.
@@ -516,7 +553,7 @@ export function EvaluationsWorkbench() {
               </label>
             </div>
           )}
-          <p className="text-xs text-slate-400">
+          <p className="text-xs text-(--muted-foreground)">
             Limits: 100 demo cases, 50 live cases, or 20 with judging; two
             active runs per project. Keys stay in memory and are cleared from
             this form after starting. Cancellation stops subsequent cases; an
@@ -567,7 +604,7 @@ export function EvaluationsWorkbench() {
         <h2 className="font-semibold">Run history</h2>
         {runs.isLoading && <p>Loading runs…</p>}
         {runs.data?.items.length === 0 && (
-          <p className="text-slate-400 mt-3">
+          <p className="text-(--muted-foreground) mt-3">
             No runs yet. Try the sample dataset with a {"{{query}}"} prompt.
           </p>
         )}
@@ -592,6 +629,8 @@ export function EvaluationsWorkbench() {
                   {r.status} · {new Date(r.created_at).toLocaleString()}
                 </option>
               ))}
+              {runId && !runs.data?.items.some((r) => r.id === runId) &&
+                <option value={runId}>{detail.data ? `${detail.data.run.config.prompt_name} · ${detail.data.run.status}` : `Selected run (${runId})`}</option>}
             </select>
           </label>
           <label className="text-sm">
@@ -611,6 +650,8 @@ export function EvaluationsWorkbench() {
                     {r.config.model} · {new Date(r.created_at).toLocaleString()}
                   </option>
                 ))}
+              {compareId && !runs.data?.items.some((r) => r.id === compareId) &&
+                <option value={compareId}>{comparison.data ? `${comparison.data.run.config.prompt_name} · ${comparison.data.run.status}` : `Selected comparison (${compareId})`}</option>}
             </select>
           </label>
         </div>
@@ -667,7 +708,7 @@ export function EvaluationsWorkbench() {
           {comparison.data &&
             comparison.data.run.dataset_revision_id !==
               detail.data.run.dataset_revision_id && (
-              <p role="status" className="text-amber-400 mt-4">
+              <p role="status" className="text-(--warning) mt-4">
                 These runs use different dataset revisions. Select the same
                 revision for case-by-case comparison.
               </p>

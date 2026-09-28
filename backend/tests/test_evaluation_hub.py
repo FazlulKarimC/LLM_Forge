@@ -339,6 +339,55 @@ async def test_cancellation_during_provider_call(api, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_cancellation_during_generation_skips_judge(api, monkeypatch):
+    _, client, sessions, headers, _, request = await create_evaluation_scenario(api)
+    judge_calls = []
+
+    async def generate(_data):
+        async with sessions() as db:
+            run_id = str((await db.scalar(select(EvaluationRun))).id)
+        cancelled = await client.post(
+            f"/api/v1/evaluations/{run_id}/cancel", headers=headers
+        )
+        assert cancelled.json()["status"] == "cancelled"
+        return {
+            "compiled_prompt": "Hello",
+            "output": "Hello",
+            "latency_ms": 1,
+            "tokens_input": None,
+            "tokens_output": None,
+        }
+
+    async def judge(*_args):
+        judge_calls.append(1)
+        return {"kind": "llm_judge", "passed": True}
+
+    monkeypatch.setattr("app.services.evaluation_service.generate_playground", generate)
+    monkeypatch.setattr("app.services.evaluation_service.judge_output", judge)
+    response = await client.post(
+        "/api/v1/evaluations",
+        headers=headers,
+        json={
+            **request,
+            "judge": {
+                "provider": "groq",
+                "model": "judge-model",
+                "api_key": "request-only-key",
+                "rubric": "Check the answer",
+            },
+        },
+    )
+    detail = (
+        await client.get(
+            "/api/v1/evaluations/" + response.json()["id"], headers=headers
+        )
+    ).json()
+    assert detail["run"]["status"] == "cancelled"
+    assert detail["results"] == []
+    assert judge_calls == []
+
+
+@pytest.mark.asyncio
 async def test_abandoned_run_and_admission_limit(api, monkeypatch):
     _, client, sessions, headers, _, request = await create_evaluation_scenario(api)
     async with sessions() as db:

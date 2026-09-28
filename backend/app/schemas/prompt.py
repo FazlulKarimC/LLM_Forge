@@ -33,8 +33,8 @@ class PromptCreate(VersionCreate):
     @classmethod
     def clean_name(cls, value):
         value = value.strip()
-        if not value or any(ord(char) < 32 for char in value) or "/" in value:
-            raise ValueError("Name cannot be blank, contain control characters or include /")
+        if not value or value in {".", ".."} or any(ord(char) < 32 for char in value) or "/" in value:
+            raise ValueError("Name cannot be blank, . or .., contain control characters or include /")
         return value
 
 

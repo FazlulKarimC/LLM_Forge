@@ -9,7 +9,7 @@ When running extensive evaluations (like RAG or Chain-of-Thought), the pipeline 
 Standard practice for distributed caching is Redis. However, adding a Redis dependency violates our goal of a zero-cost, easily deployable portfolio project.
 
 ### Decision
-We implemented an in-memory `functools.lru_cache` (configured in the DB via `OptimizationConfig`) directly inside the API engine adapters (`hf_api_engine.py`, `openai_engine.py`). 
+We implemented an in-memory `PromptCache`, enabled through each experiment's `OptimizationConfig` and created by `ExperimentRuntimeBuilder`. It is used during that experiment's execution; it does not live inside provider adapters.
 
 ### Consequences
 - **Positive:** Zero added infrastructure cost.

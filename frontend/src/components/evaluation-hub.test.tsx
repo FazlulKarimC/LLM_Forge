@@ -95,6 +95,7 @@ function mount(element: React.ReactNode) {
 }
 afterEach(cleanup);
 beforeEach(() => {
+  window.history.replaceState(null, "", "/evaluations");
   vi.resetAllMocks();
   mocks.listDatasets.mockResolvedValue({ items: [dataset], total: 1 });
   mocks.getDataset.mockResolvedValue({ dataset, revision });
@@ -114,6 +115,25 @@ beforeEach(() => {
 });
 
 describe("dataset editor", () => {
+  it("updates metadata without a revision when cases are only reformatted", async () => {
+    mount(<DatasetsWorkbench />);
+    fireEvent.click(await screen.findByText("Greetings"));
+    fireEvent.change(await screen.findByLabelText("Dataset name"), {
+      target: { value: "Renamed greetings" },
+    });
+    fireEvent.change(screen.getByLabelText("Dataset cases"), {
+      target: { value: '[{"name":"Greeting","expected_output":"Hello","inputs":{"query":"Hello"}}]' },
+    });
+    fireEvent.click(screen.getByText("Save changes"));
+    await waitFor(() =>
+      expect(mocks.updateDataset).toHaveBeenCalledWith(
+        "dataset",
+        expect.objectContaining({ name: "Renamed greetings" }),
+      ),
+    );
+    expect(mocks.saveRevision).not.toHaveBeenCalled();
+  });
+
   it("restores old cases as a new revision using the latest base version", async () => {
     const latest = {
       ...revision,
@@ -182,6 +202,16 @@ describe("dataset editor", () => {
 });
 
 describe("evaluation UI", () => {
+  it("restores and updates a shareable evaluation selection", async () => {
+    window.history.replaceState(null, "", "/evaluations?prompt=prompt&version=version&dataset=dataset&revision=revision&run=run");
+    mount(<EvaluationsWorkbench />);
+    await waitFor(() => expect(screen.getByLabelText("Prompt version")).toHaveValue("version"));
+    expect(screen.getByLabelText("Dataset revision")).toHaveValue("revision");
+    expect(screen.getByLabelText("View evaluation run")).toHaveValue("run");
+    fireEvent.change(screen.getByLabelText("View evaluation run"), { target: { value: "" } });
+    await waitFor(() => expect(window.location.search).not.toContain("run="));
+    expect(window.location.search).toContain("version=version");
+  });
   it("starts a live run with saved IDs, clears the key, and displays results", async () => {
     mount(<EvaluationsWorkbench />);
     await screen.findByRole("option", { name: "Echo" });
@@ -245,5 +275,20 @@ describe("evaluation UI", () => {
       await screen.findByText(/different dataset revisions/),
     ).toBeInTheDocument();
     expect(screen.getByText("✓ exact_match: Passed")).toBeInTheDocument();
+  });
+  it("shows aligned case changes against a comparable run", async () => {
+    const oldRun = { ...run, id: "old", config: { ...run.config, assertions: [{ kind: "exact_match", value: "", path: "" }] } };
+    const currentRun = { ...run, config: oldRun.config, passed: 0 };
+    const failedResult = { ...result, passed: false };
+    mocks.listEvaluations.mockResolvedValue({ items: [currentRun, oldRun], total: 2 });
+    mocks.getEvaluation.mockImplementation((id) => Promise.resolve({
+      run: id === "old" ? oldRun : currentRun,
+      results: [id === "old" ? result : failedResult],
+    }));
+    mount(<EvaluationsWorkbench />);
+    await waitFor(() => expect(screen.getByLabelText("View evaluation run").querySelectorAll("option")).toHaveLength(3));
+    fireEvent.change(screen.getByLabelText("View evaluation run"), { target: { value: "run" } });
+    fireEvent.change(screen.getByLabelText("Compare evaluation run"), { target: { value: "old" } });
+    expect(await screen.findByText(/0 improved, 1 regressed/)).toBeInTheDocument();
   });
 });

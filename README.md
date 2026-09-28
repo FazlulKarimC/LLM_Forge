@@ -42,7 +42,7 @@ Built to answer a core question: *How do different LLM reasoning strategies trad
 ### Why LlmForge?
 
 - **Not just metrics — provenance.** Every run records the exact provider served, routing reason, cost, prompt version hash, and runtime-adjusted settings. You can audit *why* a result happened, not just *what* it was.
-- **Free-tier survivable.** Circuit breakers, inline fallbacks, and durable Postgres job recovery mean the platform stays operational even when Upstash archives your Redis or HF cold-starts your Space.
+- **Free-tier aware.** Circuit breakers and inline fallbacks keep task dispatch available when Upstash is unavailable. In-process work interrupted by a backend restart must be started again.
 - **Research-honest.** Statistical comparisons surface overlap ratios, discordant pair counts, and power warnings instead of presenting p-values as cleaner than they are.
 
 ---
@@ -76,7 +76,7 @@ graph TD
     START(["Experiment Submitted"])
     DISPATCH{{"Circuit Breaker?"}}
     UPSTASH["Upstash + RQ Backend"]
-    INLINE["Inline Fallback\nPostgres-backed · startup recovery"]
+    INLINE["Inline Fallback\nPostgres status · best-effort execution"]
 
     START --> DISPATCH
     DISPATCH -->|"closed · worker alive"| UPSTASH
@@ -209,7 +209,7 @@ graph TD
 | **Frontend** | Next.js 16, TypeScript, React 19, Tailwind CSS v4, Framer Motion, TanStack Query, Sonner, Lucide |
 | **Database** | PostgreSQL via NeonDB (serverless) |
 | **Vector Store** | Qdrant Cloud (RAG document retrieval) |
-| **Task Queue** | Durable Postgres-backed background jobs (startup recovery), Upstash Redis + RQ (optional, circuit-breaker protected) |
+| **Task Queue** | Postgres job status with best-effort inline execution; optional Upstash Redis + RQ |
 | **Inference** | HuggingFace Inference API, OpenRouter, Groq, OpenAI-compatible endpoints |
 | **Observability** | Sentry (full-stack distributed error tracking) |
 | **Embeddings** | sentence-transformers (CPU-friendly) |
@@ -269,7 +269,7 @@ Full reference: [`DESIGN_SYSTEM.md`](./DESIGN_SYSTEM.md)
 ### Prerequisites
 
 - Python 3.12+
-- Node.js 18+
+- Node.js 20.9+
 - [NeonDB](https://neon.tech) PostgreSQL connection string (free tier)
 - [Upstash](https://upstash.com) Redis connection string (free tier — optional, platform works without it)
 - Inference API token (HuggingFace, OpenRouter, Groq, or custom endpoint)
@@ -334,8 +334,15 @@ Open **<http://localhost:3000>**
 ### Via the API
 
 ```bash
+# Sign in through Clerk, then obtain a session token and a project ID.
+# Every benchmark request below needs both headers:
+export LLMFORGE_SESSION_TOKEN=<clerk-session-token>
+export LLMFORGE_PROJECT_ID=<project-uuid>
+
 # Create
 curl -X POST http://localhost:8000/api/v1/experiments \
+  -H "Authorization: Bearer $LLMFORGE_SESSION_TOKEN" \
+  -H "X-Project-ID: $LLMFORGE_PROJECT_ID" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "cot_vs_naive_multihop",
@@ -350,16 +357,20 @@ curl -X POST http://localhost:8000/api/v1/experiments \
   }'
 
 # Run
-curl -X POST "http://localhost:8000/api/v1/experiments/{id}/run"
+curl -X POST "http://localhost:8000/api/v1/experiments/{id}/run" \
+  -H "Authorization: Bearer $LLMFORGE_SESSION_TOKEN" -H "X-Project-ID: $LLMFORGE_PROJECT_ID"
 
 # Metrics
-curl http://localhost:8000/api/v1/results/{id}/metrics
+curl "http://localhost:8000/api/v1/results/{id}/metrics" \
+  -H "Authorization: Bearer $LLMFORGE_SESSION_TOKEN" -H "X-Project-ID: $LLMFORGE_PROJECT_ID"
 
 # Statistical comparison
-curl "http://localhost:8000/api/v1/results/compare/statistical?experiment_a={id_a}&experiment_b={id_b}"
+curl "http://localhost:8000/api/v1/results/compare/statistical?experiment_a={id_a}&experiment_b={id_b}" \
+  -H "Authorization: Bearer $LLMFORGE_SESSION_TOKEN" -H "X-Project-ID: $LLMFORGE_PROJECT_ID"
 
 # Export
-curl http://localhost:8000/api/v1/results/{id}/export
+curl "http://localhost:8000/api/v1/results/{id}/export" \
+  -H "Authorization: Bearer $LLMFORGE_SESSION_TOKEN" -H "X-Project-ID: $LLMFORGE_PROJECT_ID"
 ```
 
 ---

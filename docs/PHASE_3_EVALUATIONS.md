@@ -3,12 +3,11 @@
 ## Try a reliable demo
 
 1. Sign in and select your project.
-2. Under **Prompts**, create `Echo demo` with the Mustache template `{{query}}` and save v1.
-3. Under **Datasets**, click **New dataset**. Name it `Greetings` and keep the two sample cases. Save.
-4. Under **Evaluations**, select `Echo demo` v1 and `Greetings` revision 1. Keep **Demo** and **Exact match**. Start the run.
+2. On the dashboard, click **Create demo examples**. This creates or reuses `Echo demo` v1 (`{{query}}`) and the two-case `Greetings` dataset in the current project, then opens **Evaluations** with both selected. Existing content with these names is never overwritten; a conflict is shown instead.
+3. Keep **Demo** and **Exact match**. Start the run.
 5. Both cases pass: Demo echoes the compiled prompt. It does not call a model or claim to measure real model quality.
 6. Save prompt v2 as `Reply: {{query}}`. Run it against the same dataset revision. Both cases fail exact match.
-7. Select these two runs under **View run** and **Compare with**. Inspect outputs side by side. Export the results as JSON.
+7. Select these two runs under **View run** and **Compare with**. Inspect outputs and the pass/fail changes. Copy the page URL to revisit the selected runs, or export the results as JSON.
 
 This demonstrates a reproducible regression test: a prompt change breaks the expected output contract. For a practical model demo, use a small support-ticket classification dataset, a prompt that returns a JSON label, JSON-path assertions, and an optional correctness rubric.
 
@@ -72,6 +71,7 @@ All endpoints require Clerk Bearer authentication and `X-Project-ID`. Read-only 
 - `GET/POST /api/v1/evaluations` — POST returns 202
 - `GET /api/v1/evaluations/{id}` — run plus ordered per-case results
 - `POST /api/v1/evaluations/{id}/cancel`
+- `POST /api/v1/demo/setup` — idempotent project-scoped provider-free example setup
 
 Run creation selects `prompt_version_id`, `dataset_revision_id`, provider/model/generation settings, `assertions`, and optional `judge`. Run history snapshots prompt/dataset names, version numbers, and non-secret settings. Comparisons align case indexes only when both runs use the same dataset revision. Existing benchmark experiments remain a separate workflow.
 

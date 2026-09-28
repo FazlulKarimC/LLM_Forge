@@ -12,7 +12,7 @@ export default function PromptsPage() {
   const [archived, setArchived] = useState(false);
   const [offset, setOffset] = useState(0);
   const deferredSearch = useDeferredValue(search);
-  const query = useQuery({ queryKey: ["prompt-library", deferredSearch, archived, offset], queryFn: () => listPrompts(deferredSearch, archived, offset) });
+  const query = useQuery({ queryKey: ["prompt-library", deferredSearch, archived, offset], queryFn: ({ signal }) => listPrompts(deferredSearch, archived, offset, signal) });
   return <div className="space-y-6">
     <PageHeader eyebrow="Prompt engineering" title="Prompts" description="Develop a prompt, test it with sample inputs, and release a version your application can fetch."
       actions={<Link href="/prompts/new" className="btn-primary"><Plus className="size-4" />New prompt</Link>} />

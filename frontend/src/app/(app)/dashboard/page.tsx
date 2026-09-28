@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import {
   Activity,
@@ -17,6 +18,7 @@ import {
   WifiOff,
 } from "lucide-react";
 import { toast } from "sonner";
+import { createDemoExamples } from "@/lib/evaluation-api";
 
 import {
   ApiError,
@@ -49,10 +51,26 @@ function formatDate(dateStr: string) {
 }
 
 export default function DashboardPage() {
+  const router = useRouter();
   const queryClient = useQueryClient();
   const [runningIds, setRunningIds] = useState<Set<string>>(new Set());
   const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
   const [experimentToDelete, setExperimentToDelete] = useState<{ id: string; name: string } | null>(null);
+  const demoMutation = useMutation({
+    mutationFn: createDemoExamples,
+    onSuccess: (examples) => {
+      queryClient.invalidateQueries({ queryKey: ["prompt-library"] });
+      queryClient.invalidateQueries({ queryKey: ["datasets"] });
+      const params = new URLSearchParams({
+        prompt: examples.prompt_id,
+        version: examples.prompt_version_id,
+        dataset: examples.dataset_id,
+        revision: examples.dataset_revision_id,
+      });
+      router.push(`/evaluations?${params}`);
+    },
+    onError: (error: Error) => toast.error(`Could not prepare demo: ${error.message}`),
+  });
 
   const statsQuery = useQuery({
     queryKey: ["dashboard-stats"],
@@ -189,6 +207,20 @@ export default function DashboardPage() {
         </div>
       </PageHeader>
 
+      <section className="panel p-5">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h2 className="font-semibold">Try a prompt evaluation</h2>
+            <p className="mt-1 text-sm text-(--muted-foreground)">
+              Create two reusable examples in this project and open a provider-free evaluation.
+            </p>
+          </div>
+          <button type="button" className="btn-primary" disabled={demoMutation.isPending} onClick={() => demoMutation.mutate()}>
+            {demoMutation.isPending ? "Preparing…" : "Create demo examples"}
+          </button>
+        </div>
+      </section>
+
       {statsQuery.error && experimentsQuery.error ? (
         <div className="alert alert-danger">
           <WifiOff className="mt-0.5 size-4 shrink-0" />
@@ -295,7 +327,7 @@ export default function DashboardPage() {
                   const tone =
                     status === "healthy"
                       ? "status-completed"
-                      : status === "not_configured" || status === "inline_only"
+                      : status === "not_configured" || status === "configured" || status === "inline_only"
                         ? "status-pending"
                         : status.startsWith("archived")
                           ? "status-queued"

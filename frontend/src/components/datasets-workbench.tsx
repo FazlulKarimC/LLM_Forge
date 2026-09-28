@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
+import { useUnsavedChanges } from "@/lib/use-unsaved-changes";
 import {
   createDataset,
   getDataset,
@@ -29,6 +30,18 @@ const sample: DatasetCase[] = [
   },
 ];
 const pretty = (cases: DatasetCase[]) => JSON.stringify(cases, null, 2);
+// Ignore JSON whitespace and object-key order without changing case order.
+const sameCases = (text: string, saved: DatasetCase[]) => {
+  try {
+    const ordered = (_key: string, value: unknown) =>
+      value && typeof value === "object" && !Array.isArray(value)
+        ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)))
+        : value;
+    return JSON.stringify(JSON.parse(text), ordered) === JSON.stringify(saved, ordered);
+  } catch {
+    return false;
+  }
+};
 
 export function DatasetsWorkbench() {
   const cache = useQueryClient();
@@ -47,20 +60,21 @@ export function DatasetsWorkbench() {
   const [message, setMessage] = useState("");
   const list = useQuery({
     queryKey: ["datasets", archived, offset],
-    queryFn: () => listDatasets(archived, offset),
+    queryFn: ({ signal }) => listDatasets(archived, offset, signal),
   });
   const history = useQuery({
     queryKey: ["dataset-history", selected?.dataset.id, historyOffset],
-    queryFn: () => listRevisions(selected!.dataset.id, historyOffset),
+    queryFn: ({ signal }) => listRevisions(selected!.dataset.id, historyOffset, signal),
     enabled: !!selected,
   });
   const dirty =
     editing &&
     ((!!selected &&
       selected.revision.version !== selected.dataset.latest_version) ||
-      text !== pretty(selected?.revision.cases ?? sample) ||
+      !sameCases(text, selected?.revision.cases ?? sample) ||
       name !== (selected?.dataset.name ?? "") ||
       description !== (selected?.dataset.description ?? ""));
+  useUnsavedChanges(dirty);
   const load = (detail: DatasetDetail | null) => {
     setSelected(detail);
     setName(detail?.dataset.name ?? "");
@@ -98,7 +112,7 @@ export function DatasetsWorkbench() {
         let revision = selected.revision;
         if (
           selected.revision.version !== selected.dataset.latest_version ||
-          text !== pretty(selected.revision.cases)
+          !sameCases(text, selected.revision.cases)
         )
           revision = await saveRevision(
             selected.dataset.id,
@@ -126,7 +140,7 @@ export function DatasetsWorkbench() {
       <div className="flex justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold">Datasets</h1>
-          <p className="text-sm text-slate-400">
+          <p className="text-sm text-(--muted-foreground)">
             Version your test cases, then evaluate saved prompts against them.
           </p>
         </div>
@@ -139,12 +153,12 @@ export function DatasetsWorkbench() {
         </button>
       </div>
       {error && (
-        <p role="alert" className="text-red-400">
+        <p role="alert" className="text-(--destructive)">
           {error}
         </p>
       )}
       {message && (
-        <p role="status" className="text-emerald-400">
+        <p role="status" className="text-(--success)">
           {message}
         </p>
       )}
@@ -169,19 +183,19 @@ export function DatasetsWorkbench() {
             </p>
           )}
           {list.data?.items.length === 0 && (
-            <p className="text-slate-400">
+            <p className="text-(--muted-foreground)">
               No datasets yet. Create one or import your cases.
             </p>
           )}
           {list.data?.items.map((item) => (
             <button
-              className="w-full rounded-xl border border-slate-700 p-3 text-left disabled:opacity-40"
+              className="w-full rounded-xl border border-(--border) p-3 text-left disabled:opacity-40"
               key={item.id}
               disabled={busy || dirty}
               onClick={() => act(async () => load(await getDataset(item.id)))}
             >
               <span className="block font-medium break-words">{item.name}</span>
-              <span className="text-xs text-slate-400">
+              <span className="text-xs text-(--muted-foreground)">
                 Revision {item.latest_version}
                 {item.archived && " · Archived"}
               </span>
@@ -203,7 +217,7 @@ export function DatasetsWorkbench() {
           </div>
         </aside>
         {editing ? (
-          <section className="space-y-4 rounded-xl border border-slate-700 p-5">
+          <section className="space-y-4 rounded-xl border border-(--border) p-5">
             <div className="flex flex-wrap gap-3 items-center">
               <h2 className="font-semibold">
                 {selected
@@ -261,7 +275,7 @@ export function DatasetsWorkbench() {
                 disabled={selected?.dataset.archived || busy}
               />
             </label>
-            <p className="text-xs text-slate-400">
+            <p className="text-xs text-(--muted-foreground)">
               Each case has inputs (string values), expected_output (string or
               null), and an optional name. Maximum 100 cases / 1 MB. Exact match
               requires a reference for every case.
@@ -321,7 +335,7 @@ export function DatasetsWorkbench() {
               )}
             </div>
             {!selected?.dataset.archived && (
-              <details className="border-t border-slate-700 pt-3">
+              <details className="border-t border-(--border) pt-3">
                 <summary>Import CSV or JSON into this draft</summary>
                 <div className="space-y-3 mt-3">
                   <select
@@ -335,7 +349,7 @@ export function DatasetsWorkbench() {
                     <option value="json">JSON</option>
                     <option value="csv">CSV</option>
                   </select>
-                  <p className="text-xs text-slate-400">
+                  <p className="text-xs text-(--muted-foreground)">
                     CSV example: input.query,expected_output,name followed by
                     Hello,Hello,Greeting. Alternatively use an inputs column
                     containing a quoted JSON object.
@@ -387,7 +401,7 @@ export function DatasetsWorkbench() {
               </details>
             )}
             {selected && (
-              <div className="border-t border-slate-700 pt-3">
+              <div className="border-t border-(--border) pt-3">
                 <h3 className="font-medium">Saved revisions</h3>
                 {history.error && (
                   <p role="alert">{errorText(history.error)}</p>
@@ -407,7 +421,7 @@ export function DatasetsWorkbench() {
                     </button>
                   ))}
                 </div>
-                <p className="text-xs text-slate-400 mt-2">
+                <p className="text-xs text-(--muted-foreground) mt-2">
                   Selecting an older revision loads it as a draft; saving
                   creates a new revision. Discard unsaved changes before
                   switching.
@@ -432,7 +446,7 @@ export function DatasetsWorkbench() {
             )}
           </section>
         ) : (
-          <p className="text-slate-400">
+          <p className="text-(--muted-foreground)">
             Select a dataset or create one. For the demo, use the sample cases
             with a prompt containing only {"{{query}}"}.
           </p>

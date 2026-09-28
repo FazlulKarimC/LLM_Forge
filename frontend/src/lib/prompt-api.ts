@@ -67,15 +67,18 @@ export const listPrompts = (
   search: string,
   archived: boolean,
   offset: number,
+  signal?: AbortSignal,
 ) =>
   fetchAPI<{ items: Prompt[]; total: number }>(
     `/prompt-library?${new URLSearchParams({ search, archived: String(archived), offset: String(offset) })}`,
+    { signal },
   );
-export const getPrompt = (id: string) =>
-  fetchAPI<PromptDetail>(`/prompt-library/${id}`);
-export const getVersions = (id: string, offset = 0) =>
+export const getPrompt = (id: string, signal?: AbortSignal) =>
+  fetchAPI<PromptDetail>(`/prompt-library/${id}`, { signal });
+export const getVersions = (id: string, offset = 0, signal?: AbortSignal) =>
   fetchAPI<PromptVersion[]>(
     `/prompt-library/${id}/versions?offset=${offset}&limit=50`,
+    { signal },
   );
 export const createPrompt = (name: string, draft: VersionDraft) =>
   fetchAPI<PromptDetail>("/prompt-library", json("POST", { name, ...draft }));

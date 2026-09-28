@@ -1,13 +1,17 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { Archive, History, Save, Send } from "lucide-react";
 import { PageHeader } from "@/components/ui/primitives";
 import { getApiBaseUrl } from "@/lib/api-client";
+import { useUnsavedChanges } from "@/lib/use-unsaved-changes";
 import { archivePrompt, createPrompt, draftVariables, getPrompt, getVersions, promoteVersion, removeLabel, saveVersion, updatePrompt, type PromptDetail, type PromptVersion, type ReleaseLabel, type TemplateFormat } from "@/lib/prompt-api";
 import { PromptPlayground } from "./prompt-playground";
 import { ErrorMessage, errorText, inputClass, panelClass } from "./prompt-ui";
+
+const DEFAULT_TEMPLATE = "Answer the following question clearly and concisely.\n\nQuestion: {{query}}\nAnswer:";
 
 export function PromptWorkbench({ initial }: { initial?: PromptDetail }) {
   const router = useRouter();
@@ -16,7 +20,7 @@ export function PromptWorkbench({ initial }: { initial?: PromptDetail }) {
   const [selected, setSelected] = useState<PromptVersion | null>(initial?.version ?? null);
   const [name, setName] = useState(initial?.prompt.name ?? "");
   const [description, setDescription] = useState(initial?.prompt.description ?? "");
-  const [template, setTemplate] = useState(initial?.version.template_text ?? "Answer the following question clearly and concisely.\n\nQuestion: {{query}}\nAnswer:");
+  const [template, setTemplate] = useState(initial?.version.template_text ?? DEFAULT_TEMPLATE);
   const [format, setFormat] = useState<TemplateFormat>(initial?.version.template_format ?? "mustache");
   const [notes, setNotes] = useState("");
   const [pending, setPending] = useState<string | null>(null);
@@ -25,10 +29,14 @@ export function PromptWorkbench({ initial }: { initial?: PromptDetail }) {
   const [archiveRequested, setArchiveRequested] = useState(false);
   const [releaseRequested, setReleaseRequested] = useState<ReleaseLabel | null>(null);
   const versions = useInfiniteQuery({ queryKey: ["prompt-versions", prompt?.id], enabled: !!prompt,
-    initialPageParam: 0, queryFn: ({ pageParam }) => getVersions(prompt!.id, pageParam),
+    initialPageParam: 0, queryFn: ({ pageParam, signal }) => getVersions(prompt!.id, pageParam, signal),
     getNextPageParam: (lastPage, pages) => lastPage.length === 50 ? pages.length * 50 : undefined });
   const draft = { template_text: template, template_format: format, description: notes };
   const dirty = selected ? template !== selected.template_text || format !== selected.template_format : true;
+  const metadataDirty = !!prompt && (name !== prompt.name || description !== prompt.description);
+  useUnsavedChanges(prompt
+    ? dirty || metadataDirty || !!notes.trim()
+    : !!name.trim() || !!description.trim() || template !== DEFAULT_TEMPLATE || format !== "mustache");
   const variables = draftVariables(template, format);
 
   async function action(kind: string, work: () => Promise<void>) {
@@ -120,6 +128,9 @@ export function PromptWorkbench({ initial }: { initial?: PromptDetail }) {
         {prompt && selected ? <section className={`${panelClass} space-y-4`}>
           <h2 className="flex items-center gap-2 text-xl font-semibold"><Send className="size-5" />Releases</h2>
           <p className="text-sm text-(--muted-foreground)">Release saved v{selected.version}. Saving a version never changes production automatically.</p>
+          <Link className="btn-secondary" href={`/evaluations?${new URLSearchParams({ prompt: prompt.id, version: selected.id })}`}>
+            Evaluate saved v{selected.version}
+          </Link>
           {(["staging", "production"] as ReleaseLabel[]).map((label) => <div key={label} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-(--border) p-3"><div><h3 className="text-sm font-medium capitalize">{label}</h3><p className="mt-1 text-xs text-(--muted-foreground)">{prompt.labels.find((release) => release.label === label) ? `v${prompt.labels.find((release) => release.label === label)!.version}` : "Not released"}</p></div><div className="flex gap-2"><button className="btn-secondary" disabled={!!pending || prompt.archived || dirty} onClick={() => setReleaseRequested(label)}>Promote v{selected.version}</button>{prompt.labels.some((release) => release.label === label) ? <button aria-label={`Remove ${label} release`} className="text-xs text-(--muted-foreground) underline" disabled={!!pending || prompt.archived} onClick={() => action(`remove-${label}`, async () => { await removeLabel(prompt.id, label); setPrompt({ ...prompt, labels: prompt.labels.filter((release) => release.label !== label) }); setNotice(`${label} release removed.`); await refresh(); })}>Remove</button> : null}</div></div>)}
           {releaseRequested ? <div className="rounded-xl border border-(--primary) p-4"><p className="text-sm">Point <strong>{releaseRequested}</strong> to saved <strong>v{selected.version}</strong>? The next SDK fetch using this label will receive that snapshot.</p><div className="mt-3 flex gap-2"><button className="btn-primary" disabled={!!pending} onClick={() => promote(releaseRequested)}>Confirm promotion</button><button className="btn-secondary" disabled={!!pending} onClick={() => setReleaseRequested(null)}>Cancel</button></div></div> : null}
           {dirty ? <p className="text-xs text-(--muted-foreground)">Save or discard your draft before promoting a saved version.</p> : null}

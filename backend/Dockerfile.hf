@@ -17,7 +17,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Install Python dependencies first (layer-cached unless requirements change)
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY constraints.txt .
+RUN pip install --no-cache-dir -r requirements.txt -c constraints.txt
 
 # Copy the rest of the backend source code
 COPY . .

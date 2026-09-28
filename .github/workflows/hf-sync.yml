@@ -1,13 +1,7 @@
 name: Sync to Hugging Face Hub
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - 'backend/**'
-      - 'Dockerfile'
-      - '.github/workflows/hf-sync.yml'
+  workflow_call:
 
 jobs:
   sync-to-hub:

@@ -90,16 +90,23 @@ export type CaseResult = {
   tokens_output: number | null;
 };
 export type EvaluationDetail = { run: EvaluationRun; results: CaseResult[] };
+export type DemoExamples = {
+  prompt_id: string;
+  prompt_version_id: string;
+  dataset_id: string;
+  dataset_revision_id: string;
+};
 const json = (method: string, body: unknown) => ({
   method,
   body: JSON.stringify(body),
 });
-export const listDatasets = (archived = false, offset = 0) =>
+export const listDatasets = (archived = false, offset = 0, signal?: AbortSignal) =>
   fetchAPI<{ items: Dataset[]; total: number }>(
     `/datasets?archived=${archived}&offset=${offset}&limit=50`,
+    { signal },
   );
-export const getDataset = (id: string) =>
-  fetchAPI<DatasetDetail>(`/datasets/${id}`);
+export const getDataset = (id: string, signal?: AbortSignal) =>
+  fetchAPI<DatasetDetail>(`/datasets/${id}`, { signal });
 export const createDataset = (
   name: string,
   description: string,
@@ -118,9 +125,10 @@ export const importDataset = (format: "csv" | "json", content: string) =>
     "/datasets/import",
     json("POST", { format, content }),
   );
-export const listRevisions = (id: string, offset = 0) =>
+export const listRevisions = (id: string, offset = 0, signal?: AbortSignal) =>
   fetchAPI<DatasetRevision[]>(
     `/datasets/${id}/revisions?offset=${offset}&limit=50`,
+    { signal },
   );
 export const saveRevision = (
   id: string,
@@ -133,12 +141,15 @@ export const saveRevision = (
   );
 export const startEvaluation = (request: EvaluationRequest) =>
   fetchAPI<EvaluationRun>("/evaluations", json("POST", request));
-export const listEvaluations = (offset = 0) =>
+export const createDemoExamples = () =>
+  fetchAPI<DemoExamples>("/demo/setup", { method: "POST" });
+export const listEvaluations = (offset = 0, signal?: AbortSignal) =>
   fetchAPI<{ items: EvaluationRun[]; total: number }>(
     `/evaluations?offset=${offset}&limit=50`,
+    { signal },
   );
-export const getEvaluation = (id: string) =>
-  fetchAPI<EvaluationDetail>(`/evaluations/${id}`);
+export const getEvaluation = (id: string, signal?: AbortSignal) =>
+  fetchAPI<EvaluationDetail>(`/evaluations/${id}`, { signal });
 export const cancelEvaluation = (id: string) =>
   fetchAPI<EvaluationRun>(`/evaluations/${id}/cancel`, { method: "POST" });
 export const isActive = (run: EvaluationRun) =>

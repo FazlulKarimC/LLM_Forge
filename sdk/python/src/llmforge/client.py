@@ -122,8 +122,8 @@ class LLMForge:
     def get_prompt(
         self, name: str, *, label: str | None = None, version: int | None = None
     ) -> Prompt:
-        if not name or "/" in name:
-            raise ValueError("Prompt name cannot be blank or contain /")
+        if not name or name in (".", "..") or "/" in name:
+            raise ValueError("Prompt name cannot be blank, . or .., or contain /")
         if label is not None and version is not None:
             raise ValueError("Choose a label or a version, not both")
         if label not in (None, "staging", "production") or (
@@ -185,6 +185,7 @@ class LLMForge:
     def get_dataset(self, name: str, *, version: int | None = None) -> dict[str, Any]:
         if (
             not name
+            or name in (".", "..")
             or "/" in name
             or (version is not None and (type(version) is not int or version < 1))
         ):

@@ -301,6 +301,14 @@ async def execute_evaluation(run_id, project_id, request, version, cases):
                     for rule in request.assertions
                 ]
                 if request.judge:
+                    # Cancellation during generation must not start another paid call.
+                    async with async_session_maker() as db:
+                        db.info["project_id"] = project_id
+                        current_status = await db.scalar(
+                            select(EvaluationRun.status).where(EvaluationRun.id == run_id)
+                        )
+                        if current_status not in ACTIVE:
+                            return
                     record["checks"].append(
                         await judge_output(request.judge, case, output)
                     )
