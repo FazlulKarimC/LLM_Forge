@@ -1,89 +1,46 @@
-# LlmForge - Frontend Interface
+# LlmForge frontend
 
-> The interactive web dashboard and experiment manager for the LlmForge platform.
+Next.js 16 and React 19 interface for a personal prompt-development and reasoning-benchmark project. Clerk handles sign-in; the selected organization and project scope API requests. The app uses Tailwind CSS v4, TanStack Query, Lucide icons, and optional Sentry reporting. Components and styling follow the repository's [design system](../DESIGN_SYSTEM.md).
 
-This directory contains the frontend web application built to interface with the FastAPI backend. It allows users to create experiments, monitor long-running background reasoning tasks in real-time, and analyze detailed execution metrics side-by-side.
+## Main workflows
 
----
+- `/dashboard` shows project activity and backend readiness. **Create demo examples** creates a provider-free prompt and dataset without replacing existing content.
+- `/prompts` and `/prompts/[id]` manage immutable versions, playground calls, release labels, and project API keys.
+- `/datasets` edits versioned cases; `/evaluations` runs and compares assertions or optional rubric-judged results.
+- `/experiments`, `/experiments/new`, `/experiments/[id]`, and `/experiments/compare` cover the legacy benchmark, result inspection, export, and statistical comparison. The detail page has **Stop run** for a stranded queued/running attempt; partial results remain available.
+- `/settings` manages organizations and projects. `/docs` is a public walkthrough.
 
-## 🛠️ Technology Stack
+## Local setup
 
-- **Framework:** [Next.js 16](https://nextjs.org/) (App Router)
-- **UI Library:** [React 19](https://react.dev/)
-- **Styling:** [Tailwind CSS v4](https://tailwindcss.com/)
-- **Components:** [shadcn/ui](https://ui.shadcn.com/)
-- **Data Fetching:** [TanStack React Query](https://tanstack.com/query/latest) (progressively loaded fetching & state)
-- **Observability:** Sentry (Next.js Edge/Server/Client tracking)
-- **Icons:** [Lucide React](https://lucide.dev/)
+Use Node.js 20.9+ and start the [backend](../backend/README.md) with a migrated PostgreSQL database. Copy `.env.example` to `.env.local` and set:
 
----
-
-## 🎨 Design System
-
-All frontend code strictly adheres to the unified 4-color palette and typography rules defined in the root-level `DESIGN_SYSTEM.md` document. 
-
-*If you are an LLM agent writing code or a developer adding a new component, you must consult `../DESIGN_SYSTEM.md` before proceeding.*
-
----
-
-## 📁 Project Structure
-
-```text
-src/
-├── app/                  # Next.js App Router Pages
-│   ├── (app)/            # Authenticated/Main App Routes Group
-│   │   ├── dashboard/    # Operational Dashboard
-│   │   └── experiments/  # Experiment views (List, Detail, Compare)
-│   ├── globals.css       # Tailwind configuration & core variables
-│   ├── layout.tsx        # Root layout, font definitions, Navbars
-│   ├── providers.tsx     # React Query provider and error reporting
-│   └── page.tsx          # Landing / Home Page
-├── instrumentation.ts    # Server and Edge error tracking initialization
-├── instrumentation-client.ts # Browser error tracking initialization
-├── components/           # Reusable React components
-│   └── ui/               # shadcn/ui & domain components (RoutingPanel, RegressionPanel)
-└── lib/                  # Utilities
-    ├── api.ts            # Typed API client routing to NEXT_PUBLIC_API_URL
-    └── utils.ts          # clsx + tailwind-merge utilities
+```env
+NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_REPLACE_ME
+CLERK_SECRET_KEY=sk_test_REPLACE_ME
 ```
 
----
-
-## 🚀 Getting Started
-
-### Prerequisites
-- Node.js 20.9+
-- The LlmForge FastAPI backend **must** be running (default `http://localhost:8000`), as the frontend aggressively calls the API to poll run statuses.
-
-### Installation
-
-Navigate to this directory and install dependencies:
+The frontend and backend must use the same Clerk application. Set the backend's `CLERK_ISSUER_URL` and `CLERK_AUTHORIZED_PARTIES` as described in [workspace setup](../docs/PHASE_1_SETUP.md). The API URL must include `/api/v1`; without it, a production build's browser requests would fall back to localhost. Configure `NEXT_PUBLIC_SENTRY_DSN` only if you want Sentry reporting.
 
 ```bash
-npm install
-```
-
-### Development Server
-
-Start the interactive development server:
-
-```bash
+npm ci
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the application. The app features hot-reloading for rapid UI development.
+Open <http://localhost:3000>, sign in, and select a project. The app shows an auth-setup screen if Clerk keys are absent. The dashboard's demo setup and the [evaluation walkthrough](../docs/PHASE_3_EVALUATIONS.md) provide a model-free path to exercise the product.
 
-### Production Build
-
-To create an optimized production build:
+## Checks and production build
 
 ```bash
+npm test
+npx tsc --noEmit
+npm run lint
 npm run build
 npm run start
 ```
 
----
+Stop `next dev` before building because both use `.next`. CI runs lint, typecheck, Vitest, and the production build with a fresh `npm ci`. Component tests do not replace a browser walkthrough of authentication, project selection, and live API flows.
 
-## 📡 API Routing Note
+## Code map
 
-By default, the `api.ts` client expects the backend API to be available on `http://localhost:8000`. This can be configured by setting `NEXT_PUBLIC_API_URL` to your production backend domain in the `.env` file or hosting environment.
+`src/app/(app)` contains authenticated pages; `src/components` contains domain components and UI primitives. `src/lib/api-client.ts` handles request context, timeouts, safe read retries, and API errors. Mutations are not retried automatically. `src/instrumentation.ts`, `src/instrumentation-client.ts`, and the Sentry server/edge files configure optional error reporting.

@@ -8,6 +8,8 @@ python -m pip install -e ./sdk/python
 
 Configure `LLMFORGE_URL` with the API root, for example `http://localhost:8000/api/v1`, and `LLMFORGE_API_KEY` with a project key created in Settings. Use HTTPS for a hosted backend. Keep keys in environment variables or your CI secret store.
 
+For a local model-free walkthrough, sign in to the web app, select a project, and click **Create demo examples** on the dashboard. Create a project key with **Allow evaluations for CI** enabled in Settings, then use `Echo demo` and `Greetings` in the examples below. The backend must have its migrations applied; a project key grants access only to its project.
+
 ```python
 from llmforge import LLMForge
 
@@ -72,6 +74,8 @@ python -m llmforge check artifacts/evaluation.json --min-pass-rate 1
 Exit codes: **0** passed, **1** quality regression or case errors, **2** configuration/transport/timeout/incomplete-run failure. Every case error fails the gate regardless of the pass-rate threshold. The evaluate command attempts to cancel a run on timeout. Pin prompt/dataset versions for reproducibility; use `--label staging` to gate the current candidate release.
 
 Live CLI runs require `LLMFORGE_PROVIDER_API_KEY`, `--provider`, and `--model`. `--assertions rules.json` loads an array of Phase 3 assertions. CLI judging is configured through the Python API rather than a key-bearing command-line argument. The offline `check` command needs no credentials. Reports contain inputs/outputs; upload them as CI artifacts only where intended.
+
+`check` validates the report shape and evaluation counts before applying the gate. It cannot independently verify self-reported results in a JSON file; use `evaluate` against a saved prompt and dataset for a server-produced run. The CLI is available as either `llmforge` or `python -m llmforge` after installation.
 
 Examples: [prompt fetch](examples/fetch_prompt.py), [external results](examples/submit_results.py), [GitHub Actions](../../docs/examples/evaluation-gate.yml).
 

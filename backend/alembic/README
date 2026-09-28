@@ -1,1 +1,11 @@
-Generic single-database configuration.
+Alembic migrations for the LlmForge PostgreSQL database.
+
+From `backend/`, set `DATABASE_URL` for the intended database and run
+`python -m alembic upgrade head` before starting a new backend image.
+`alembic/env.py` reads the URL from the environment (or `backend/.env`) and
+converts `postgresql://` URLs for the asyncpg driver. CI runs these migrations
+only against its disposable PostgreSQL service, not the hosted database.
+
+Review historical migrations before upgrading a database with existing data:
+revision `i2j3k4l5m6n7` intentionally truncates legacy benchmark tables as
+part of the workspace reset. Back up data you intend to keep.

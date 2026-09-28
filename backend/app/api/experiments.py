@@ -58,7 +58,8 @@ async def _active_run_count(service: ExperimentService) -> int:
 async def _execute_inline(
     experiment_id: UUID, 
     custom_base_url: Optional[str] = None, 
-    custom_api_key: Optional[str] = None
+    custom_api_key: Optional[str] = None,
+    expected_attempt: int | None = None,
 ) -> None:
     """
     Execute experiment inline using a fresh DB session.
@@ -75,6 +76,7 @@ async def _execute_inline(
                 custom_base_url=custom_base_url, 
                 custom_api_key=custom_api_key,
                 require_queued=True,
+                expected_attempt=expected_attempt,
             )
     except Exception as e:
         # svc.execute() sets FAILED status internally, but if its commit
@@ -85,7 +87,9 @@ async def _execute_inline(
             async with async_session_maker() as fallback_session:
                 fallback_svc = ExperimentService(fallback_session)
                 changed = await fallback_svc._fail_active_attempt(
-                    experiment_id, f"Execution failed: {str(e)[:400]}"
+                    experiment_id,
+                    f"Execution failed: {str(e)[:400]}",
+                    attempt=expected_attempt,
                 )
                 if changed:
                     logger.info(f"[INLINE] Safety-net: set {experiment_id} to FAILED")
@@ -249,7 +253,10 @@ async def run_experiment(
             headers={"Retry-After": "30"},
         )
 
-    await service.update_status(experiment_id, ExperimentStatus.QUEUED)
+    try:
+        expected_attempt = await service.queue_for_execution(experiment_id)
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
     await db.commit()
     
     try:
@@ -259,7 +266,8 @@ async def run_experiment(
             experiment_id,
             db=db,
             custom_base_url=x_custom_llm_base, 
-            custom_api_key=x_custom_llm_key
+            custom_api_key=x_custom_llm_key,
+            expected_attempt=expected_attempt,
         )
         logger.info(
             "Experiment %s → %s (reason=%s)",
@@ -267,11 +275,11 @@ async def run_experiment(
         )
     except Exception as e:
         logger.error("Dispatch failed, rolling back to FAILED: %s", e)
-        await service.update_status(
-            experiment_id, ExperimentStatus.FAILED,
-            error_message="Failed to start execution: task queue unavailable"
+        await service._fail_active_attempt(
+            experiment_id,
+            "Failed to start execution: task queue unavailable",
+            attempt=expected_attempt,
         )
-        await db.commit()
         raise
     
     return await service.get(experiment_id)

@@ -47,6 +47,7 @@ class DispatchBackend(Protocol):
         db: Optional[AsyncSession] = None,
         custom_base_url: Optional[str] = None,
         custom_api_key: Optional[str] = None,
+        expected_attempt: Optional[int] = None,
     ) -> DispatchResult: ...
 
 
@@ -55,12 +56,13 @@ def _schedule_inline_execution(
     experiment_id: UUID,
     custom_base_url: Optional[str] = None,
     custom_api_key: Optional[str] = None,
+    expected_attempt: Optional[int] = None,
 ) -> None:
     """Schedule inline execution via FastAPI BackgroundTasks."""
     from app.api.experiments import _execute_inline
 
     background_tasks.add_task(
-        _execute_inline, experiment_id, custom_base_url, custom_api_key
+        _execute_inline, experiment_id, custom_base_url, custom_api_key, expected_attempt
     )
 
 
@@ -77,9 +79,10 @@ class InlineDispatchBackend:
         db: Optional[AsyncSession] = None,
         custom_base_url: Optional[str] = None,
         custom_api_key: Optional[str] = None,
+        expected_attempt: Optional[int] = None,
     ) -> DispatchResult:
         _schedule_inline_execution(
-            background_tasks, experiment_id, custom_base_url, custom_api_key
+            background_tasks, experiment_id, custom_base_url, custom_api_key, expected_attempt
         )
         return DispatchResult(backend_used="inline")
 
@@ -97,6 +100,7 @@ class UpstashRQDispatchBackend:
         db: Optional[AsyncSession] = None,
         custom_base_url: Optional[str] = None,
         custom_api_key: Optional[str] = None,
+        expected_attempt: Optional[int] = None,
     ) -> DispatchResult:
         from app.core.redis import get_queue
         from app.tasks.experiment_tasks import run_experiment_task
@@ -107,6 +111,7 @@ class UpstashRQDispatchBackend:
             str(experiment_id),
             custom_base_url=custom_base_url,
             custom_api_key=custom_api_key,
+            expected_attempt=expected_attempt,
         )
         return DispatchResult(backend_used="rq")
 
@@ -133,6 +138,7 @@ class AutoDispatchBackend:
         db: Optional[AsyncSession] = None,
         custom_base_url: Optional[str] = None,
         custom_api_key: Optional[str] = None,
+        expected_attempt: Optional[int] = None,
     ) -> DispatchResult:
         from app.core import upstash_circuit
         from app.core.redis import probe_redis
@@ -141,7 +147,7 @@ class AutoDispatchBackend:
         if not settings.REDIS_URL:
             logger.info("Auto dispatch → inline (no REDIS_URL)")
             _schedule_inline_execution(
-                background_tasks, experiment_id, custom_base_url, custom_api_key
+                background_tasks, experiment_id, custom_base_url, custom_api_key, expected_attempt
             )
             return DispatchResult(
                 backend_used="inline",
@@ -154,7 +160,7 @@ class AutoDispatchBackend:
             reason = upstash_circuit.get_circuit_snapshot()["last_failure_reason"]
             logger.info("Auto dispatch → inline (circuit open: %s)", reason)
             _schedule_inline_execution(
-                background_tasks, experiment_id, custom_base_url, custom_api_key
+                background_tasks, experiment_id, custom_base_url, custom_api_key, expected_attempt
             )
             return DispatchResult(
                 backend_used="inline",
@@ -173,7 +179,7 @@ class AutoDispatchBackend:
                     "Auto dispatch → inline (probe failed: %s)", probe.error
                 )
                 _schedule_inline_execution(
-                    background_tasks, experiment_id, custom_base_url, custom_api_key
+                    background_tasks, experiment_id, custom_base_url, custom_api_key, expected_attempt
                 )
                 return DispatchResult(
                     backend_used="inline",
@@ -187,7 +193,7 @@ class AutoDispatchBackend:
         if not worker_alive:
             logger.info("Auto dispatch → inline (no recent worker heartbeat)")
             _schedule_inline_execution(
-                background_tasks, experiment_id, custom_base_url, custom_api_key
+                background_tasks, experiment_id, custom_base_url, custom_api_key, expected_attempt
             )
             return DispatchResult(
                 backend_used="inline",
@@ -199,7 +205,7 @@ class AutoDispatchBackend:
         # 5. Enqueue via RQ
         try:
             result = await UpstashRQDispatchBackend().dispatch(
-                background_tasks, experiment_id, db, custom_base_url, custom_api_key
+                background_tasks, experiment_id, db, custom_base_url, custom_api_key, expected_attempt
             )
             result.circuit_state = upstash_circuit.get_circuit_snapshot()["state"]
             result.worker_available = True
@@ -211,7 +217,7 @@ class AutoDispatchBackend:
                 "Auto dispatch → inline fallback (enqueue failed: %s)", exc
             )
             _schedule_inline_execution(
-                background_tasks, experiment_id, custom_base_url, custom_api_key
+                background_tasks, experiment_id, custom_base_url, custom_api_key, expected_attempt
             )
             return DispatchResult(
                 backend_used="inline_fallback",
@@ -262,6 +268,7 @@ async def dispatch_experiment(
     db: Optional[AsyncSession] = None,
     custom_base_url: Optional[str] = None,
     custom_api_key: Optional[str] = None,
+    expected_attempt: Optional[int] = None,
 ) -> DispatchResult:
     """
     Top-level dispatch entry point used by the run_experiment route.
@@ -269,7 +276,7 @@ async def dispatch_experiment(
     """
     backend = _get_backend()
     result = await backend.dispatch(
-        background_tasks, experiment_id, db, custom_base_url, custom_api_key
+        background_tasks, experiment_id, db, custom_base_url, custom_api_key, expected_attempt
     )
     logger.info(
         "Experiment %s dispatched via %s (reason=%s, circuit=%s, worker=%s)",

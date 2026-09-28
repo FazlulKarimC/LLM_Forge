@@ -383,6 +383,30 @@ class ExperimentService:
         )
         await self.db.flush()
         return self._to_response(experiment)
+
+    async def queue_for_execution(self, experiment_id: UUID) -> int:
+        """Reserve a distinct attempt so stale dispatched jobs cannot run a rerun."""
+        from app.models.run import Run
+
+        experiment = await self.db.scalar(
+            select(Experiment)
+            .where(Experiment.id == experiment_id, Experiment.deleted_at.is_(None))
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        if experiment is None:
+            raise ValueError("Experiment not found")
+        if experiment.status in (ExperimentStatus.QUEUED, ExperimentStatus.RUNNING):
+            raise ValueError("Experiment already queued or running")
+        latest_run = await self.db.scalar(
+            select(func.max(Run.attempt)).where(Run.experiment_id == experiment_id)
+        ) or 0
+        experiment.current_attempt = max(
+            experiment.current_attempt + (1 if experiment.status != ExperimentStatus.PENDING else 0),
+            latest_run + 1,
+        )
+        await self.update_status(experiment_id, ExperimentStatus.QUEUED)
+        return experiment.current_attempt
     
     async def delete(self, experiment_id: UUID) -> bool:
         """
@@ -413,7 +437,11 @@ class ExperimentService:
         return True
 
     async def _prepare_execution_attempt(
-        self, experiment_id: UUID, *, require_queued: bool = False
+        self,
+        experiment_id: UUID,
+        *,
+        require_queued: bool = False,
+        expected_attempt: int | None = None,
     ):
         """Create a new non-destructive attempt and mark the experiment as running."""
         from sqlalchemy import select as _sel, func as _fn
@@ -423,7 +451,7 @@ class ExperimentService:
         max_attempt_q = await self.db.execute(
             _sel(_fn.coalesce(_fn.max(_Run.attempt), 0)).where(_Run.experiment_id == experiment_id)
         )
-        current_attempt = (max_attempt_q.scalar() or 0) + 1
+        next_run_attempt = (max_attempt_q.scalar() or 0) + 1
 
         exp_row = await self.db.execute(
             _sel(_Exp).where(_Exp.id == experiment_id).with_for_update()
@@ -432,8 +460,15 @@ class ExperimentService:
         if require_queued and (
             exp_obj is None
             or getattr(exp_obj, "status", None) != ExperimentStatus.QUEUED
+            or expected_attempt is None
+            or exp_obj.current_attempt != expected_attempt
         ):
             raise ExecutionInterrupted("Experiment is no longer queued")
+        current_attempt = (
+            max(exp_obj.current_attempt, next_run_attempt)
+            if require_queued and exp_obj is not None
+            else next_run_attempt
+        )
         if exp_obj:
             exp_obj.current_attempt = current_attempt
             exp_obj.regression_status = RegressionStatus.NOT_CHECKED.value
@@ -590,6 +625,7 @@ class ExperimentService:
         custom_api_key: Optional[str] = None,
         *,
         require_queued: bool = False,
+        expected_attempt: int | None = None,
     ) -> None:
         """
         Execute an experiment.
@@ -628,7 +664,9 @@ class ExperimentService:
             run_service = RunService(self.db)
             metrics_svc = MetricsService(self.db)
             current_attempt, exp_obj = await self._prepare_execution_attempt(
-                experiment_id, require_queued=require_queued
+                experiment_id,
+                require_queued=require_queued,
+                expected_attempt=expected_attempt,
             )
 
             async def ensure_active():

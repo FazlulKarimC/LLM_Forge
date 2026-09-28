@@ -69,14 +69,9 @@ class TestEnqueueFailureRollback:
             run_manifest=None,
         )
 
-        failed_response = exp_response.model_copy(update={
-            "status": ExperimentStatus.FAILED,
-            "error_message": "Failed to start execution: task queue unavailable",
-        })
-
         mock_service.create.return_value = exp_response
         mock_service.get.return_value = exp_response
-        mock_service.update_status.return_value = failed_response
+        mock_service.queue_for_execution.return_value = 1
 
         # Make dispatch raise an exception to simulate queue failure
         mock_dispatch.side_effect = Exception("Simulated queue failure")
@@ -102,12 +97,9 @@ class TestEnqueueFailureRollback:
         except Exception:
             pass
 
-        # 3. Verify update_status was called — should include a call to FAILED
-        assert mock_service.update_status.called, "Expected update_status to be called"
-        calls_str = str(mock_service.update_status.call_args_list).lower()
-        assert "failed" in calls_str, (
-            f"Expected update_status to be called with FAILED status, got: "
-            f"{mock_service.update_status.call_args_list}"
+        # 3. The failure may only affect the attempt that failed to dispatch.
+        mock_service._fail_active_attempt.assert_awaited_once_with(
+            exp_id, "Failed to start execution: task queue unavailable", attempt=1
         )
 
 

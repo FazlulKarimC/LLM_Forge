@@ -7,13 +7,12 @@
 [![CI](https://github.com/FazlulKarimC/LLM_Forge/actions/workflows/ci.yml/badge.svg)](https://github.com/FazlulKarimC/LLM_Forge/actions/workflows/ci.yml)
 
 [![Python](https://img.shields.io/badge/Python-3.12-3776ab?logo=python&logoColor=white)](https://python.org)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.111-009688?logo=fastapi)](https://fastapi.tiangolo.com)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.128-009688?logo=fastapi)](https://fastapi.tiangolo.com)
 [![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=nextdotjs)](https://nextjs.org)
 [![React](https://img.shields.io/badge/React-19-61dafb?logo=react&logoColor=white)](https://react.dev)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-v4-38bdf8?logo=tailwindcss&logoColor=white)](https://tailwindcss.com)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-NeonDB-336791?logo=postgresql&logoColor=white)](https://neon.tech)
 [![Redis](https://img.shields.io/badge/Redis-Upstash-dc382d?logo=redis&logoColor=white)](https://upstash.com)
-[![Tests](https://img.shields.io/badge/Tests-469+-22c55e?logo=pytest&logoColor=white)](#testing)
 
 *A personal engineering project for reproducible prompt development, with a separate reasoning-benchmark workflow.*
 
@@ -35,6 +34,8 @@ Start with the public `/docs` page or these repository guides:
 
 The SDK installs from this repository with `python -m pip install -e ./sdk/python`; it has not been published to PyPI. Create an evaluation-enabled project key for CI, and pin prompt/dataset versions for a reproducible gate. Default and existing keys remain read-only.
 
+For a provider-free walkthrough, sign in, select a project, and use **Create demo examples** on the dashboard. This creates the `Echo demo` prompt and a two-case `Greetings` dataset only in that project. Run an evaluation in mock mode, inspect its cases, then try the SDK quality gate. The setup action returns a conflict if those names already contain different content; it never replaces them.
+
 The legacy Experiments workflow also combines a **reasoning method**, **dataset**, **model**, **inference provider**, and **hyperparameters** with execution provenance. It computes quality, performance, and cost metrics, with per-sample inspection and statistical comparisons that surface methodology caveats.
 
 Built to answer a core question: *How do different LLM reasoning strategies trade off accuracy, latency, and token cost on real QA benchmarks?*
@@ -42,7 +43,7 @@ Built to answer a core question: *How do different LLM reasoning strategies trad
 ### Why LlmForge?
 
 - **Not just metrics — provenance.** Every run records the exact provider served, routing reason, cost, prompt version hash, and runtime-adjusted settings. You can audit *why* a result happened, not just *what* it was.
-- **Free-tier aware.** Circuit breakers and inline fallbacks keep task dispatch available when Upstash is unavailable. In-process work interrupted by a backend restart must be started again.
+- **Free-tier aware.** Circuit breakers and inline fallbacks keep task dispatch available when Upstash is unavailable. If a restart leaves a benchmark queued or running, use **Stop run** on its detail page to preserve partial results and release the status before rerunning it.
 - **Research-honest.** Statistical comparisons surface overlap ratios, discordant pair counts, and power warnings instead of presenting p-values as cleaner than they are.
 
 ---
@@ -70,6 +71,8 @@ Route experiments through **HuggingFace Inference API**, **OpenRouter**, **Groq*
 ### Resilient Task Dispatch
 
 A protocol-based dispatch abstraction (`Auto`, `Inline`, `UpstashRQ` backends) with a **30-minute circuit breaker** that handles Upstash Redis free-tier archival gracefully. A `worker_heartbeats` table detects missing RQ workers before dispatching jobs into the void. Neon/Postgres is the mandatory durable backend; Upstash+RQ is an optional acceleration layer.
+
+Experiment state is durable, but inline FastAPI background execution is best-effort and is lost on an API restart. **Stop run** marks a stranded queued/running attempt failed while keeping completed samples. Dispatched jobs carry an attempt number, so an older queued job cannot start after a rerun. An in-flight provider call may still finish before the worker observes a stop request.
 
 ```mermaid
 graph TD
@@ -193,7 +196,7 @@ graph TD
     RT --> RN & PP & CB
     RN --> AR --> ENG --> PR
     PP --> EVAL & QD
-    CB -->|durable| PG
+    CB -->|status and results| PG
     CB -->|optional| RD
     HB -.- RD
     EVAL --> PG
@@ -211,9 +214,9 @@ graph TD
 | **Vector Store** | Qdrant Cloud (RAG document retrieval) |
 | **Task Queue** | Postgres job status with best-effort inline execution; optional Upstash Redis + RQ |
 | **Inference** | HuggingFace Inference API, OpenRouter, Groq, OpenAI-compatible endpoints |
-| **Observability** | Sentry (full-stack distributed error tracking) |
+| **Observability** | Optional backend and frontend Sentry error reporting, request IDs, readiness checks |
 | **Embeddings** | sentence-transformers (CPU-friendly) |
-| **CI/CD** | GitHub Actions (lint, typecheck, pytest, Vitest — all hard gates) |
+| **CI/CD** | GitHub Actions (backend/SDK tests, wheel check, PostgreSQL smoke test, frontend lint/typecheck/Vitest/build) |
 
 ---
 
@@ -227,6 +230,11 @@ graph TD
 | `/experiments/new` | Experiment builder — model/dataset/provider selectors, preset templates, complexity indicator, honest dataset labeling |
 | `/experiments/[id]` | Experiment detail — lifecycle metadata, execution manifest, progressively-loaded metrics, regression/routing panels, filmstrip evaluator, latency histogram, run profiler, export |
 | `/experiments/compare` | Comparison workspace — metric deltas, statistical significance with methodology caveats, agreement bars, per-example diffs |
+| `/prompts`, `/prompts/[id]` | Prompt editor, immutable versions, playground, release labels, and project keys |
+| `/datasets` | Versioned evaluation cases and imports |
+| `/evaluations` | Run, compare, and inspect dataset evaluations |
+| `/settings` | Organizations, projects, membership, and project keys |
+| `/docs` | Public product walkthrough |
 
 ---
 
@@ -270,9 +278,9 @@ Full reference: [`DESIGN_SYSTEM.md`](./DESIGN_SYSTEM.md)
 
 - Python 3.12+
 - Node.js 20.9+
-- [NeonDB](https://neon.tech) PostgreSQL connection string (free tier)
-- [Upstash](https://upstash.com) Redis connection string (free tier — optional, platform works without it)
-- Inference API token (HuggingFace, OpenRouter, Groq, or custom endpoint)
+- PostgreSQL connection string (local PostgreSQL or [Neon](https://neon.tech))
+- Clerk application keys for authentication; see [workspace setup](docs/PHASE_1_SETUP.md)
+- [Upstash](https://upstash.com) Redis and a model provider key only for the optional RQ and live-inference paths
 
 ### Backend
 
@@ -281,22 +289,22 @@ git clone https://github.com/FazlulKarimC/LLM_Forge.git
 cd LLM_Forge/backend
 
 python -m venv venv
-.\venv\Scripts\activate        # Windows
-# source venv/bin/activate     # Linux / macOS
-
-pip install -r requirements.txt
 ```
 
-Create `.env` in `/backend`:
+Activate it with `.\venv\Scripts\Activate.ps1` in PowerShell or `source venv/bin/activate` on macOS/Linux, then install dependencies:
+
+```bash
+python -m pip install -r requirements.txt -c constraints.txt
+```
+
+Copy `backend/.env.example` to `backend/.env` and set at least the database and Clerk values. Mock inference needs no provider key:
 
 ```env
-DATABASE_URL=postgresql+asyncpg://<user>:<pass>@<host>/neondb
-HF_TOKEN=hf_...
-INFERENCE_ENGINE=hf_api
-HF_PROVIDER=novita
-REDIS_URL=redis://...         # Upstash Redis URL (optional)
-ENVIRONMENT=production        # "development" to skip Redis
-SENTRY_DSN=https://...        # Sentry DSN (optional)
+DATABASE_URL=postgresql://<user>:<pass>@<host>/<database>
+CLERK_ISSUER_URL=https://YOUR_APPLICATION.clerk.accounts.dev
+CLERK_AUTHORIZED_PARTIES=http://localhost:3000
+INFERENCE_ENGINE=mock
+QUEUE_BACKEND_MODE=auto
 ```
 
 Run migrations and start the server:
@@ -310,11 +318,14 @@ uvicorn app.main:app --reload --port 8000
 
 ```bash
 cd ../frontend
-npm install
+cp .env.example .env.local
+npm ci
 npm run dev
 ```
 
 Open **<http://localhost:3000>**
+
+Set `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` and `CLERK_SECRET_KEY` in `frontend/.env.local`. Set `NEXT_PUBLIC_API_URL` to the API root (`http://localhost:8000/api/v1` locally). `/health` checks the API process; `/ready` reports whether the database and task dispatch are usable, with optional services shown separately. Apply Alembic migrations to the target database before starting a new backend image; CI migrations only touch its disposable test database.
 
 ---
 
@@ -330,6 +341,8 @@ Open **<http://localhost:3000>**
 6. Inspect results via the **filmstrip evaluator**, **metrics cards**, **latency histogram**, and **execution manifest**
 7. Navigate to the **Comparison workspace** to run a statistical A/B test against another experiment
 8. **Export** results as JSON or Markdown
+
+If a restart strands a queued/running benchmark, use **Stop run** on its detail page and rerun it. The stop action keeps partial results. Wait for any in-flight provider call to finish before assuming the previous worker has fully exited.
 
 ### Via the API
 
@@ -360,6 +373,10 @@ curl -X POST http://localhost:8000/api/v1/experiments \
 curl -X POST "http://localhost:8000/api/v1/experiments/{id}/run" \
   -H "Authorization: Bearer $LLMFORGE_SESSION_TOKEN" -H "X-Project-ID: $LLMFORGE_PROJECT_ID"
 
+# Recover a stranded queued/running benchmark; keeps partial results
+curl -X POST "http://localhost:8000/api/v1/experiments/{id}/interrupt" \
+  -H "Authorization: Bearer $LLMFORGE_SESSION_TOKEN" -H "X-Project-ID: $LLMFORGE_PROJECT_ID"
+
 # Metrics
 curl "http://localhost:8000/api/v1/results/{id}/metrics" \
   -H "Authorization: Bearer $LLMFORGE_SESSION_TOKEN" -H "X-Project-ID: $LLMFORGE_PROJECT_ID"
@@ -383,11 +400,11 @@ Dataset imports, versioned test cases, assertions, optional LLM judging, and run
 
 ```bash
 cd backend
-pip install -r requirements-dev.txt
-pytest
+python -m pip install -r requirements-dev.txt
+python -m pytest tests -q
 ```
 
-**469+ tests** covering: API routes, experiment lifecycle, metrics computation, prompting strategies, RAG retrieval, agent execution, optimization profiling, statistical comparison, prompt versioning, task dispatch with circuit breaker fallbacks, routing policy behavior, execution provenance, robustness scoring, comparison methodology warnings, and end-to-end integration tests.
+The backend and SDK suites cover authenticated workspaces, prompt and dataset versioning, evaluation and SDK gates, benchmark execution and interruption, metrics, task dispatch, and CI smoke behavior. The GitHub Actions backend job also migrates a disposable PostgreSQL database and exercises the SDK over HTTP.
 
 Frontend tests run via Vitest + React Testing Library:
 

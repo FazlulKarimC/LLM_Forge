@@ -25,7 +25,8 @@ logger = logging.getLogger(__name__)
 def run_experiment_task(
     experiment_id: str,
     custom_base_url: Optional[str] = None,
-    custom_api_key: Optional[str] = None
+    custom_api_key: Optional[str] = None,
+    expected_attempt: int | None = None,
 ) -> None:
     """
     RQ task wrapper for experiment execution.
@@ -49,7 +50,8 @@ def run_experiment_task(
         asyncio.run(_run_experiment_async(
             UUID(experiment_id), 
             custom_base_url=custom_base_url, 
-            custom_api_key=custom_api_key
+            custom_api_key=custom_api_key,
+            expected_attempt=expected_attempt,
         ))
         logger.info(f"[RQ TASK] Completed experiment: {experiment_id}")
         print(f"[RQ TASK] ✅ Completed experiment: {experiment_id}")
@@ -62,7 +64,8 @@ def run_experiment_task(
 async def _run_experiment_async(
     experiment_id: UUID,
     custom_base_url: Optional[str] = None,
-    custom_api_key: Optional[str] = None
+    custom_api_key: Optional[str] = None,
+    expected_attempt: int | None = None,
 ) -> None:
     """
     Async implementation of experiment execution.
@@ -81,4 +84,5 @@ async def _run_experiment_async(
             custom_base_url=custom_base_url, 
             custom_api_key=custom_api_key,
             require_queued=True,
+            expected_attempt=expected_attempt,
         )

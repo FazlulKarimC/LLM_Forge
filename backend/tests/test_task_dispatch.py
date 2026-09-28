@@ -357,6 +357,20 @@ class TestInlineDispatch:
         assert result.backend_used == "inline"
         mock_background_tasks.add_task.assert_called_once()
 
+    def test_attempt_token_reaches_inline_job(self, mock_background_tasks):
+        _run(InlineDispatchBackend().dispatch(
+            mock_background_tasks, uuid4(), expected_attempt=3
+        ))
+        assert mock_background_tasks.add_task.call_args.args[-1] == 3
+
+
+def test_attempt_token_reaches_rq_job(mock_background_tasks):
+    with patch("app.core.redis.get_queue") as get_queue:
+        _run(UpstashRQDispatchBackend().dispatch(
+            mock_background_tasks, uuid4(), expected_attempt=3
+        ))
+    assert get_queue.return_value.enqueue.call_args.kwargs["expected_attempt"] == 3
+
 
 # ── Top-Level dispatch_experiment Tests ─────────────────────────────────
 

@@ -104,10 +104,10 @@ class TestExperimentRunCustomHeaders:
     """Tests for starting an experiment with custom headers."""
 
     @patch('app.api.experiments.ExperimentService.get')
-    @patch('app.api.experiments.ExperimentService.update_status')
+    @patch('app.api.experiments.ExperimentService.queue_for_execution')
     @patch('app.core.task_dispatch.dispatch_experiment')
     @patch('app.api.experiments._active_run_count', new_callable=AsyncMock, return_value=0)
-    def test_run_experiment_with_custom_headers(self, mock_active_count, mock_dispatch, mock_update, mock_get, client):
+    def test_run_experiment_with_custom_headers(self, mock_active_count, mock_dispatch, mock_queue, mock_get, client):
         """Test /run endpoint parses the custom headers correctly."""
         from app.core.task_dispatch import DispatchResult
 
@@ -142,6 +142,7 @@ class TestExperimentRunCustomHeaders:
 
         mock_exp = MockExperiment()
         mock_get.return_value = mock_exp
+        mock_queue.return_value = 1
         mock_dispatch.return_value = DispatchResult(backend_used="inline")
 
         headers = {
@@ -160,6 +161,7 @@ class TestExperimentRunCustomHeaders:
         call_kwargs = mock_dispatch.call_args
         assert call_kwargs.kwargs.get("custom_base_url") == "http://mock-base.local/v1"
         assert call_kwargs.kwargs.get("custom_api_key") == "mock-api-key"
+        assert call_kwargs.kwargs.get("expected_attempt") == 1
 
     @patch('app.api.experiments.ExperimentService.get')
     @patch('app.api.experiments._active_run_count', new_callable=AsyncMock, return_value=0)
