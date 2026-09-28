@@ -104,6 +104,18 @@ def validate_assertions(assertions, cases):
             raise HTTPException(
                 422, "Exact match requires expected_output for every case"
             )
+        if rule.kind == "json_reference":
+            if any(case["expected_output"] is None for case in cases):
+                raise HTTPException(
+                    422, "JSON reference requires expected_output for every case"
+                )
+            try:
+                for case in cases:
+                    parse_json(case["expected_output"])
+            except (ValueError, TypeError, RecursionError) as exc:
+                raise HTTPException(
+                    422, "JSON reference requires valid JSON in every expected_output"
+                ) from exc
         if rule.kind in ("contains", "regex") and not rule.value:
             raise HTTPException(422, f"{rule.kind} requires a value")
         if rule.kind == "regex":
@@ -146,10 +158,11 @@ def check_assertion(rule, output, expected):
                             else actual[key]
                         )
                 # Distinguish JSON booleans from numbers (Python True == 1).
+                reference = expected if rule.kind == "json_reference" else rule.value
                 passed = json.dumps(
                     actual, sort_keys=True, separators=(",", ":")
                 ) == json.dumps(
-                    parse_json(rule.value), sort_keys=True, separators=(",", ":")
+                    parse_json(reference), sort_keys=True, separators=(",", ":")
                 )
     except TimeoutError:
         passed, reason = False, "Regular expression exceeded its 50 ms budget"

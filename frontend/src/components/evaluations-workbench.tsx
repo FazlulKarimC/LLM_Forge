@@ -39,6 +39,7 @@ const ruleNames: Record<Assertion["kind"], string> = {
   regex: "Regex search",
   json_valid: "Valid JSON",
   json_equals: "JSON equals",
+  json_reference: "JSON matches each reference",
   json_path: "JSON path equals",
 };
 
@@ -409,7 +410,7 @@ export function EvaluationsWorkbench() {
                     ))}
                   </select>
                 </label>
-                {!["exact_match", "json_valid"].includes(rule.kind) && (
+                {!["exact_match", "json_valid", "json_reference"].includes(rule.kind) && (
                   <label className="flex-1 text-sm">
                     {rule.kind.startsWith("json_")
                       ? "Expected JSON value"

@@ -202,6 +202,12 @@ describe("dataset editor", () => {
 });
 
 describe("evaluation UI", () => {
+  it("offers per-case JSON references without a global comparison value", () => {
+    mount(<EvaluationsWorkbench />);
+    fireEvent.change(screen.getByLabelText("Rule 1"), { target: { value: "json_reference" } });
+    expect(screen.getByLabelText("Rule 1")).toHaveValue("json_reference");
+    expect(screen.queryByText("Expected JSON value")).not.toBeInTheDocument();
+  });
   it("restores and updates a shareable evaluation selection", async () => {
     window.history.replaceState(null, "", "/evaluations?prompt=prompt&version=version&dataset=dataset&revision=revision&run=run");
     mount(<EvaluationsWorkbench />);

@@ -61,7 +61,13 @@ class DatasetImport(StrictModel):
 
 class Assertion(StrictModel):
     kind: Literal[
-        "exact_match", "contains", "regex", "json_valid", "json_equals", "json_path"
+        "exact_match",
+        "contains",
+        "regex",
+        "json_valid",
+        "json_equals",
+        "json_reference",
+        "json_path",
     ]
     value: str = Field(default="", max_length=2000)
     path: str = Field(default="", max_length=200)

@@ -36,8 +36,10 @@ src/
 │   │   └── experiments/  # Experiment views (List, Detail, Compare)
 │   ├── globals.css       # Tailwind configuration & core variables
 │   ├── layout.tsx        # Root layout, font definitions, Navbars
-│   ├── providers.tsx     # Context Providers (Query, Sentry, Theme)
+│   ├── providers.tsx     # React Query provider and error reporting
 │   └── page.tsx          # Landing / Home Page
+├── instrumentation.ts    # Server and Edge error tracking initialization
+├── instrumentation-client.ts # Browser error tracking initialization
 ├── components/           # Reusable React components
 │   └── ui/               # shadcn/ui & domain components (RoutingPanel, RegressionPanel)
 └── lib/                  # Utilities

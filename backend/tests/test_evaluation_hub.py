@@ -8,7 +8,7 @@ import pytest
 from app.models.evaluation import EvaluationRun
 from app.models.prompt import now
 from app.schemas.evaluation import Assertion, DatasetImport, JudgeConfig
-from app.services.evaluation_service import check_assertion, import_cases, judge_output
+from app.services.evaluation_service import check_assertion, import_cases, judge_output, validate_assertions
 from app.services.prompt_templates import compile_template
 from fastapi import HTTPException
 from sqlalchemy import select
@@ -33,6 +33,8 @@ from tests.support import bootstrap
             True,
         ),
         ({"kind": "json_equals", "value": "1"}, "true", None, False),
+        ({"kind": "json_reference"}, '{"b":2,"a":1}', '{"a":1,"b":2}', True),
+        ({"kind": "json_reference"}, "true", "1", False),
         (
             {"kind": "json_path", "path": "a.0.ok", "value": "true"},
             '{"a":[{"ok":true}]}',
@@ -51,6 +53,13 @@ def test_regex_timeout():
         Assertion(kind="regex", value="(a+)+$"), "a" * 5000 + "!", None
     )
     assert not result["passed"] and "budget" in result["reason"]
+
+
+@pytest.mark.parametrize("reference", [None, "not json", '{"value":NaN}'])
+def test_json_reference_rejects_invalid_case_reference(reference):
+    with pytest.raises(HTTPException) as exc:
+        validate_assertions([Assertion(kind="json_reference")], [{"expected_output": reference}])
+    assert exc.value.status_code == 422
 
 
 def test_csv_and_json_import():
@@ -203,6 +212,13 @@ async def test_preflight_checks(api, monkeypatch):
                 **request,
                 "assertions": [{"kind": "json_equals", "value": "not json"}],
             },
+        )
+    ).status_code == 422
+    assert (
+        await client.post(
+            "/api/v1/evaluations",
+            headers=headers,
+            json={**request, "assertions": [{"kind": "json_reference"}]},
         )
     ).status_code == 422
     broken = (

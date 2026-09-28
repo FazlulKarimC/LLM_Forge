@@ -29,6 +29,7 @@ export type Assertion = {
     | "regex"
     | "json_valid"
     | "json_equals"
+    | "json_reference"
     | "json_path";
   value: string;
   path: string;

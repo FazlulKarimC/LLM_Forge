@@ -47,6 +47,7 @@ All selected checks must pass for a case to pass:
 | Regex | Pattern search with a 50 ms execution limit; use anchors for a whole-output match. |
 | Valid JSON | Output parses as JSON. Markdown fences fail this deterministic check. |
 | JSON equals | Compare parsed JSON, ignoring object key order. Booleans and numbers remain distinct. |
+| JSON matches each reference | Compare parsed output with each case's `expected_output`; every reference must be valid JSON. Object key order is ignored. |
 | JSON path equals | Traverse dot-separated object keys / numeric array indexes, then compare to a JSON literal. Example: path `answer.label`, value `"billing"`. Keys containing dots aren't supported. |
 | LLM judge | Separate provider/model, rubric, and passing threshold. Requires a JSON score 0–1 and reason. Malformed responses produce case errors. |
 
