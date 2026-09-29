@@ -1,40 +1,78 @@
+"use client";
+
+import { useState } from "react";
 import type { EvaluationDetail } from "@/lib/evaluation-api";
 
+type CaseResult = EvaluationDetail["results"][number];
+
 export function RunSummary({ detail }: { detail: EvaluationDetail }) {
-  const run = detail.run;
+  const { run } = detail;
+  const failed = Math.max(0, run.completed - run.passed - run.errors);
+  const passRate = run.completed
+    ? `${Math.round((run.passed / run.completed) * 100)}%`
+    : "—";
   return (
-    <div>
-      <h2 className="font-semibold">
-        {run.config.prompt_name} v{run.config.prompt_version} ·{" "}
-        {run.config.dataset_name} v{run.config.dataset_version}
-      </h2>
-      <p className="text-sm text-(--muted-foreground)">
-        {run.status} · {run.completed}/{run.total} processed · {run.passed}{" "}
-        passed · {run.completed - run.passed - run.errors} failed checks ·{" "}
-        {run.errors} errors · {run.config.provider} / {run.config.model}
-      </p>
-      <p className="text-sm mt-1">
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className="font-semibold">
+          {run.config.prompt_name} v{run.config.prompt_version} ·{" "}
+          {run.config.dataset_name} v{run.config.dataset_version}
+        </h2>
+        <span className="text-sm text-(--muted-foreground)">{run.status}</span>
+      </div>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <SummaryMetric label="Pass rate" value={passRate} />
+        <SummaryMetric
+          label="Processed"
+          value={`${run.completed}/${run.total}`}
+        />
+        <SummaryMetric label="Failed checks" value={String(failed)} />
+        <SummaryMetric label="Errors" value={String(run.errors)} />
+      </div>
+      <p className="text-xs text-(--muted-foreground)">
+        {run.passed} passed · {run.config.provider} / {run.config.model} ·{" "}
         {run.config.source === "sdk_submission"
-          ? "External evaluation: outputs, checks and metrics supplied by your application."
+          ? "Outputs supplied by your application"
           : run.config.is_mock
-            ? "Demo: output echoes the compiled prompt. No generation model was called."
-            : "Live provider generation."}
+            ? "Echo demo; no generation model called"
+            : "Live provider generation"}
         {run.config.judge &&
-          ` Judged by ${run.config.judge.provider} / ${run.config.judge.model}.`}
+          ` · Judge: ${run.config.judge.provider} / ${run.config.judge.model}`}
       </p>
       {run.config.metrics && Object.keys(run.config.metrics).length > 0 && (
-        <pre className="text-xs whitespace-pre-wrap mt-2">
-          {JSON.stringify(run.config.metrics, null, 2)}
-        </pre>
+        <details className="text-xs">
+          <summary className="cursor-pointer">Submitted metrics</summary>
+          <pre className="mt-2 whitespace-pre-wrap break-words">
+            {JSON.stringify(run.config.metrics, null, 2)}
+          </pre>
+        </details>
       )}
       {run.error && (
-        <p role="alert" className="text-(--destructive)">
+        <p role="alert" className="text-sm text-(--destructive)">
           {run.error}
         </p>
       )}
     </div>
   );
 }
+
+function SummaryMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-(--border) px-3 py-2">
+      <p className="text-xs text-(--muted-foreground)">{label}</p>
+      <p className="font-semibold">{value}</p>
+    </div>
+  );
+}
+
+function transition(current: CaseResult, prior: CaseResult | undefined) {
+  if (!prior) return "unmatched";
+  if (current.error || prior.error) return "errors";
+  if (current.passed && !prior.passed) return "improved";
+  if (!current.passed && prior.passed) return "regressed";
+  return "unchanged";
+}
+
 export function ResultsGrid({
   detail,
   comparison,
@@ -44,108 +82,181 @@ export function ResultsGrid({
   comparison?: EvaluationDetail;
   filter: string;
 }) {
-  const rows = detail.results.filter(
-    (r) =>
-      filter === "all" ||
-      (filter === "passed" && r.passed) ||
-      (filter === "errors" && !!r.error) ||
-      (filter === "failed" && !r.passed && !r.error),
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  const priorCases = new Map(
+    comparison?.results.map((result) => [result.case_index, result]) ?? [],
   );
-  const priorCases = new Map(comparison?.results.map((result) => [result.case_index, result]) ?? []);
   const transitions = { improved: 0, regressed: 0, unchanged: 0, errors: 0 };
   if (comparison) {
     for (const current of detail.results) {
-      const prior = priorCases.get(current.case_index);
-      if (!prior) continue;
-      if (current.error || prior.error) transitions.errors++;
-      else if (current.passed && !prior.passed) transitions.improved++;
-      else if (!current.passed && prior.passed) transitions.regressed++;
-      else transitions.unchanged++;
+      const change = transition(current, priorCases.get(current.case_index));
+      if (change !== "unmatched") transitions[change]++;
     }
   }
-  const sameChecks = JSON.stringify(detail.run.config.assertions ?? []) ===
+  const rows = detail.results.filter((result) => {
+    if (filter === "all") return true;
+    if (filter === "passed") return result.passed;
+    if (filter === "errors") return !!result.error;
+    if (filter === "comparison_errors")
+      return transition(result, priorCases.get(result.case_index)) === "errors";
+    if (filter === "failed") return !result.passed && !result.error;
+    if (
+      filter === "improved" ||
+      filter === "regressed" ||
+      filter === "unchanged"
+    )
+      return transition(result, priorCases.get(result.case_index)) === filter;
+    return true;
+  });
+  const selected =
+    rows.find((result) => result.case_index === selectedIndex) ?? rows[0];
+  const prior = selected && priorCases.get(selected.case_index);
+  const sameChecks =
+    JSON.stringify(detail.run.config.assertions ?? []) ===
     JSON.stringify(comparison?.run.config.assertions ?? []);
+
   return (
-    <div className="overflow-x-auto mt-5">
+    <div className="mt-5 space-y-4">
       {comparison && (
-        <div className="mb-3">
-          <p className="text-xs text-(--muted-foreground)">Comparison</p>
-          <RunSummary detail={comparison} />
-          <p role="status" className="mt-2 text-sm">
-            Compared with the selected run: {transitions.improved} improved, {transitions.regressed} regressed,
-            {transitions.unchanged} unchanged, {transitions.errors} involving errors.
+        <div className="rounded-lg border border-(--border) p-4">
+          <p className="text-xs text-(--muted-foreground)">Reference run</p>
+          <p className="text-sm">
+            {comparison.run.config.prompt_name} v
+            {comparison.run.config.prompt_version} ·{" "}
+            {comparison.run.config.dataset_name} v
+            {comparison.run.config.dataset_version}
           </p>
-          {!sameChecks && <p className="text-sm text-(--warning)">These runs use different assertions; pass/fail changes may reflect the checks rather than the outputs.</p>}
+          <p role="status" className="mt-2 text-sm">
+            Compared with the selected run: {transitions.improved} improved,{" "}
+            {transitions.regressed} regressed, {transitions.unchanged}{" "}
+            unchanged, {transitions.errors} involving errors.
+          </p>
+          {!sameChecks && (
+            <p className="mt-2 text-sm text-(--warning)">
+              These runs use different assertions; pass/fail changes may reflect
+              the checks rather than the outputs.
+            </p>
+          )}
         </div>
       )}
-      <table className="w-full min-w-[800px] text-sm text-left">
-        <thead>
-          <tr className="border-b border-(--border)">
-            <th className="p-3">Case / inputs</th>
-            <th className="p-3">Reference</th>
-            <th className="p-3">Output / checks</th>
-            <th className="p-3">Latency / tokens</th>
-            {comparison && <th className="p-3">Compared output / checks</th>}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((result) => {
-            const compared = comparison?.results.find(
-              (r) => r.case_index === result.case_index,
-            );
-            return (
+      <div className="overflow-x-auto rounded-lg border border-(--border)">
+        <table className="w-full min-w-[620px] text-left text-sm">
+          <thead>
+            <tr className="border-b border-(--border) bg-(--muted)/30">
+              <th className="p-3">Case</th>
+              <th className="p-3">Result</th>
+              {comparison && <th className="p-3">Change</th>}
+              <th className="p-3">Latency</th>
+              <th className="p-3">Output preview</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((result) => (
               <tr
                 key={result.case_index}
-                className="align-top border-b border-(--border)"
+                className="border-b border-(--border) last:border-0"
               >
-                <td className="p-3 max-w-64">
-                  <strong>
+                <td className="p-3">
+                  <button
+                    type="button"
+                    className="font-medium text-(--primary) hover:underline"
+                    onClick={() => setSelectedIndex(result.case_index)}
+                  >
                     {result.name || `Case ${result.case_index + 1}`}
-                  </strong>
-                  <pre className="whitespace-pre-wrap break-words text-xs mt-2">
-                    {JSON.stringify(result.inputs, null, 2)}
-                  </pre>
-                </td>
-                <td className="p-3 max-w-64 whitespace-pre-wrap break-words">
-                  {result.expected_output ?? "No reference"}
-                </td>
-                <td className="p-3 max-w-96">
-                  <ResultCell result={result} />
+                  </button>
                 </td>
                 <td className="p-3">
-                  {result.latency_ms?.toFixed(1) ?? "—"} ms
-                  <br />
-                  Input: {result.tokens_input ?? "—"}
-                  <br />
-                  Output: {result.tokens_output ?? "—"}
+                  {result.error
+                    ? "Error"
+                    : result.passed
+                      ? "Passed"
+                      : "Failed checks"}
                 </td>
                 {comparison && (
-                  <td className="p-3 max-w-96">
-                    {compared ? (
-                      <ResultCell result={compared} />
-                    ) : (
-                      "Not processed"
-                    )}
+                  <td className="p-3 capitalize">
+                    {transition(result, priorCases.get(result.case_index))}
                   </td>
                 )}
+                <td className="p-3">
+                  {result.latency_ms == null
+                    ? "—"
+                    : `${result.latency_ms.toFixed(1)} ms`}
+                </td>
+                <td className="max-w-80 truncate p-3">
+                  {result.output || (result.error ? "—" : "Empty output")}
+                </td>
               </tr>
-            );
-          })}
-        </tbody>
-      </table>
-      {!rows.length && (
-        <p className="text-(--muted-foreground) p-3">No matching results yet.</p>
+            ))}
+          </tbody>
+        </table>
+        {!rows.length && (
+          <p className="p-4 text-sm text-(--muted-foreground)">
+            No matching results yet.
+          </p>
+        )}
+      </div>
+      {selected && (
+        <section
+          className="rounded-lg border border-(--border) p-4"
+          aria-label="Selected case details"
+        >
+          <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
+            <h3 className="font-semibold">
+              {selected.name || `Case ${selected.case_index + 1}`}
+            </h3>
+            <p className="text-sm text-(--muted-foreground)">
+              Case {selected.case_index + 1} · {selected.tokens_input ?? "—"}{" "}
+              input tokens · {selected.tokens_output ?? "—"} output tokens
+            </p>
+          </div>
+          <div className="grid gap-4 lg:grid-cols-2">
+            <DetailField
+              label="Inputs"
+              value={JSON.stringify(selected.inputs, null, 2)}
+            />
+            <DetailField
+              label="Reference output"
+              value={selected.expected_output ?? "No reference"}
+            />
+            <div>
+              <p className="mb-1 text-xs text-(--muted-foreground)">
+                Candidate output and checks
+              </p>
+              <ResultCell result={selected} />
+            </div>
+            {comparison && (
+              <div>
+                <p className="mb-1 text-xs text-(--muted-foreground)">
+                  Reference run output and checks
+                </p>
+                {prior ? (
+                  <ResultCell result={prior} />
+                ) : (
+                  <p className="text-sm">Not processed</p>
+                )}
+              </div>
+            )}
+          </div>
+        </section>
       )}
     </div>
   );
 }
-function ResultCell({
-  result,
-}: {
-  result: EvaluationDetail["results"][number];
-}) {
+
+function DetailField({ label, value }: { label: string; value: string }) {
   return (
     <div>
+      <p className="mb-1 text-xs text-(--muted-foreground)">{label}</p>
+      <pre className="whitespace-pre-wrap break-words rounded-md bg-(--muted)/30 p-3 text-xs">
+        {value}
+      </pre>
+    </div>
+  );
+}
+
+function ResultCell({ result }: { result: CaseResult }) {
+  return (
+    <div className="text-sm">
       <span
         className={
           result.error
@@ -157,12 +268,12 @@ function ResultCell({
       >
         {result.error ? "Error" : result.passed ? "Passed" : "Failed checks"}
       </span>
-      {result.error && <p className="text-(--warning) mt-2">{result.error}</p>}
-      <pre className="whitespace-pre-wrap break-words text-xs mt-2">
-        {result.output}
+      {result.error && <p className="mt-2 text-(--warning)">{result.error}</p>}
+      <pre className="mt-2 whitespace-pre-wrap break-words rounded-md bg-(--muted)/30 p-3 text-xs">
+        {result.output || "Empty output"}
       </pre>
-      {result.checks.map((check, i) => (
-        <p key={i} className="text-xs mt-2">
+      {result.checks.map((check, index) => (
+        <p key={index} className="mt-2 text-xs">
           {check.passed ? "✓" : "✗"} {check.kind}
           {check.score !== undefined && ` (${check.score.toFixed(2)})`}:{" "}
           {check.reason}

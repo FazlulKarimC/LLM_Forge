@@ -3,11 +3,11 @@
 ## Try a reliable demo
 
 1. Sign in and select your project.
-2. On the dashboard, click **Create demo examples**. This creates or reuses `Echo demo` v1 (`{{query}}`) and the two-case `Greetings` dataset in the current project, then opens **Evaluations** with both selected. Existing content with these names is never overwritten; a conflict is shown instead.
+2. On Overview, click **Create demo examples**. This creates or reuses `Echo demo` v1 (`{{query}}`) and the two-case `Greetings` dataset in the current project, then opens **Evaluations** with both selected. Existing content with these names is never overwritten; a conflict is shown instead.
 3. Keep **Demo** and **Exact match**. Start the run.
 5. Both cases pass: Demo echoes the compiled prompt. It does not call a model or claim to measure real model quality.
 6. Save prompt v2 as `Reply: {{query}}`. Run it against the same dataset revision. Both cases fail exact match.
-7. Select these two runs under **View run** and **Compare with**. Inspect outputs and the pass/fail changes. Copy the page URL to revisit the selected runs, or export the results as JSON.
+7. Open the candidate from **Run history** and choose the passing run as its **Reference run**. Inspect the regressed cases and their outputs. Copy the page URL to revisit the selected runs, or export the results as JSON.
 
 This demonstrates a reproducible regression test: a prompt change breaks the expected output contract. For a practical model demo, use a small support-ticket classification dataset, a prompt that returns a JSON label, JSON-path assertions, and an optional correctness rubric.
 
@@ -32,7 +32,7 @@ Goodbye,Goodbye,Farewell
 
 Alternatively, use an `inputs` column containing a CSV-quoted JSON object. Don't mix both input styles. Unknown/duplicate headers, malformed rows, non-string inputs, empty datasets, and oversized revisions are rejected. A missing CSV reference column means null; an empty reference cell means the empty string.
 
-Upload a file or paste content, validate it into the draft, and save. Import validation does not create a dataset until you save. Dataset metadata can be edited, and datasets can be archived/restored. Archiving preserves revisions and existing results but prevents new runs. Dataset names are unique within a project.
+Use the case table for add/edit/duplicate/remove, or switch to Advanced JSON. Upload a file or paste content, validate and review its preview, explicitly replace the draft cases, then save. Import validation does not create a dataset until you save. Dataset metadata can be edited, and datasets can be archived/restored. Archiving preserves revisions and existing results but prevents new runs. Dataset names are unique within a project.
 
 Saved revisions are immutable. Editing cases creates a new revision with a stale-edit check. Selecting an older revision loads a draft; saving it creates a new revision. **Reload latest / discard draft** explicitly discards unsaved work. Dataset history and lists are paginated.
 

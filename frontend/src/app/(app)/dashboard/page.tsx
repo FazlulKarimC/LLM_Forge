@@ -1,511 +1,364 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AnimatePresence, motion } from "framer-motion";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  Activity,
-  AlertTriangle,
   ArrowRight,
-  Clock3,
+  Database,
+  FileText,
   FlaskConical,
-  LoaderCircle,
-  Play,
   RefreshCcw,
-  Trash2,
-  WifiOff,
 } from "lucide-react";
 import { toast } from "sonner";
-import { createDemoExamples } from "@/lib/evaluation-api";
-
 import {
-  ApiError,
-  deleteExperiment,
-  getDashboardStats,
-  getReadinessStatus,
-  listExperimentsSlim,
-  resolveRunExperimentCredentials,
-  runExperiment,
-  type ExperimentListItem,
-} from "@/lib/api";
-import {
-  AnimatedNumber,
-  EmptyState,
-  MetricCard,
-  PageHeader,
-  Panel,
-  PanelHeader,
-  SkeletonBlock,
-  StatusPill,
-} from "@/components/ui/primitives";
-
-function formatDate(dateStr: string) {
-  return new Date(dateStr).toLocaleString("en-US", {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
+  createDemoExamples,
+  listDatasets,
+  listEvaluations,
+  isActive,
+} from "@/lib/evaluation-api";
+import { listPrompts } from "@/lib/prompt-api";
+import { getReadinessStatus } from "@/lib/api";
+import { PageHeader, StatusPill } from "@/components/ui/primitives";
 
 export default function DashboardPage() {
   const router = useRouter();
-  const queryClient = useQueryClient();
-  const [runningIds, setRunningIds] = useState<Set<string>>(new Set());
-  const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
-  const [experimentToDelete, setExperimentToDelete] = useState<{ id: string; name: string } | null>(null);
-  const demoMutation = useMutation({
+  const cache = useQueryClient();
+  const prompts = useQuery({
+    queryKey: ["prompt-library", "", false, 0],
+    queryFn: ({ signal }) => listPrompts("", false, 0, signal),
+  });
+  const datasets = useQuery({
+    queryKey: ["datasets", false, 0],
+    queryFn: ({ signal }) => listDatasets(false, 0, signal),
+  });
+  const runs = useQuery({
+    queryKey: ["evaluations", 0],
+    queryFn: ({ signal }) => listEvaluations(0, signal),
+    refetchInterval: (query) =>
+      query.state.data?.items.some(isActive) ? 2500 : false,
+  });
+  const readiness = useQuery({
+    queryKey: ["readiness"],
+    queryFn: ({ signal }) => getReadinessStatus({ signal }),
+    staleTime: 5 * 60_000,
+    retry: 1,
+  });
+  const demo = useMutation({
     mutationFn: createDemoExamples,
     onSuccess: (examples) => {
-      queryClient.invalidateQueries({ queryKey: ["prompt-library"] });
-      queryClient.invalidateQueries({ queryKey: ["datasets"] });
+      cache.invalidateQueries({ queryKey: ["prompt-library"] });
+      cache.invalidateQueries({ queryKey: ["datasets"] });
       const params = new URLSearchParams({
         prompt: examples.prompt_id,
         version: examples.prompt_version_id,
         dataset: examples.dataset_id,
         revision: examples.dataset_revision_id,
+        view: "new",
       });
       router.push(`/evaluations?${params}`);
     },
-    onError: (error: Error) => toast.error(`Could not prepare demo: ${error.message}`),
+    onError: (error: Error) =>
+      toast.error(`Could not prepare demo: ${error.message}`),
   });
-
-  const statsQuery = useQuery({
-    queryKey: ["dashboard-stats"],
-    queryFn: ({ signal }) => getDashboardStats({ signal }),
-  });
-
-  const experimentsQuery = useQuery({
-    queryKey: ["experiments", "recent"],
-    queryFn: ({ signal }) => listExperimentsSlim({ limit: 6 }, { signal }),
-  });
-
-  const readinessQuery = useQuery({
-    queryKey: ["readiness"],
-    queryFn: ({ signal }) => getReadinessStatus({ signal }),
-    staleTime: 5 * 60_000,
-    retry: (failureCount, error) => !(error instanceof ApiError && error.statusCode === 408) && failureCount < 1,
-  });
-
-  const runMutation = useMutation({
-    mutationFn: (experiment: ExperimentListItem) => {
-      setRunningIds((prev) => new Set(prev).add(experiment.id));
-      const credentials = resolveRunExperimentCredentials(experiment);
-      return runExperiment(experiment.id, credentials.customBaseUrl, credentials.customApiKey);
-    },
-    onSuccess: (_data, experiment) => {
-      setRunningIds((prev) => {
-        const next = new Set(prev);
-        next.delete(experiment.id);
-        return next;
-      });
-      queryClient.invalidateQueries({ queryKey: ["experiments"] });
-      toast.success("Experiment started");
-    },
-    onError: (error: Error, experiment) => {
-      setRunningIds((prev) => {
-        const next = new Set(prev);
-        next.delete(experiment.id);
-        return next;
-      });
-      toast.error(`Failed to start experiment: ${error.message}`);
-    },
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: (id: string) => {
-      setDeletingIds((prev) => new Set(prev).add(id));
-      return deleteExperiment(id);
-    },
-    onSuccess: (_data, id) => {
-      setDeletingIds((prev) => {
-        const next = new Set(prev);
-        next.delete(id);
-        return next;
-      });
-      queryClient.invalidateQueries({ queryKey: ["experiments"] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
-      setExperimentToDelete(null);
-      toast.success("Experiment deleted");
-    },
-    onError: (error: Error, id) => {
-      setDeletingIds((prev) => {
-        const next = new Set(prev);
-        next.delete(id);
-        return next;
-      });
-      setExperimentToDelete(null);
-      toast.error(`Failed to delete experiment: ${error.message}`);
-    },
-  });
-
-  const readinessError = readinessQuery.error;
-  const readinessIsWaking = readinessError instanceof ApiError && readinessError.statusCode === 408;
-  const readinessMessage = readinessIsWaking
-    ? "The backend is waking up. Free-tier cold starts can take around a minute."
-    : readinessError instanceof Error
-      ? readinessError.message
-      : "Readiness checks are unavailable right now.";
-
-  const stats = statsQuery.data;
-  const experiments = experimentsQuery.data?.experiments ?? [];
-  const loading = statsQuery.isLoading || experimentsQuery.isLoading;
-  const summaryCards = useMemo(
-    () => [
-      {
-        label: "Total experiments",
-        value: stats?.totalExperiments ?? 0,
-        detail: "All tracked runs across the workspace",
-      },
-      {
-        label: "Completed",
-        value: stats?.completedExperiments ?? 0,
-        detail: "Finished and ready for analysis",
-        tone: "success" as const,
-      },
-      {
-        label: "Live queue",
-        value: stats?.runningExperiments ?? 0,
-        detail: "Queued or currently executing",
-        tone: "accent" as const,
-      },
-      {
-        label: "Pending",
-        value: stats?.pendingExperiments ?? 0,
-        detail: "Configured but not yet started",
-        tone: "warning" as const,
-      },
-    ],
-    [stats]
+  const loading = prompts.isLoading || datasets.isLoading || runs.isLoading;
+  const empty =
+    !loading &&
+    prompts.data?.total === 0 &&
+    datasets.data?.total === 0 &&
+    runs.data?.total === 0;
+  const error = [prompts.error, datasets.error, runs.error].find(
+    (item) => item instanceof Error,
   );
 
   return (
     <div className="page-stack">
       <PageHeader
-        eyebrow={<><Activity className="size-3.5" /> Workspace snapshot</>}
-        title="Workspace overview"
-        description="System readiness, recent runs, and quick actions at a glance."
+        eyebrow="Your project"
+        title="Overview"
+        description="Develop a prompt, test it on fixed cases, then release a version your application can fetch."
         actions={
-          <>
-            <Link href="/experiments" className="btn-secondary">
-              Browse experiments
-            </Link>
-            <Link href="/experiments/new" className="btn-primary">
-              New experiment
-              <ArrowRight className="size-4" />
-            </Link>
-          </>
+          <Link href="/prompts/new" className="btn-primary">
+            <FileText className="size-4" />
+            Create prompt
+          </Link>
         }
-      >
-        <div className="flex flex-wrap gap-3 text-sm text-(--muted-foreground)">
-          <span className="chip">Dashboard</span>
-          <span className="chip">Readiness</span>
-          <span className="chip">Queue control</span>
-          <span className="chip">Recent activity</span>
-        </div>
-      </PageHeader>
-
-      <section className="panel p-5">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <h2 className="font-semibold">Try a prompt evaluation</h2>
-            <p className="mt-1 text-sm text-(--muted-foreground)">
-              Create two reusable examples in this project and open a provider-free evaluation.
-            </p>
-          </div>
-          <button type="button" className="btn-primary" disabled={demoMutation.isPending} onClick={() => demoMutation.mutate()}>
-            {demoMutation.isPending ? "Preparing…" : "Create demo examples"}
-          </button>
-        </div>
-      </section>
-
-      {statsQuery.error && experimentsQuery.error ? (
-        <div className="alert alert-danger">
-          <WifiOff className="mt-0.5 size-4 shrink-0" />
-          <div className="flex-1 space-y-1">
-            <div className="font-semibold">Backend unreachable</div>
-            <p className="text-sm text-(--muted-foreground)">
-              Could not connect to the API. The backend may be sleeping, booting, or temporarily down.
-              {statsQuery.error instanceof ApiError && statsQuery.error.statusCode === 408
-                ? " Free-tier cold starts on Hugging Face Spaces can take up to a minute."
-                : ""}
-            </p>
-          </div>
+      />
+      {error instanceof Error && (
+        <div role="alert" className="alert alert-danger flex-wrap gap-3">
+          <span className="flex-1">
+            Workspace data could not load: {error.message}
+          </span>
           <button
-            type="button"
-            className="btn-secondary shrink-0"
+            className="btn-secondary"
             onClick={() => {
-              statsQuery.refetch();
-              experimentsQuery.refetch();
-              readinessQuery.refetch();
+              prompts.refetch();
+              datasets.refetch();
+              runs.refetch();
             }}
           >
             <RefreshCcw className="size-4" />
             Retry
           </button>
         </div>
-      ) : statsQuery.error ? (
-        <div className="alert alert-danger">
-          <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-          <div className="flex-1 space-y-1">
-            <div className="font-semibold">Dashboard data failed to load</div>
-            <p className="text-sm text-(--muted-foreground)">
-              {statsQuery.error instanceof Error ? statsQuery.error.message : "Unknown error"}
-            </p>
-          </div>
-          <button type="button" className="btn-secondary shrink-0" onClick={() => statsQuery.refetch()}>
+      )}
+      {(readiness.error || readiness.data?.status === "not_ready") && (
+        <div role="alert" className="alert alert-danger flex-wrap gap-3">
+          <span className="flex-1">
+            The API is not ready for new runs. Check Service status below and
+            retry after the database or dispatch recovers.
+          </span>
+          <button className="btn-secondary" onClick={() => readiness.refetch()}>
             <RefreshCcw className="size-4" />
-            Retry
+            Recheck
           </button>
         </div>
-      ) : experimentsQuery.error ? (
-        <div className="alert alert-danger">
-          <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-          <div className="flex-1 space-y-1">
-            <div className="font-semibold">Recent experiments failed to load</div>
-            <p className="text-sm text-(--muted-foreground)">
-              {experimentsQuery.error instanceof Error ? experimentsQuery.error.message : "Unknown error"}
-            </p>
-          </div>
-          <button type="button" className="btn-secondary shrink-0" onClick={() => experimentsQuery.refetch()}>
-            <RefreshCcw className="size-4" />
-            Retry
-          </button>
-        </div>
-      ) : null}
-
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {loading
-          ? Array.from({ length: 4 }).map((_, index) => <SkeletonBlock key={index} className="h-[134px]" />)
-          : summaryCards.map((card) => (
-              <MetricCard
-                key={card.label}
-                label={card.label}
-                tone={card.tone}
-                value={<AnimatedNumber value={card.value} className="text-4xl" />}
-                detail={card.detail}
-              />
-            ))}
-      </section>
-
-      <section>
-        <Panel>
-          <PanelHeader
-            label="System state"
-            title="Readiness checks"
-            description="Live status of API, database, model providers, and task dispatch queue."
-            actions={
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={() => readinessQuery.refetch()}
-                disabled={readinessQuery.isFetching}
-              >
-                <RefreshCcw className={cn("size-4", readinessQuery.isFetching ? "animate-spin" : "")} />
-                Re-check
-              </button>
-            }
-          />
-          <div className="panel-body">
-            {readinessQuery.isLoading ? (
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                <SkeletonBlock className="h-14" />
-                <SkeletonBlock className="h-14" />
-                <SkeletonBlock className="h-14" />
-              </div>
-            ) : readinessQuery.error ? (
-              <div className={readinessIsWaking ? "alert alert-warning" : "alert alert-danger"}>
-                <Clock3 className="mt-0.5 size-4 shrink-0" />
-                <p className="text-sm leading-7">{readinessMessage}</p>
-              </div>
-            ) : (
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {Object.entries(readinessQuery.data?.checks ?? {}).map(([key, value]) => {
-                  const status = String(value);
-                  const tone =
-                    status === "healthy"
-                      ? "status-completed"
-                      : status === "not_configured" || status === "configured" || status === "inline_only"
-                        ? "status-pending"
-                        : status.startsWith("archived")
-                          ? "status-queued"
-                          : status === "fallback_inline" ||
-                              status === "circuit_open" ||
-                              status === "worker_missing" ||
-                              status === "half_open"
-                            ? "status-queued"
-                            : "status-failed";
-
-                  const displayLabel =
-                    status === "fallback_inline"
-                      ? "Inline fallback"
-                      : status === "circuit_open"
-                        ? "Circuit open"
-                        : status === "worker_missing"
-                          ? "Worker missing"
-                          : status === "half_open"
-                            ? "Probing"
-                            : status === "inline_only"
-                              ? "Inline only"
-                              : status === "healthy"
-                                ? "ready"
-                                : status;
-
-                  return (
-                    <div key={key} className="rounded-[18px] border border-(--border) bg-(--surface-2) p-4">
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <div className="section-label">{key.replace(/_/g, " ")}</div>
-                          <div className="mt-1 font-semibold capitalize">{status.replace(/_/g, " ")}</div>
-                        </div>
-                        <span className={cn("status-pill", tone)}>
-                          <span className="status-dot" />
-                          {displayLabel}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        </Panel>
-      </section>
-
-      <section>
-        <Panel>
-          <PanelHeader
-            label="Recent runs"
-            title="Experiment queue"
-            description="Your most recent experiment runs."
-            actions={<Link href="/experiments" className="btn-secondary">View all</Link>}
-          />
-          <div className="panel-body">
-            {experimentsQuery.isLoading ? (
-              <div className="space-y-3">
-                {Array.from({ length: 4 }).map((_, index) => (
-                  <SkeletonBlock key={index} className="h-[92px]" />
-                ))}
-              </div>
-            ) : experiments.length === 0 ? (
-              <EmptyState
-                icon={<FlaskConical className="size-5" />}
-                title="No experiments yet"
-                description="Start with a baseline run, then compare it against a reasoning or retrieval variant."
-                action={<Link href="/experiments/new" className="btn-primary">Create first experiment</Link>}
-              />
-            ) : (
-              <div className="space-y-3">
-                {experiments.map((experiment) => (
-                  <Link
-                    key={experiment.id}
-                    href={`/experiments/${experiment.id}`}
-                    className="block w-full rounded-[20px] border border-(--border) bg-(--surface-2) p-4 text-left transition-all hover:border-(--border-strong) hover:bg-(--surface-3)"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0 flex-1 space-y-2">
-                        <div className="flex items-center gap-2">
-                          <div className="truncate text-lg font-semibold tracking-[-0.03em]">{experiment.name}</div>
-                          <StatusPill status={experiment.status} />
-                        </div>
-                        <div className="flex flex-wrap gap-2 text-xs text-(--muted-foreground)">
-                          <span className="chip">{experiment.reasoning_method.toUpperCase()}</span>
-                          <span className="chip">{experiment.model_name.split("/").pop()}</span>
-                          <span className="chip">{experiment.dataset_name}</span>
-                        </div>
-                        {experiment.description ? (
-                          <p className="line-clamp-2 max-w-2xl text-sm leading-7 text-(--muted-foreground)">{experiment.description}</p>
-                        ) : null}
-                      </div>
-                      <div className="flex shrink-0 items-center gap-2" onClick={(event) => event.preventDefault()}>
-                        <button
-                          type="button"
-                          className="btn-secondary"
-                          onClick={(event) => { event.preventDefault(); runMutation.mutate(experiment); }}
-                          disabled={runningIds.has(experiment.id) || experiment.status === "running" || experiment.status === "queued"}
-                        >
-                          {runningIds.has(experiment.id) ? <LoaderCircle className="size-4 animate-spin" /> : <Play className="size-4" />}
-                          {experiment.status === "completed" ? "Run again" : "Start"}
-                        </button>
-                        <button
-                          type="button"
-                          className="btn-danger"
-                          onClick={(event) => { event.preventDefault(); setExperimentToDelete({ id: experiment.id, name: experiment.name }); }}
-                          disabled={deletingIds.has(experiment.id)}
-                        >
-                          {deletingIds.has(experiment.id) ? <LoaderCircle className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
-                          Delete
-                        </button>
-                      </div>
-                    </div>
-                    <div className="mt-4 flex flex-wrap items-center gap-3 text-sm text-(--muted-foreground)">
-                      <span className="mono-caption">Created {formatDate(experiment.created_at)}</span>
-                      {experiment.completed_at ? <span className="mono-caption">Completed {formatDate(experiment.completed_at)}</span> : null}
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            )}
-          </div>
-        </Panel>
-      </section>
-
-      <AnimatePresence>
-        {experimentToDelete ? (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-70 flex items-center justify-center bg-black/55 px-4 backdrop-blur-sm"
-            onClick={() => setExperimentToDelete(null)}
-          >
-            <motion.div
-              initial={{ opacity: 0, y: 16, scale: 0.98 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 12, scale: 0.98 }}
-              transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] as const }}
-              className="panel max-w-lg p-6"
-              onClick={(event) => event.stopPropagation()}
+      )}
+      {empty ? (
+        <section className="panel p-6 sm:p-8">
+          <div className="section-label">First run</div>
+          <h2 className="mt-2 text-2xl font-semibold">
+            See a prompt regression in minutes
+          </h2>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-(--muted-foreground)">
+            Create an Echo demo prompt and a two-case Greetings dataset in this
+            project. The demo echoes the compiled prompt, so it needs no model
+            credits and does not measure model quality.
+          </p>
+          <div className="mt-5 flex flex-wrap gap-3">
+            <button
+              className="btn-primary"
+              disabled={demo.isPending}
+              onClick={() => demo.mutate()}
             >
-              <div className="flex items-start gap-4">
-                <div className="flex size-12 items-center justify-center rounded-[18px] border border-[color-mix(in_oklab,var(--destructive)_38%,transparent)] bg-(--destructive-soft) text-[color-mix(in_oklab,var(--destructive)_84%,white_12%)]">
-                  <AlertTriangle className="size-5" />
-                </div>
-                <div className="space-y-3">
-                  <div>
-                    <div className="section-label">Destructive action</div>
-                    <h2 className="mt-1 text-2xl font-semibold tracking-[-0.04em]">Delete experiment</h2>
-                  </div>
-                  <p className="text-sm leading-7 text-(--muted-foreground)">
-                    Remove <span className="font-semibold text-foreground">{experimentToDelete.name}</span> and its saved metrics from the workspace.
-                    This cannot be undone.
-                  </p>
-                </div>
+              {demo.isPending ? "Preparing…" : "Create demo examples"}
+              <ArrowRight className="size-4" />
+            </button>
+            <Link className="btn-secondary" href="/prompts/new">
+              Start with my own prompt
+            </Link>
+          </div>
+        </section>
+      ) : (
+        <section className="panel flex flex-wrap items-center justify-between gap-4 p-5">
+          <div>
+            <h2 className="font-semibold">Continue testing</h2>
+            <p className="mt-1 text-sm text-(--muted-foreground)">
+              Use a saved prompt version and dataset revision for a reproducible
+              evaluation.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Link href="/evaluations?view=new" className="btn-primary">
+              New evaluation <ArrowRight className="size-4" />
+            </Link>
+            <button
+              className="btn-secondary"
+              disabled={demo.isPending}
+              onClick={() => demo.mutate()}
+            >
+              {demo.isPending ? "Preparing…" : "Create demo examples"}
+            </button>
+          </div>
+        </section>
+      )}
+
+      <section
+        className="grid gap-3 sm:grid-cols-3"
+        aria-label="Project inventory"
+      >
+        {[
+          {
+            label: "Prompts",
+            value: prompts.data?.total,
+            href: "/prompts",
+            icon: FileText,
+          },
+          {
+            label: "Datasets",
+            value: datasets.data?.total,
+            href: "/datasets",
+            icon: Database,
+          },
+          {
+            label: "Evaluation runs",
+            value: runs.data?.total,
+            href: "/evaluations",
+            icon: FlaskConical,
+          },
+        ].map((item) => {
+          const Icon = item.icon;
+          return (
+            <Link
+              key={item.label}
+              href={item.href}
+              className="panel flex items-center justify-between p-5 transition-colors hover:border-(--border-strong)"
+            >
+              <div>
+                <p className="text-sm text-(--muted-foreground)">
+                  {item.label}
+                </p>
+                <p className="mt-1 text-2xl font-semibold tabular-nums">
+                  {item.value ?? (loading ? "…" : "—")}
+                </p>
               </div>
-              <div className="mt-6 flex flex-wrap justify-end gap-3">
-                <button type="button" className="btn-secondary" onClick={() => setExperimentToDelete(null)} disabled={deleteMutation.isPending}>
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  className="btn-danger"
-                  onClick={() => deleteMutation.mutate(experimentToDelete.id)}
-                  disabled={deleteMutation.isPending}
+              <Icon className="size-5 text-(--primary)" />
+            </Link>
+          );
+        })}
+      </section>
+
+      <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
+        <section className="panel overflow-hidden">
+          <div className="flex items-center justify-between border-b border-(--border) px-5 py-4">
+            <div>
+              <h2 className="font-semibold">Recent evaluations</h2>
+              <p className="text-sm text-(--muted-foreground)">
+                Choose a run to inspect its cases.
+              </p>
+            </div>
+            <Link
+              href="/evaluations"
+              className="text-sm text-(--primary) hover:underline"
+            >
+              View all
+            </Link>
+          </div>
+          {runs.isLoading ? (
+            <p className="p-5 text-sm">Loading evaluations…</p>
+          ) : !runs.data?.items.length ? (
+            <div className="p-5 text-sm text-(--muted-foreground)">
+              No runs yet.{" "}
+              <Link className="underline" href="/evaluations?view=new">
+                Start an evaluation
+              </Link>{" "}
+              after saving a prompt and dataset.
+            </div>
+          ) : (
+            <div className="divide-y divide-(--border)">
+              {runs.data.items.slice(0, 6).map((run) => (
+                <Link
+                  key={run.id}
+                  href={`/evaluations?run=${run.id}`}
+                  className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 hover:bg-(--surface-2)"
                 >
-                  {deleteMutation.isPending ? <LoaderCircle className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
-                  Delete experiment
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold">
+                      {run.config.prompt_name} v{run.config.prompt_version} ·{" "}
+                      {run.config.dataset_name} v{run.config.dataset_version}
+                    </p>
+                    <p className="mt-1 text-xs text-(--muted-foreground)">
+                      {new Date(run.created_at).toLocaleString()} ·{" "}
+                      {run.config.source === "sdk_submission"
+                        ? "External"
+                        : run.config.is_mock
+                          ? "Demo"
+                          : "Live provider"}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs tabular-nums text-(--muted-foreground)">
+                      {run.completed}/{run.total} processed · {run.passed}{" "}
+                      passed
+                    </span>
+                    <StatusPill status={run.status} />
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
+        </section>
+        <section className="panel overflow-hidden">
+          <div className="flex items-center justify-between border-b border-(--border) px-5 py-4">
+            <div>
+              <h2 className="font-semibold">Recent prompts</h2>
+              <p className="text-sm text-(--muted-foreground)">
+                Saved versions and release labels.
+              </p>
+            </div>
+            <Link
+              href="/prompts"
+              className="text-sm text-(--primary) hover:underline"
+            >
+              View all
+            </Link>
+          </div>
+          {prompts.isLoading ? (
+            <p className="p-5 text-sm">Loading prompts…</p>
+          ) : !prompts.data?.items.length ? (
+            <p className="p-5 text-sm text-(--muted-foreground)">
+              No saved prompts yet.
+            </p>
+          ) : (
+            <div className="divide-y divide-(--border)">
+              {prompts.data.items.slice(0, 6).map((prompt) => (
+                <Link
+                  key={prompt.id}
+                  href={`/prompts/${prompt.id}`}
+                  className="block px-5 py-4 hover:bg-(--surface-2)"
+                >
+                  <div className="flex justify-between gap-3">
+                    <span className="truncate text-sm font-semibold">
+                      {prompt.name}
+                    </span>
+                    <span className="text-xs">v{prompt.latest_version}</span>
+                  </div>
+                  <p className="mt-1 text-xs text-(--muted-foreground)">
+                    {prompt.labels.length
+                      ? prompt.labels
+                          .map((label) => `${label.label} v${label.version}`)
+                          .join(" · ")
+                      : "No release yet"}
+                  </p>
+                </Link>
+              ))}
+            </div>
+          )}
+        </section>
+      </div>
+      <details className="panel p-5">
+        <summary className="cursor-pointer text-sm font-semibold">
+          Service status
+        </summary>
+        <p className="mt-2 text-sm text-(--muted-foreground)">
+          Database and dispatch are required for runs. Provider and queue
+          integrations are optional.
+        </p>
+        {readiness.isLoading ? (
+          <p className="mt-3 text-sm">Checking…</p>
+        ) : readiness.error ? (
+          <p role="alert" className="mt-3 text-sm text-(--warning)">
+            Readiness is unavailable:{" "}
+            {readiness.error instanceof Error
+              ? readiness.error.message
+              : "Unknown error"}
+          </p>
+        ) : (
+          <ul className="mt-3 grid gap-2 sm:grid-cols-2">
+            {Object.entries(readiness.data?.checks ?? {}).map(
+              ([key, value]) => (
+                <li
+                  key={key}
+                  className="flex justify-between rounded-lg border border-(--border) px-3 py-2 text-sm"
+                >
+                  <span className="capitalize">{key.replace(/_/g, " ")}</span>
+                  <span className="text-(--muted-foreground)">
+                    {String(value).replace(/_/g, " ")}
+                  </span>
+                </li>
+              ),
+            )}
+          </ul>
+        )}
+        <button
+          className="btn-secondary mt-3"
+          onClick={() => readiness.refetch()}
+          disabled={readiness.isFetching}
+        >
+          <RefreshCcw className="size-4" />
+          Recheck
+        </button>
+      </details>
     </div>
   );
-}
-
-function cn(...values: Array<string | false | null | undefined>) {
-  return values.filter(Boolean).join(" ");
 }

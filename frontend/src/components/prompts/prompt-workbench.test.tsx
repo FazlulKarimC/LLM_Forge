@@ -133,9 +133,13 @@ describe("prompt workbench", () => {
     fireEvent.change(screen.getByLabelText("Prompt template"), {
       target: { value: "Improve {{query}}" },
     });
+    fireEvent.click(screen.getByRole("button", { name: "Releases" }));
     screen
       .getAllByRole("button", { name: "Promote v1" })
       .forEach((button) => expect(button).toBeDisabled());
+    fireEvent.click(
+      screen.getByRole("button", { name: "Editor & playground" }),
+    );
     fireEvent.click(screen.getByRole("button", { name: "Save new version" }));
     await waitFor(() =>
       expect(mocks.saveVersion).toHaveBeenCalledWith(
@@ -153,6 +157,7 @@ describe("prompt workbench", () => {
   });
   it("promotes a saved snapshot only after the release confirmation", async () => {
     wrap(<PromptWorkbench initial={detail} />);
+    fireEvent.click(screen.getByRole("button", { name: "Releases" }));
     fireEvent.click(screen.getAllByRole("button", { name: "Promote v1" })[1]);
     expect(mocks.promoteVersion).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Confirm promotion" }));

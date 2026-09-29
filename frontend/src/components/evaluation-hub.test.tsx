@@ -24,6 +24,7 @@ const mocks = vi.hoisted(() => ({
   cancelEvaluation: vi.fn(),
   listPrompts: vi.fn(),
   getVersions: vi.fn(),
+  push: vi.fn(),
 }));
 vi.mock("@/lib/evaluation-api", async (original) => ({
   ...(await original<object>()),
@@ -34,6 +35,7 @@ vi.mock("@/lib/prompt-api", async (original) => ({
   listPrompts: mocks.listPrompts,
   getVersions: mocks.getVersions,
 }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: mocks.push }) }));
 const cases = [
   { inputs: { query: "Hello" }, expected_output: "Hello", name: "Greeting" },
 ];
@@ -121,8 +123,12 @@ describe("dataset editor", () => {
     fireEvent.change(await screen.findByLabelText("Dataset name"), {
       target: { value: "Renamed greetings" },
     });
+    fireEvent.click(screen.getByRole("button", { name: "Advanced JSON" }));
     fireEvent.change(screen.getByLabelText("Dataset cases"), {
-      target: { value: '[{"name":"Greeting","expected_output":"Hello","inputs":{"query":"Hello"}}]' },
+      target: {
+        value:
+          '[{"name":"Greeting","expected_output":"Hello","inputs":{"query":"Hello"}}]',
+      },
     });
     fireEvent.click(screen.getByText("Save changes"));
     await waitFor(() =>
@@ -161,12 +167,85 @@ describe("dataset editor", () => {
     );
     expect(await screen.findByText(/Dataset saved/)).toBeInTheDocument();
   });
+  it("can evaluate an older saved revision without creating a new one", async () => {
+    const latest = { ...revision, id: "revision2", version: 2 };
+    mocks.getDataset.mockResolvedValue({
+      dataset: { ...dataset, latest_version: 2 },
+      revision: latest,
+    });
+    mocks.listRevisions.mockResolvedValue([latest, revision]);
+    mount(<DatasetsWorkbench />);
+    fireEvent.click(await screen.findByText("Greetings"));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "v1 · 1 cases" }),
+    );
+    const evaluate = screen.getByRole("button", {
+      name: "Evaluate this revision",
+    });
+    expect(evaluate).not.toBeDisabled();
+    fireEvent.click(evaluate);
+    expect(mocks.push).toHaveBeenCalledWith(
+      "/evaluations?view=new&dataset=dataset&revision=revision",
+    );
+  });
+  it("edits a case in the table and saves the resulting revision", async () => {
+    mocks.saveRevision.mockResolvedValue({
+      ...revision,
+      id: "revision2",
+      version: 2,
+      cases: [{ ...cases[0], expected_output: "Hi" }],
+    });
+    mount(<DatasetsWorkbench />);
+    fireEvent.click(await screen.findByText("Greetings"));
+    fireEvent.click(await screen.findByRole("button", { name: "Greeting" }));
+    fireEvent.change(screen.getByLabelText("Reference output"), {
+      target: { value: "Hi" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Apply case" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() =>
+      expect(mocks.saveRevision).toHaveBeenCalledWith(
+        "dataset",
+        [{ ...cases[0], expected_output: "Hi" }],
+        1,
+      ),
+    );
+  });
+  it("previews an import before replacing draft cases", async () => {
+    const imported = [
+      { name: "Farewell", inputs: { query: "Bye" }, expected_output: "Bye" },
+    ];
+    mocks.importDataset.mockResolvedValue({ cases: imported });
+    mount(<DatasetsWorkbench />);
+    fireEvent.click(await screen.findByText("Greetings"));
+    await screen.findByRole("button", { name: "Greeting" });
+    fireEvent.click(screen.getByText("Import CSV or JSON into this draft"));
+    fireEvent.change(screen.getByLabelText("Import content"), {
+      target: { value: JSON.stringify(imported) },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Validate and preview" }),
+    );
+    expect(
+      await screen.findByText("Import preview · 1 cases"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Greeting" }),
+    ).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Replace draft cases" }),
+    );
+    expect(
+      screen.getByRole("button", { name: "Farewell" }),
+    ).toBeInTheDocument();
+  });
   it("creates a dataset from editable cases", async () => {
     mount(<DatasetsWorkbench />);
     fireEvent.click(screen.getByText("New dataset"));
     fireEvent.change(screen.getByLabelText("Dataset name"), {
       target: { value: "New cases" },
     });
+    fireEvent.click(screen.getByRole("button", { name: "Advanced JSON" }));
     fireEvent.change(screen.getByLabelText("Dataset cases"), {
       target: { value: JSON.stringify(cases) },
     });
@@ -180,6 +259,8 @@ describe("dataset editor", () => {
     mocks.saveRevision.mockRejectedValue(new Error("Dataset changed; reload"));
     mount(<DatasetsWorkbench />);
     fireEvent.click(await screen.findByText("Greetings"));
+    await screen.findByLabelText("Dataset name");
+    fireEvent.click(screen.getByRole("button", { name: "Advanced JSON" }));
     const revised = [{ ...cases[0], expected_output: "Hi" }];
     fireEvent.change(await screen.findByLabelText("Dataset cases"), {
       target: { value: JSON.stringify(revised) },
@@ -193,6 +274,10 @@ describe("dataset editor", () => {
       JSON.stringify(revised),
     );
     fireEvent.click(screen.getByText("Reload latest / discard draft"));
+    await screen.findByText(/Loaded the latest revision/);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Advanced JSON" }),
+    );
     await waitFor(() =>
       expect(screen.getByLabelText("Dataset cases")).toHaveValue(
         JSON.stringify(cases, null, 2),
@@ -204,22 +289,34 @@ describe("dataset editor", () => {
 describe("evaluation UI", () => {
   it("offers per-case JSON references without a global comparison value", () => {
     mount(<EvaluationsWorkbench />);
-    fireEvent.change(screen.getByLabelText("Rule 1"), { target: { value: "json_reference" } });
+    fireEvent.click(screen.getByRole("button", { name: "New evaluation" }));
+    fireEvent.change(screen.getByLabelText("Rule 1"), {
+      target: { value: "json_reference" },
+    });
     expect(screen.getByLabelText("Rule 1")).toHaveValue("json_reference");
     expect(screen.queryByText("Expected JSON value")).not.toBeInTheDocument();
   });
   it("restores and updates a shareable evaluation selection", async () => {
-    window.history.replaceState(null, "", "/evaluations?prompt=prompt&version=version&dataset=dataset&revision=revision&run=run");
+    window.history.replaceState(
+      null,
+      "",
+      "/evaluations?prompt=prompt&version=version&dataset=dataset&revision=revision&run=run",
+    );
     mount(<EvaluationsWorkbench />);
-    await waitFor(() => expect(screen.getByLabelText("Prompt version")).toHaveValue("version"));
-    expect(screen.getByLabelText("Dataset revision")).toHaveValue("revision");
-    expect(screen.getByLabelText("View evaluation run")).toHaveValue("run");
-    fireEvent.change(screen.getByLabelText("View evaluation run"), { target: { value: "" } });
+    await screen.findByText("1/1");
+    expect(window.location.search).toContain("run=run");
+    fireEvent.click(screen.getByRole("button", { name: "Run history" }));
     await waitFor(() => expect(window.location.search).not.toContain("run="));
+    fireEvent.click(screen.getByRole("button", { name: "New evaluation" }));
+    await waitFor(() =>
+      expect(screen.getByLabelText("Prompt version")).toHaveValue("version"),
+    );
+    expect(screen.getByLabelText("Dataset revision")).toHaveValue("revision");
     expect(window.location.search).toContain("version=version");
   });
   it("starts a live run with saved IDs, clears the key, and displays results", async () => {
     mount(<EvaluationsWorkbench />);
+    fireEvent.click(screen.getByRole("button", { name: "New evaluation" }));
     await screen.findByRole("option", { name: "Echo" });
     fireEvent.change(screen.getByLabelText("Evaluation prompt"), {
       target: { value: "prompt" },
@@ -253,10 +350,8 @@ describe("evaluation UI", () => {
         }),
       ),
     );
-    await waitFor(() =>
-      expect(screen.getByLabelText("Evaluation API key")).toHaveValue(""),
-    );
-    expect(await screen.findByText(/1\/1 processed/)).toBeInTheDocument();
+    await waitFor(() => expect(window.location.search).toContain("run=run"));
+    expect(await screen.findByText("1/1")).toBeInTheDocument();
     expect(screen.getByText("✓ exact_match: Passed")).toBeInTheDocument();
   });
   it("keeps results visible and warns when comparison datasets differ", async () => {
@@ -266,35 +361,49 @@ describe("evaluation UI", () => {
       Promise.resolve({ run: id === "other" ? other : run, results: [result] }),
     );
     mount(<EvaluationsWorkbench />);
-    await waitFor(() =>
-      expect(
-        screen.getByLabelText("View evaluation run").querySelectorAll("option"),
-      ).toHaveLength(3),
+    await screen.findAllByRole("button", { name: "Echo v1" });
+    fireEvent.click(screen.getAllByRole("button", { name: "Echo v1" })[0]);
+    fireEvent.change(
+      await screen.findByLabelText("Reference run for this candidate"),
+      {
+        target: { value: "other" },
+      },
     );
-    fireEvent.change(screen.getByLabelText("View evaluation run"), {
-      target: { value: "run" },
-    });
-    fireEvent.change(screen.getByLabelText("Compare evaluation run"), {
-      target: { value: "other" },
-    });
     expect(
       await screen.findByText(/different dataset revisions/),
     ).toBeInTheDocument();
     expect(screen.getByText("✓ exact_match: Passed")).toBeInTheDocument();
   });
   it("shows aligned case changes against a comparable run", async () => {
-    const oldRun = { ...run, id: "old", config: { ...run.config, assertions: [{ kind: "exact_match", value: "", path: "" }] } };
+    const oldRun = {
+      ...run,
+      id: "old",
+      config: {
+        ...run.config,
+        assertions: [{ kind: "exact_match", value: "", path: "" }],
+      },
+    };
     const currentRun = { ...run, config: oldRun.config, passed: 0 };
     const failedResult = { ...result, passed: false };
-    mocks.listEvaluations.mockResolvedValue({ items: [currentRun, oldRun], total: 2 });
-    mocks.getEvaluation.mockImplementation((id) => Promise.resolve({
-      run: id === "old" ? oldRun : currentRun,
-      results: [id === "old" ? result : failedResult],
-    }));
+    mocks.listEvaluations.mockResolvedValue({
+      items: [currentRun, oldRun],
+      total: 2,
+    });
+    mocks.getEvaluation.mockImplementation((id) =>
+      Promise.resolve({
+        run: id === "old" ? oldRun : currentRun,
+        results: [id === "old" ? result : failedResult],
+      }),
+    );
     mount(<EvaluationsWorkbench />);
-    await waitFor(() => expect(screen.getByLabelText("View evaluation run").querySelectorAll("option")).toHaveLength(3));
-    fireEvent.change(screen.getByLabelText("View evaluation run"), { target: { value: "run" } });
-    fireEvent.change(screen.getByLabelText("Compare evaluation run"), { target: { value: "old" } });
-    expect(await screen.findByText(/0 improved, 1 regressed/)).toBeInTheDocument();
+    await screen.findAllByRole("button", { name: "Echo v1" });
+    fireEvent.click(screen.getAllByRole("button", { name: "Echo v1" })[0]);
+    fireEvent.change(
+      await screen.findByLabelText("Reference run for this candidate"),
+      { target: { value: "old" } },
+    );
+    expect(
+      await screen.findByText(/0 improved, 1 regressed/),
+    ).toBeInTheDocument();
   });
 });

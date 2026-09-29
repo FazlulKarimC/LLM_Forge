@@ -2,7 +2,9 @@
 
 > **Stack:** Next.js 16 · Tailwind CSS v4 · Framer Motion · Lucide Icons  
 > **Source of truth:** [`globals.css`](frontend/src/app/globals.css) · [`primitives.tsx`](frontend/src/components/ui/primitives.tsx)  
-> **Theme:** Dark-first editorial tech — OKLCH colour, glass surfaces, subtle grid texture
+> **Theme:** Dark-first tokens with a quieter workspace surface; marketing retains its own decorative treatment
+
+The application shell now prioritizes a compact workbench: Overview, Prompts, Datasets, and Evaluations form the main navigation; Benchmarks is separate; Settings and Docs are utilities. `.app-shell` scopes the wider content area, flatter panels, and smaller page headers so the landing page keeps its own typography.
 
 ---
 
@@ -14,7 +16,7 @@
 4. **Use React primitives from `primitives.tsx`.** Import `PageHeader`, `Panel`, `PanelHeader`, `StatusPill`, `MetricCard`, `AnimatedNumber`, `MetricBar`, `EmptyState`, `SkeletonBlock`, `Keycap` — never rebuild these.
 5. **Merge classes via `cn()`.** Import `cn` from `@/lib/utils` (clsx + tailwind-merge) for conditional class composition.
 6. **Prefer flex/grid `gap` over margin.** Spacing is managed with `gap-*`, never ad hoc `mb-*` between siblings.
-7. **Favour stacked layouts.** Page sections should stack vertically in full-width `<section>` elements. Avoid side-by-side two-column grids unless the interaction pattern demands it (e.g. click-to-inspect filmstrip).
+7. **Match layout to the task.** Use full-width sections for narrative content and two-column or table/detail layouts for editing and case inspection. Keep controls visible near the data they affect.
 
 ---
 
@@ -77,7 +79,7 @@ Headings automatically apply `font-family: var(--font-display)` and `letter-spac
 | Token | Value | Usage |
 |-------|-------|-------|
 | `--sidebar-width` | `264px` | Sidebar nav width |
-| `.page-width` | `min(100%, 1180px)` | Content max-width, centred |
+| `.page-width` | `min(100%, 1180px)` generally; up to `1600px` in `.app-shell` | Content max-width, centred |
 | `.page-stack` | `flex-direction: column; gap: 1.5rem` | Vertical page content flow |
 
 ---
@@ -89,9 +91,9 @@ Headings automatically apply `font-family: var(--font-display)` and `letter-spac
 | Class | Purpose |
 |-------|---------|
 | `.app-shell` | Root layout container, `min-height: 100vh` |
-| `.page-width` | Centred content wrapper, `max-width: 1180px` |
+| `.page-width` | Centred content wrapper; wider inside `.app-shell` |
 | `.page-stack` | Column flex with `1.5rem` gap for page sections |
-| `.page-header` | Top-of-page hero block with border, shadow, radius `24px` |
+| `.page-header` | Top-of-page block; compact and low-shadow inside `.app-shell` |
 | `.page-header-row` | Flex row for title + inline actions (justify between) |
 | `.page-eyebrow` | Small uppercase pill above title |
 | `.page-title` | Responsive heading: `clamp(2rem, 4vw, 3.5rem)` |

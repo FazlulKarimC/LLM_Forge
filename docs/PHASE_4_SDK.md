@@ -33,7 +33,7 @@ These variables belong to the SDK process; the dashboard continues using Clerk. 
 
 ## End-to-end demonstration
 
-1. Follow [Phase 3's demo](PHASE_3_EVALUATIONS.md): `Echo demo` v1 uses `{{query}}`; `Greetings` revision 1 contains Hello/Goodbye references. Promote v1 to production.
+1. Follow the [evaluation demo](PHASE_3_EVALUATIONS.md): `Echo demo` v1 uses `{{query}}`; `Greetings` revision 1 contains Hello/Goodbye references. Promote v1 to production.
 2. Run `sdk/python/examples/fetch_prompt.py` with a read-only key. It fetches production and compiles Hello.
 3. Set an evaluation-enabled key and run:
 

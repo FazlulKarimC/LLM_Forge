@@ -1,7 +1,7 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useUnsavedChanges } from "@/lib/use-unsaved-changes";
 import {
   createDataset,
@@ -35,15 +35,21 @@ const sameCases = (text: string, saved: DatasetCase[]) => {
   try {
     const ordered = (_key: string, value: unknown) =>
       value && typeof value === "object" && !Array.isArray(value)
-        ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)))
+        ? Object.fromEntries(
+            Object.entries(value).sort(([a], [b]) => a.localeCompare(b)),
+          )
         : value;
-    return JSON.stringify(JSON.parse(text), ordered) === JSON.stringify(saved, ordered);
+    return (
+      JSON.stringify(JSON.parse(text), ordered) ===
+      JSON.stringify(saved, ordered)
+    );
   } catch {
     return false;
   }
 };
 
 export function DatasetsWorkbench() {
+  const router = useRouter();
   const cache = useQueryClient();
   const [archived, setArchived] = useState(false);
   const [offset, setOffset] = useState(0);
@@ -54,6 +60,16 @@ export function DatasetsWorkbench() {
   const [text, setText] = useState(pretty(sample));
   const [format, setFormat] = useState<"json" | "csv">("json");
   const [importText, setImportText] = useState("");
+  const [importPreview, setImportPreview] = useState<DatasetCase[] | null>(
+    null,
+  );
+  const [caseView, setCaseView] = useState<"table" | "json">("table");
+  const [caseIndex, setCaseIndex] = useState<number | null>(null);
+  const [caseDraft, setCaseDraft] = useState<{
+    name: string;
+    inputs: string;
+    expected_output: string;
+  } | null>(null);
   const [historyOffset, setHistoryOffset] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -64,27 +80,144 @@ export function DatasetsWorkbench() {
   });
   const history = useQuery({
     queryKey: ["dataset-history", selected?.dataset.id, historyOffset],
-    queryFn: ({ signal }) => listRevisions(selected!.dataset.id, historyOffset, signal),
+    queryFn: ({ signal }) =>
+      listRevisions(selected!.dataset.id, historyOffset, signal),
     enabled: !!selected,
   });
-  const dirty =
-    editing &&
-    ((!!selected &&
-      selected.revision.version !== selected.dataset.latest_version) ||
-      !sameCases(text, selected?.revision.cases ?? sample) ||
-      name !== (selected?.dataset.name ?? "") ||
-      description !== (selected?.dataset.description ?? ""));
+  const cases = (() => {
+    try {
+      const parsed: unknown = JSON.parse(text);
+      return Array.isArray(parsed) &&
+        parsed.every(
+          (row) =>
+            row &&
+            typeof row === "object" &&
+            !Array.isArray(row) &&
+            typeof row.inputs === "object" &&
+            row.inputs !== null &&
+            !Array.isArray(row.inputs),
+        )
+        ? (parsed as DatasetCase[])
+        : null;
+    } catch {
+      return null;
+    }
+  })();
+  const caseDraftDirty =
+    caseIndex !== null &&
+    caseDraft !== null &&
+    cases !== null &&
+    (caseDraft.name !== (cases[caseIndex]?.name ?? "") ||
+      caseDraft.inputs !==
+        JSON.stringify(cases[caseIndex]?.inputs ?? {}, null, 2) ||
+      caseDraft.expected_output !== (cases[caseIndex]?.expected_output ?? ""));
+  const hasDraftChanges =
+    caseDraftDirty ||
+    !sameCases(text, selected?.revision.cases ?? sample) ||
+    name !== (selected?.dataset.name ?? "") ||
+    description !== (selected?.dataset.description ?? "");
+  const dirty = editing && hasDraftChanges;
+  const restoringRevision =
+    !!selected && selected.revision.version !== selected.dataset.latest_version;
   useUnsavedChanges(dirty);
   const load = (detail: DatasetDetail | null) => {
+    const url = detail
+      ? `/datasets?${new URLSearchParams({ dataset: detail.dataset.id, revision: detail.revision.id })}`
+      : "/datasets";
+    window.history.replaceState(null, "", url);
     setSelected(detail);
     setName(detail?.dataset.name ?? "");
     setDescription(detail?.dataset.description ?? "");
     setText(pretty(detail?.revision.cases ?? sample));
     setHistoryOffset(0);
     setEditing(true);
+    setCaseIndex(null);
+    setCaseDraft(null);
+    setCaseView("table");
+    setImportPreview(null);
     setError("");
     setMessage("");
   };
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const id = params.get("dataset");
+    if (!id) return;
+    let active = true;
+    getDataset(id)
+      .then(async (detail) => {
+        if (!active) return;
+        const revisionId = params.get("revision");
+        if (revisionId && detail.revision.id !== revisionId) {
+          let found = false;
+          for (let offset = 0; offset < 500 && !found; offset += 50) {
+            const page = await listRevisions(id, offset);
+            const revision = page.find((entry) => entry.id === revisionId);
+            if (revision) {
+              detail = { ...detail, revision };
+              found = true;
+            }
+            if (page.length < 50) break;
+          }
+          if (!found)
+            throw new Error("The linked dataset revision was not found.");
+        }
+        if (active) load(detail);
+      })
+      .catch((cause) => {
+        if (active) setError(errorText(cause));
+      });
+    return () => {
+      active = false;
+    };
+    // Restore a deep link on first mount only; later selection is managed in this workbench.
+  }, []);
+  function updateCases(next: DatasetCase[]) {
+    setText(pretty(next));
+    setCaseIndex(null);
+    setCaseDraft(null);
+  }
+  function openCase(index: number) {
+    if (caseDraftDirty || !cases?.[index]) return;
+    const row = cases[index];
+    setCaseIndex(index);
+    setCaseDraft({
+      name: row.name ?? "",
+      inputs: JSON.stringify(row.inputs, null, 2),
+      expected_output: row.expected_output ?? "",
+    });
+  }
+  function applyCase() {
+    if (caseIndex === null || !caseDraft || !cases) return;
+    let inputs: unknown;
+    try {
+      inputs = JSON.parse(caseDraft.inputs);
+    } catch {
+      setError("Case inputs must be valid JSON.");
+      return;
+    }
+    if (
+      !inputs ||
+      typeof inputs !== "object" ||
+      Array.isArray(inputs) ||
+      Object.values(inputs).some((value) => typeof value !== "string")
+    ) {
+      setError("Case inputs must be a JSON object with string values.");
+      return;
+    }
+    updateCases(
+      cases.map((row, index) =>
+        index === caseIndex
+          ? {
+              ...row,
+              name: caseDraft.name,
+              inputs: inputs as Record<string, string>,
+              expected_output: caseDraft.expected_output || null,
+            }
+          : row,
+      ),
+    );
+    setError("");
+  }
   async function act(task: () => Promise<void>) {
     setBusy(true);
     setError("");
@@ -265,16 +398,222 @@ export function DatasetsWorkbench() {
                 disabled={selected?.dataset.archived || busy}
               />
             </label>
-            <label className="block text-sm">
-              Cases (JSON array)
-              <textarea
-                aria-label="Dataset cases"
-                className={`${inputClass} min-h-72 font-mono text-xs`}
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-                disabled={selected?.dataset.archived || busy}
-              />
-            </label>
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-(--border) pt-4">
+              <div>
+                <h3 className="font-medium">Cases</h3>
+                <p className="text-xs text-(--muted-foreground)">
+                  Edit the draft, then save it as a new revision.
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  className={buttonClass}
+                  aria-pressed={caseView === "table"}
+                  onClick={() => setCaseView("table")}
+                >
+                  Case table
+                </button>
+                <button
+                  type="button"
+                  className={buttonClass}
+                  aria-pressed={caseView === "json"}
+                  disabled={caseDraftDirty}
+                  onClick={() => setCaseView("json")}
+                >
+                  Advanced JSON
+                </button>
+              </div>
+            </div>
+            {caseView === "json" ? (
+              <label className="block text-sm">
+                Cases (JSON array)
+                <textarea
+                  aria-label="Dataset cases"
+                  className={`${inputClass} min-h-72 font-mono text-xs`}
+                  value={text}
+                  onChange={(e) => setText(e.target.value)}
+                  disabled={selected?.dataset.archived || busy}
+                />
+              </label>
+            ) : (
+              <div className="space-y-3">
+                {!cases && (
+                  <p role="alert" className="text-sm text-(--destructive)">
+                    The draft is not a JSON array. Correct it in Advanced JSON.
+                  </p>
+                )}
+                {cases && (
+                  <div className="overflow-x-auto rounded-lg border border-(--border)">
+                    <table className="w-full min-w-[560px] text-left text-sm">
+                      <thead>
+                        <tr className="border-b border-(--border)">
+                          <th className="p-3">Case</th>
+                          <th className="p-3">Inputs</th>
+                          <th className="p-3">Reference</th>
+                          <th className="p-3">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {cases.map((row, index) => (
+                          <tr
+                            key={index}
+                            className="border-b border-(--border) last:border-0"
+                          >
+                            <td className="p-3">
+                              <button
+                                type="button"
+                                className="font-medium text-(--primary) hover:underline"
+                                disabled={caseDraftDirty && caseIndex !== index}
+                                onClick={() => openCase(index)}
+                              >
+                                {row.name || `Case ${index + 1}`}
+                              </button>
+                            </td>
+                            <td className="max-w-64 truncate p-3 font-mono text-xs">
+                              {JSON.stringify(row.inputs)}
+                            </td>
+                            <td className="max-w-64 truncate p-3">
+                              {row.expected_output ?? "No reference"}
+                            </td>
+                            <td className="p-3">
+                              <div className="flex gap-2">
+                                <button
+                                  type="button"
+                                  disabled={
+                                    !!selected?.dataset.archived ||
+                                    busy ||
+                                    caseDraftDirty
+                                  }
+                                  onClick={() =>
+                                    updateCases([
+                                      ...cases.slice(0, index + 1),
+                                      structuredClone(row),
+                                      ...cases.slice(index + 1),
+                                    ])
+                                  }
+                                >
+                                  Duplicate
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={
+                                    !!selected?.dataset.archived ||
+                                    busy ||
+                                    caseDraftDirty
+                                  }
+                                  onClick={() =>
+                                    updateCases(
+                                      cases.filter(
+                                        (_, rowIndex) => rowIndex !== index,
+                                      ),
+                                    )
+                                  }
+                                >
+                                  Remove
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                {cases && (
+                  <button
+                    type="button"
+                    className={buttonClass}
+                    disabled={
+                      !!selected?.dataset.archived ||
+                      busy ||
+                      caseDraftDirty ||
+                      cases.length >= 100
+                    }
+                    onClick={() => {
+                      const next = [
+                        ...cases,
+                        { name: "", inputs: {}, expected_output: null },
+                      ];
+                      updateCases(next);
+                    }}
+                  >
+                    Add case
+                  </button>
+                )}
+                {caseIndex !== null && caseDraft && (
+                  <div className="space-y-3 rounded-lg border border-(--border) p-4">
+                    <h4 className="font-medium">Edit case {caseIndex + 1}</h4>
+                    <label className="block text-sm">
+                      Name
+                      <input
+                        className={inputClass}
+                        value={caseDraft.name}
+                        onChange={(event) =>
+                          setCaseDraft({
+                            ...caseDraft,
+                            name: event.target.value,
+                          })
+                        }
+                        disabled={!!selected?.dataset.archived || busy}
+                      />
+                    </label>
+                    <label className="block text-sm">
+                      Inputs (JSON object with string values)
+                      <textarea
+                        className={`${inputClass} min-h-24 font-mono text-xs`}
+                        value={caseDraft.inputs}
+                        onChange={(event) =>
+                          setCaseDraft({
+                            ...caseDraft,
+                            inputs: event.target.value,
+                          })
+                        }
+                        disabled={!!selected?.dataset.archived || busy}
+                      />
+                    </label>
+                    <label className="block text-sm">
+                      Reference output
+                      <textarea
+                        className={inputClass}
+                        value={caseDraft.expected_output}
+                        onChange={(event) =>
+                          setCaseDraft({
+                            ...caseDraft,
+                            expected_output: event.target.value,
+                          })
+                        }
+                        disabled={!!selected?.dataset.archived || busy}
+                      />
+                    </label>
+                    <div className="flex gap-3">
+                      <button
+                        type="button"
+                        className={buttonClass}
+                        disabled={
+                          !!selected?.dataset.archived ||
+                          busy ||
+                          !caseDraftDirty
+                        }
+                        onClick={applyCase}
+                      >
+                        Apply case
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => {
+                          setCaseIndex(null);
+                          setCaseDraft(null);
+                        }}
+                      >
+                        Discard row edits
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
             <p className="text-xs text-(--muted-foreground)">
               Each case has inputs (string values), expected_output (string or
               null), and an optional name. Maximum 100 cases / 1 MB. Exact match
@@ -285,9 +624,10 @@ export function DatasetsWorkbench() {
                 className={buttonClass}
                 disabled={
                   busy ||
+                  caseDraftDirty ||
                   selected?.dataset.archived ||
                   !name.trim() ||
-                  (!!selected && !dirty)
+                  (!!selected && !dirty && !restoringRevision)
                 }
                 onClick={save}
               >
@@ -328,9 +668,25 @@ export function DatasetsWorkbench() {
                   >
                     Export saved revision
                   </button>
-                  <Link className={buttonClass} href="/evaluations">
-                    Evaluate prompts
-                  </Link>
+                  <button
+                    className={buttonClass}
+                    disabled={
+                      busy || hasDraftChanges || selected.dataset.archived
+                    }
+                    onClick={() =>
+                      router.push(
+                        `/evaluations?${new URLSearchParams({ view: "new", dataset: selected.dataset.id, revision: selected.revision.id })}`,
+                      )
+                    }
+                  >
+                    Evaluate this revision
+                  </button>
+                  {hasDraftChanges && (
+                    <p className="text-xs text-(--muted-foreground)">
+                      Save or discard your draft before evaluating the selected
+                      revision.
+                    </p>
+                  )}
                 </>
               )}
             </div>
@@ -380,7 +736,10 @@ export function DatasetsWorkbench() {
                     aria-label="Import content"
                     className={`${inputClass} min-h-32 font-mono text-xs`}
                     value={importText}
-                    onChange={(e) => setImportText(e.target.value)}
+                    onChange={(e) => {
+                      setImportText(e.target.value);
+                      setImportPreview(null);
+                    }}
                   />
                   <button
                     disabled={busy || !importText}
@@ -388,15 +747,48 @@ export function DatasetsWorkbench() {
                     onClick={() =>
                       act(async () => {
                         const parsed = await importDataset(format, importText);
-                        setText(pretty(parsed.cases));
+                        setImportPreview(parsed.cases);
                         setMessage(
-                          `Imported ${parsed.cases.length} cases into draft. Save to create a revision.`,
+                          `Validated ${parsed.cases.length} cases. Review the preview before replacing your draft.`,
                         );
                       })
                     }
                   >
-                    Validate and replace draft cases
+                    Validate and preview
                   </button>
+                  {importPreview && (
+                    <div className="rounded-lg border border-(--border) p-3 text-sm">
+                      <p className="font-medium">
+                        Import preview · {importPreview.length} cases
+                      </p>
+                      <ul className="mt-2 max-h-40 overflow-auto text-xs">
+                        {importPreview.slice(0, 10).map((row, index) => (
+                          <li key={index}>
+                            {row.name || `Case ${index + 1}`} ·{" "}
+                            {JSON.stringify(row.inputs)} ·{" "}
+                            {row.expected_output ?? "No reference"}
+                          </li>
+                        ))}
+                      </ul>
+                      {importPreview.length > 10 && (
+                        <p className="mt-2 text-xs">Showing first 10 cases</p>
+                      )}
+                      <button
+                        type="button"
+                        className={`${buttonClass} mt-3`}
+                        disabled={caseDraftDirty}
+                        onClick={() => {
+                          updateCases(importPreview);
+                          setImportPreview(null);
+                          setMessage(
+                            "Imported cases into the draft. Save to create a revision.",
+                          );
+                        }}
+                      >
+                        Replace draft cases
+                      </button>
+                    </div>
+                  )}
                 </div>
               </details>
             )}
@@ -415,6 +807,13 @@ export function DatasetsWorkbench() {
                       onClick={() => {
                         setSelected({ ...selected, revision });
                         setText(pretty(revision.cases));
+                        setCaseIndex(null);
+                        setCaseDraft(null);
+                        window.history.replaceState(
+                          null,
+                          "",
+                          `/datasets?${new URLSearchParams({ dataset: selected.dataset.id, revision: revision.id })}`,
+                        );
                       }}
                     >
                       v{revision.version} · {revision.cases.length} cases

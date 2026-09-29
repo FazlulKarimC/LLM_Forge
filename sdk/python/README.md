@@ -8,7 +8,7 @@ python -m pip install -e ./sdk/python
 
 Configure `LLMFORGE_URL` with the API root, for example `http://localhost:8000/api/v1`, and `LLMFORGE_API_KEY` with a project key created in Settings. Use HTTPS for a hosted backend. Keep keys in environment variables or your CI secret store.
 
-For a local model-free walkthrough, sign in to the web app, select a project, and click **Create demo examples** on the dashboard. Create a project key with **Allow evaluations for CI** enabled in Settings, then use `Echo demo` and `Greetings` in the examples below. The backend must have its migrations applied; a project key grants access only to its project.
+For a local model-free walkthrough, sign in to the web app, select a project, and click **Create demo examples** on Overview. Create a project key with **Allow evaluations for CI** enabled in Settings, then use `Echo demo` and `Greetings` in the examples below. The backend must have its migrations applied; a project key grants access only to its project.
 
 ```python
 from llmforge import LLMForge

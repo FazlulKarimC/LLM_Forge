@@ -1,6 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
@@ -9,12 +15,10 @@ import {
   ChevronRight,
   Command,
   FlaskConical,
-  GitCompareArrows,
   Github,
   Home,
   LayoutDashboard,
   MoonStar,
-  Plus,
   Search,
   SunMedium,
   X,
@@ -30,41 +34,59 @@ type NavItem = {
   href: string;
   label: string;
   icon: typeof LayoutDashboard;
+  group: "Build" | "Benchmarks" | "Workspace";
   match: (pathname: string) => boolean;
 };
 
 const navItems: NavItem[] = [
-  { href: "/prompts", label: "Prompts", icon: FileText, match: (p) => p.startsWith("/prompts") },
-  { href: "/datasets", label: "Datasets", icon: Database, match: (p) => p.startsWith("/datasets") },
-  { href: "/evaluations", label: "Evaluations", icon: FlaskConical, match: (p) => p.startsWith("/evaluations") },
-  { href: "/settings", label: "Settings", icon: Settings, match: (p) => p.startsWith("/settings") },
   {
     href: "/dashboard",
     label: "Overview",
     icon: LayoutDashboard,
+    group: "Build",
     match: (pathname) => pathname === "/dashboard",
+  },
+  {
+    href: "/prompts",
+    label: "Prompts",
+    icon: FileText,
+    group: "Build",
+    match: (p) => p.startsWith("/prompts"),
+  },
+  {
+    href: "/datasets",
+    label: "Datasets",
+    icon: Database,
+    group: "Build",
+    match: (p) => p.startsWith("/datasets"),
+  },
+  {
+    href: "/evaluations",
+    label: "Evaluations",
+    icon: FlaskConical,
+    group: "Build",
+    match: (p) => p.startsWith("/evaluations"),
   },
   {
     href: "/experiments",
     label: "Benchmarks",
     icon: FlaskConical,
-    match: (pathname) =>
-      pathname === "/experiments" ||
-      (pathname.startsWith("/experiments/") &&
-        !pathname.startsWith("/experiments/compare") &&
-        !pathname.startsWith("/experiments/new")),
+    group: "Benchmarks",
+    match: (pathname) => pathname.startsWith("/experiments"),
   },
   {
-    href: "/experiments/compare",
-    label: "Compare",
-    icon: GitCompareArrows,
-    match: (pathname) => pathname.startsWith("/experiments/compare"),
+    href: "/settings",
+    label: "Settings",
+    icon: Settings,
+    group: "Workspace",
+    match: (p) => p.startsWith("/settings"),
   },
   {
-    href: "/experiments/new",
-    label: "New experiment",
-    icon: Plus,
-    match: (pathname) => pathname.startsWith("/experiments/new"),
+    href: "/docs",
+    label: "Docs",
+    icon: FileText,
+    group: "Workspace",
+    match: (p) => p.startsWith("/docs"),
   },
 ];
 
@@ -94,7 +116,10 @@ function usePersistentState(key: string, initialValue: boolean) {
 
     return () => {
       window.removeEventListener("storage", handleStorage);
-      window.removeEventListener("llmforge-storage", handleStorage as EventListener);
+      window.removeEventListener(
+        "llmforge-storage",
+        handleStorage as EventListener,
+      );
     };
   };
 
@@ -107,14 +132,19 @@ function usePersistentState(key: string, initialValue: boolean) {
     return stored == null ? initialValue : stored === "true";
   };
 
-  const value = useSyncExternalStore(subscribe, getSnapshot, () => initialValue);
+  const value = useSyncExternalStore(
+    subscribe,
+    getSnapshot,
+    () => initialValue,
+  );
 
   const setValue = (nextValue: boolean | ((current: boolean) => boolean)) => {
     if (typeof window === "undefined") {
       return;
     }
 
-    const resolved = typeof nextValue === "function" ? nextValue(getSnapshot()) : nextValue;
+    const resolved =
+      typeof nextValue === "function" ? nextValue(getSnapshot()) : nextValue;
     window.localStorage.setItem(key, String(resolved));
     window.dispatchEvent(new CustomEvent("llmforge-storage", { detail: key }));
   };
@@ -134,21 +164,39 @@ function CommandPalette({
 
   const actions = useMemo(
     () => [
-      { label: "Go to dashboard", shortcut: "G D", action: () => router.push("/dashboard") },
-      { label: "Browse experiments", shortcut: "G E", action: () => router.push("/experiments") },
-      { label: "Create new experiment", shortcut: "G N", action: () => router.push("/experiments/new") },
-      { label: "Compare completed runs", shortcut: "G C", action: () => router.push("/experiments/compare") },
-      { label: "Open landing page", shortcut: "G H", action: () => router.push("/") },
+      { label: "Open overview", action: () => router.push("/dashboard") },
+      { label: "Browse prompts", action: () => router.push("/prompts") },
+      { label: "Create prompt", action: () => router.push("/prompts/new") },
+      { label: "Browse datasets", action: () => router.push("/datasets") },
+      { label: "Open evaluations", action: () => router.push("/evaluations") },
+      { label: "Browse benchmarks", action: () => router.push("/experiments") },
+      {
+        label: "Create benchmark",
+        action: () => router.push("/experiments/new"),
+      },
+      {
+        label: "Compare benchmarks",
+        action: () => router.push("/experiments/compare"),
+      },
+      { label: "Open settings", action: () => router.push("/settings") },
+      { label: "Open docs", action: () => router.push("/docs") },
+      { label: "Open landing page", action: () => router.push("/") },
       {
         label: "Open GitHub repository",
-        shortcut: "G G",
-        action: () => window.open("https://github.com/FazlulKarimC/LLM_Forge", "_blank", "noreferrer"),
+        action: () =>
+          window.open(
+            "https://github.com/FazlulKarimC/LLM_Forge",
+            "_blank",
+            "noreferrer",
+          ),
       },
     ],
-    [router]
+    [router],
   );
 
-  const filtered = actions.filter((item) => item.label.toLowerCase().includes(query.trim().toLowerCase()));
+  const filtered = actions.filter((item) =>
+    item.label.toLowerCase().includes(query.trim().toLowerCase()),
+  );
 
   return (
     <AnimatePresence>
@@ -174,7 +222,7 @@ function CommandPalette({
                 autoFocus
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder="Jump to a route or action"
+                placeholder="Find a page or action"
                 className="w-full bg-transparent text-sm outline-none placeholder:text-(--muted-foreground)"
               />
               <Keycap>Esc</Keycap>
@@ -190,7 +238,6 @@ function CommandPalette({
                   className="flex w-full items-center justify-between rounded-[16px] px-4 py-3 text-left transition-colors hover:bg-(--surface-2)"
                 >
                   <span className="font-medium">{item.label}</span>
-                  <span className="mono-caption">{item.shortcut}</span>
                 </button>
               ))}
               {!filtered.length ? (
@@ -210,9 +257,15 @@ export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname() ?? "/";
   const isAppRoute = true;
   const [paletteOpen, setPaletteOpen] = useState(false);
-  const [collapsed, setCollapsed] = usePersistentState("llmforge.sidebar.collapsed", false);
+  const [collapsed, setCollapsed] = usePersistentState(
+    "llmforge.sidebar.collapsed",
+    false,
+  );
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  const [isLightTheme, setIsLightTheme] = usePersistentState("llmforge.theme.light", false);
+  const [isLightTheme, setIsLightTheme] = usePersistentState(
+    "llmforge.theme.light",
+    false,
+  );
 
   useEffect(() => {
     document.documentElement.dataset.theme = isLightTheme ? "light" : "dark";
@@ -239,7 +292,11 @@ export function AppShell({ children }: { children: ReactNode }) {
     return (
       <>
         {children}
-        <CommandPalette key={paletteOpen ? "palette-open" : "palette-closed"} open={paletteOpen} onClose={() => setPaletteOpen(false)} />
+        <CommandPalette
+          key={paletteOpen ? "palette-open" : "palette-closed"}
+          open={paletteOpen}
+          onClose={() => setPaletteOpen(false)}
+        />
       </>
     );
   }
@@ -248,11 +305,15 @@ export function AppShell({ children }: { children: ReactNode }) {
     <aside
       className={cn(
         "flex h-full flex-col border-r border-(--border) bg-[color-mix(in_oklab,var(--surface-1)_92%,transparent)] backdrop-blur",
-        collapsed ? "w-[88px]" : "w-(--sidebar-width)"
+        collapsed ? "w-[88px]" : "w-(--sidebar-width)",
       )}
     >
       <div className="flex items-center justify-between gap-3 border-b border-(--border) px-4 py-4">
-        <Link href="/" className="flex min-w-0 items-center gap-3" onClick={() => setMobileNavOpen(false)}>
+        <Link
+          href="/"
+          className="flex min-w-0 items-center gap-3"
+          onClick={() => setMobileNavOpen(false)}
+        >
           <div className="flex size-11 items-center justify-center rounded-[18px] border border-(--border) bg-(--surface-2) text-(--primary)">
             <FlaskConical className="size-5" />
           </div>
@@ -261,7 +322,9 @@ export function AppShell({ children }: { children: ReactNode }) {
               <div className="truncate text-sm font-semibold uppercase tracking-[0.18em] text-(--muted-foreground)">
                 LLMForge
               </div>
-              <div className="truncate text-lg font-semibold tracking-[-0.04em]">Evaluation Console</div>
+              <div className="truncate text-sm font-medium">
+                Prompt workspace
+              </div>
             </div>
           ) : null}
         </Link>
@@ -271,44 +334,62 @@ export function AppShell({ children }: { children: ReactNode }) {
           onClick={() => setCollapsed((value) => !value)}
           aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
         >
-          {collapsed ? <ChevronRight className="size-4" /> : <ChevronLeft className="size-4" />}
+          {collapsed ? (
+            <ChevronRight className="size-4" />
+          ) : (
+            <ChevronLeft className="size-4" />
+          )}
         </button>
       </div>
 
       <div className="flex-1 overflow-y-auto space-y-6 px-3 py-4">
-        <div className="space-y-2">
-          {!collapsed ? <div className="px-3 text-xs font-semibold uppercase tracking-[0.18em] text-(--muted-foreground)">Workspace</div> : null}
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            const active = item.match(pathname);
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                onClick={() => setMobileNavOpen(false)}
-                className={cn(
-                  "flex items-center gap-3 rounded-[18px] border px-3 py-3 transition-all",
-                  active
-                    ? "border-[color-mix(in_oklab,var(--primary)_38%,transparent)] bg-[color-mix(in_oklab,var(--primary)_14%,transparent)] text-foreground"
-                    : "border-transparent text-(--muted-foreground) hover:border-(--border) hover:bg-(--surface-2) hover:text-foreground",
-                  collapsed ? "justify-center" : ""
-                )}
-              >
-                <Icon className="size-4 shrink-0" />
-                {!collapsed ? <span className="font-medium">{item.label}</span> : null}
-              </Link>
-            );
-          })}
-        </div>
+        {(["Build", "Benchmarks", "Workspace"] as const).map((group) => (
+          <div key={group} className="space-y-2">
+            {!collapsed ? (
+              <div className="px-3 text-xs font-semibold uppercase tracking-[0.18em] text-(--muted-foreground)">
+                {group}
+              </div>
+            ) : null}
+            {navItems
+              .filter((item) => item.group === group)
+              .map((item) => {
+                const Icon = item.icon;
+                const active = item.match(pathname);
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    onClick={() => setMobileNavOpen(false)}
+                    className={cn(
+                      "flex items-center gap-3 rounded-[18px] border px-3 py-3 transition-all",
+                      active
+                        ? "border-[color-mix(in_oklab,var(--primary)_38%,transparent)] bg-[color-mix(in_oklab,var(--primary)_14%,transparent)] text-foreground"
+                        : "border-transparent text-(--muted-foreground) hover:border-(--border) hover:bg-(--surface-2) hover:text-foreground",
+                      collapsed ? "justify-center" : "",
+                    )}
+                  >
+                    <Icon className="size-4 shrink-0" />
+                    {!collapsed ? (
+                      <span className="font-medium">{item.label}</span>
+                    ) : null}
+                  </Link>
+                );
+              })}
+          </div>
+        ))}
 
         {!collapsed ? (
           <div className="rounded-[20px] border border-(--border) bg-(--surface-2) p-4">
             <div className="section-label">Shortcut</div>
             <div className="mt-2 text-sm font-medium">Command palette</div>
             <p className="mt-1 text-sm text-(--muted-foreground)">
-              Jump between experiment flows without leaving the keyboard.
+              Jump between pages without leaving the keyboard.
             </p>
-            <button type="button" className="btn-secondary mt-4 w-full justify-between" onClick={() => setPaletteOpen(true)}>
+            <button
+              type="button"
+              className="btn-secondary mt-4 w-full justify-between"
+              onClick={() => setPaletteOpen(true)}
+            >
               <span className="inline-flex items-center gap-2">
                 <Command className="size-4" />
                 Open palette
@@ -325,17 +406,29 @@ export function AppShell({ children }: { children: ReactNode }) {
       <div className="space-y-2 border-t border-(--border) px-3 py-4">
         <button
           type="button"
-          className={cn("btn-secondary w-full justify-start", collapsed ? "px-0 justify-center" : "")}
+          className={cn(
+            "btn-secondary w-full justify-start",
+            collapsed ? "px-0 justify-center" : "",
+          )}
           onClick={() => setIsLightTheme((value) => !value)}
         >
-          {isLightTheme ? <MoonStar className="size-4" /> : <SunMedium className="size-4" />}
-          {!collapsed ? <span>{isLightTheme ? "Dark mode" : "Light mode"}</span> : null}
+          {isLightTheme ? (
+            <MoonStar className="size-4" />
+          ) : (
+            <SunMedium className="size-4" />
+          )}
+          {!collapsed ? (
+            <span>{isLightTheme ? "Dark mode" : "Light mode"}</span>
+          ) : null}
         </button>
         <a
           href="https://github.com/FazlulKarimC/LLM_Forge"
           target="_blank"
           rel="noreferrer"
-          className={cn("btn-ghost w-full justify-start", collapsed ? "px-0 justify-center" : "")}
+          className={cn(
+            "btn-ghost w-full justify-start",
+            collapsed ? "px-0 justify-center" : "",
+          )}
         >
           <Github className="size-4" />
           {!collapsed ? <span>Repository</span> : null}
@@ -347,7 +440,9 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <>
       <div className="app-shell min-h-screen lg:grid lg:grid-cols-[auto_minmax(0,1fr)]">
-        <div className="hidden lg:sticky lg:top-0 lg:h-screen lg:block">{sidebar}</div>
+        <div className="hidden lg:sticky lg:top-0 lg:h-screen lg:block">
+          {sidebar}
+        </div>
         <div className="min-w-0 overflow-y-auto">
           <header className="sticky top-0 z-40 border-b border-(--border) bg-[color-mix(in_oklab,var(--background)_78%,transparent)] backdrop-blur-xl">
             <div className="page-width flex flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-6">
@@ -362,9 +457,13 @@ export function AppShell({ children }: { children: ReactNode }) {
                 >
                   <Command className="size-4" />
                 </button>
-                <button type="button" className="btn-secondary shrink-0" onClick={() => setPaletteOpen(true)}>
+                <button
+                  type="button"
+                  className="btn-secondary shrink-0"
+                  onClick={() => setPaletteOpen(true)}
+                >
                   <Search className="size-4 shrink-0" />
-                  Search
+                  Go to
                   <span className="hidden items-center gap-1 sm:inline-flex">
                     <Keycap>Ctrl</Keycap>
                     <Keycap>K</Keycap>
@@ -376,14 +475,21 @@ export function AppShell({ children }: { children: ReactNode }) {
                   <Home className="size-4 shrink-0" />
                   Home
                 </Link>
-                <a href="https://github.com/FazlulKarimC/LLM_Forge" target="_blank" rel="noreferrer" className="btn-ghost shrink-0">
+                <a
+                  href="https://github.com/FazlulKarimC/LLM_Forge"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="btn-ghost shrink-0"
+                >
                   <Github className="size-4 shrink-0" />
                   GitHub
                 </a>
               </div>
             </div>
           </header>
-          <main className="page-width px-4 py-6 sm:px-6 lg:py-8">{children}</main>
+          <main className="page-width px-4 py-6 sm:px-6 lg:py-8">
+            {children}
+          </main>
         </div>
       </div>
 
@@ -406,7 +512,11 @@ export function AppShell({ children }: { children: ReactNode }) {
             >
               <div className="flex h-full flex-col border-r border-(--border) bg-(--surface-1) shadow-(--shadow-overlay)">
                 <div className="flex items-center justify-end px-3 py-3">
-                  <button type="button" className="btn-ghost size-10 rounded-[14px]! px-0!" onClick={() => setMobileNavOpen(false)}>
+                  <button
+                    type="button"
+                    className="btn-ghost size-10 rounded-[14px]! px-0!"
+                    onClick={() => setMobileNavOpen(false)}
+                  >
                     <X className="size-4" />
                   </button>
                 </div>
@@ -417,8 +527,11 @@ export function AppShell({ children }: { children: ReactNode }) {
         ) : null}
       </AnimatePresence>
 
-      <CommandPalette key={paletteOpen ? "palette-open" : "palette-closed"} open={paletteOpen} onClose={() => setPaletteOpen(false)} />
+      <CommandPalette
+        key={paletteOpen ? "palette-open" : "palette-closed"}
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+      />
     </>
   );
 }
-

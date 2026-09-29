@@ -127,6 +127,29 @@ button,
 
 .app-shell {
   min-height: 100vh;
+  background: var(--background);
+}
+
+.app-shell .page-width {
+  width: min(100%, 1600px);
+}
+
+.app-shell .page-header {
+  padding: 0 0 1rem;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.app-shell .page-title {
+  font-size: clamp(1.7rem, 2.5vw, 2.2rem);
+}
+
+.app-shell .panel {
+  border-radius: 14px;
+  box-shadow: none;
 }
 
 .page-width {
