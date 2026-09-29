@@ -68,7 +68,10 @@ export default function ExperimentsPage() {
   const [methodFilter, setMethodFilter] = useState("");
   const [runningIds, setRunningIds] = useState<Set<string>>(new Set());
   const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
-  const [experimentToDelete, setExperimentToDelete] = useState<{ id: string; name: string } | null>(null);
+  const [experimentToDelete, setExperimentToDelete] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
 
   const params: ListExperimentsParams = useMemo(() => {
     const next: ListExperimentsParams = { limit: 50 };
@@ -86,7 +89,11 @@ export default function ExperimentsPage() {
     mutationFn: (experiment: ExperimentListItem) => {
       setRunningIds((prev) => new Set(prev).add(experiment.id));
       const credentials = resolveRunExperimentCredentials(experiment);
-      return runExperiment(experiment.id, credentials.customBaseUrl, credentials.customApiKey);
+      return runExperiment(
+        experiment.id,
+        credentials.customBaseUrl,
+        credentials.customApiKey,
+      );
     },
     onSuccess: (_data, experiment) => {
       setRunningIds((prev) => {
@@ -95,7 +102,7 @@ export default function ExperimentsPage() {
         return next;
       });
       queryClient.invalidateQueries({ queryKey: ["experiments"] });
-      toast.success("Experiment queued for execution");
+      toast.success("Benchmark queued for execution");
     },
     onError: (error: Error, experiment) => {
       setRunningIds((prev) => {
@@ -103,7 +110,7 @@ export default function ExperimentsPage() {
         next.delete(experiment.id);
         return next;
       });
-      toast.error(`Failed to run experiment: ${error.message}`);
+      toast.error(`Failed to run benchmark: ${error.message}`);
     },
   });
 
@@ -120,7 +127,7 @@ export default function ExperimentsPage() {
       });
       queryClient.invalidateQueries({ queryKey: ["experiments"] });
       setExperimentToDelete(null);
-      toast.success("Experiment deleted");
+      toast.success("Benchmark deleted");
     },
     onError: (error: Error, id) => {
       setDeletingIds((prev) => {
@@ -129,7 +136,7 @@ export default function ExperimentsPage() {
         return next;
       });
       setExperimentToDelete(null);
-      toast.error(`Failed to delete experiment: ${error.message}`);
+      toast.error(`Failed to delete benchmark: ${error.message}`);
     },
   });
 
@@ -139,17 +146,21 @@ export default function ExperimentsPage() {
   return (
     <div className="page-stack">
       <PageHeader
-        eyebrow={<><Filter className="size-3.5" /> Experiment catalog</>}
-        title={`All experiments (${total})`}
-        description="Filter, rerun, delete, or compare your experiment runs."
+        eyebrow={
+          <>
+            <Filter className="size-3.5" /> Reasoning benchmarks
+          </>
+        }
+        title={`Benchmarks (${total})`}
+        description="Filter, rerun, delete, or compare saved benchmark runs."
         actions={
           <>
             <Link href="/experiments/compare" className="btn-secondary">
               <GitCompareArrows className="size-4" />
-              Compare
+              Compare benchmarks
             </Link>
             <Link href="/experiments/new" className="btn-primary">
-              New experiment
+              New benchmark
               <ArrowRight className="size-4" />
             </Link>
           </>
@@ -160,9 +171,11 @@ export default function ExperimentsPage() {
         <div className="alert alert-danger">
           <AlertTriangle className="mt-0.5 size-4 shrink-0" />
           <div className="space-y-1">
-            <div className="font-semibold">Failed to load experiments</div>
+            <div className="font-semibold">Failed to load benchmarks</div>
             <p className="text-sm text-(--muted-foreground)">
-              {experimentsQuery.error instanceof Error ? experimentsQuery.error.message : "Unknown error"}
+              {experimentsQuery.error instanceof Error
+                ? experimentsQuery.error.message
+                : "Unknown error"}
             </p>
           </div>
         </div>
@@ -191,7 +204,9 @@ export default function ExperimentsPage() {
           <div className="panel-body">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 lg:items-end">
               <div className="space-y-2">
-                <label className="field-label" htmlFor="status-filter">Status</label>
+                <label className="field-label" htmlFor="status-filter">
+                  Status
+                </label>
                 <select
                   id="status-filter"
                   className="select-shell"
@@ -208,7 +223,9 @@ export default function ExperimentsPage() {
               </div>
 
               <div className="space-y-2">
-                <label className="field-label" htmlFor="method-filter">Reasoning method</label>
+                <label className="field-label" htmlFor="method-filter">
+                  Reasoning method
+                </label>
                 <select
                   id="method-filter"
                   className="select-shell"
@@ -225,12 +242,14 @@ export default function ExperimentsPage() {
               <div className="rounded-[18px] border border-(--border) bg-(--surface-2) p-4">
                 <div className="section-label">Current slice</div>
                 <div className="mt-1 font-semibold tracking-[-0.03em]">
-                  {statusFilter || methodFilter ? "Filtered workspace" : "Full workspace"}
+                  {statusFilter || methodFilter
+                    ? "Filtered workspace"
+                    : "Full workspace"}
                 </div>
                 <p className="mt-1 text-sm leading-6 text-(--muted-foreground)">
                   {statusFilter || methodFilter
-                    ? `${total} experiments matching filters.`
-                    : `Showing all ${total} experiments.`}
+                    ? `${total} benchmarks matching filters.`
+                    : `Showing all ${total} benchmarks.`}
                 </p>
               </div>
             </div>
@@ -243,19 +262,25 @@ export default function ExperimentsPage() {
           <PanelHeader
             label="Catalog"
             title="Runs and configurations"
-            description="Experiment runs with configuration, status, and quick actions."
+            description="Benchmark runs with configuration, status, and quick actions."
           />
           <div className="panel-body">
             {experimentsQuery.isLoading ? (
               <div className="space-y-3">
-                {Array.from({ length: 5 }).map((_, index) => <SkeletonBlock key={index} className="h-[124px]" />)}
+                {Array.from({ length: 5 }).map((_, index) => (
+                  <SkeletonBlock key={index} className="h-[124px]" />
+                ))}
               </div>
             ) : experiments.length === 0 ? (
               <EmptyState
                 icon={<Filter className="size-5" />}
-                title="No experiments match this slice"
-                description="Clear the filters or create a new experiment to seed the workspace."
-                action={<Link href="/experiments/new" className="btn-primary">Create experiment</Link>}
+                title="No benchmarks match this slice"
+                description="Clear the filters or create a new benchmark to seed the workspace."
+                action={
+                  <Link href="/experiments/new" className="btn-primary">
+                    Create benchmark
+                  </Link>
+                }
               />
             ) : (
               <div className="space-y-3">
@@ -268,49 +293,100 @@ export default function ExperimentsPage() {
                     <div className="flex flex-col items-start justify-between gap-4 sm:flex-row">
                       <div className="min-w-0 w-full flex-1 space-y-3">
                         <div className="flex items-center gap-2">
-                          <div className="truncate text-lg font-semibold tracking-[-0.03em]">{experiment.name}</div>
+                          <div className="truncate text-lg font-semibold tracking-[-0.03em]">
+                            {experiment.name}
+                          </div>
                           <StatusPill status={experiment.status} />
                           {experiment.is_baseline ? (
-                            <span className="chip" style={{ color: "color-mix(in oklab, var(--primary) 84%, white 12%)" }}>
+                            <span
+                              className="chip"
+                              style={{
+                                color:
+                                  "color-mix(in oklab, var(--primary) 84%, white 12%)",
+                              }}
+                            >
                               <Pin className="size-3" /> Baseline
                             </span>
                           ) : null}
                           {regressionBadge(experiment.regression_status)}
                         </div>
                         {experiment.description ? (
-                          <p className="line-clamp-2 max-w-3xl text-sm leading-7 text-(--muted-foreground)">{experiment.description}</p>
+                          <p className="line-clamp-2 max-w-3xl text-sm leading-7 text-(--muted-foreground)">
+                            {experiment.description}
+                          </p>
                         ) : null}
                         <div className="flex flex-wrap gap-2 text-xs text-(--muted-foreground)">
-                          <span className="chip">{methodLabels[experiment.reasoning_method] ?? experiment.reasoning_method}</span>
-                          <span className="chip">{experiment.model_name.split("/").pop()}</span>
-                          <span className="chip">{experiment.dataset_name}</span>
-                          <span className="chip">Samples {experiment.num_samples ?? "N/A"}</span>
+                          <span className="chip">
+                            {methodLabels[experiment.reasoning_method] ??
+                              experiment.reasoning_method}
+                          </span>
+                          <span className="chip">
+                            {experiment.model_name.split("/").pop()}
+                          </span>
+                          <span className="chip">
+                            {experiment.dataset_name}
+                          </span>
+                          <span className="chip">
+                            Samples {experiment.num_samples ?? "N/A"}
+                          </span>
                         </div>
                       </div>
-                      <div className="flex w-full shrink-0 flex-wrap items-center gap-2 sm:w-auto" onClick={(event) => event.preventDefault()}>
+                      <div
+                        className="flex w-full shrink-0 flex-wrap items-center gap-2 sm:w-auto"
+                        onClick={(event) => event.preventDefault()}
+                      >
                         <button
                           type="button"
                           className="btn-secondary flex-1 justify-center sm:flex-none"
-                          onClick={(event) => { event.preventDefault(); runMutation.mutate(experiment); }}
-                          disabled={runningIds.has(experiment.id) || experiment.status === "running" || experiment.status === "queued"}
+                          onClick={(event) => {
+                            event.preventDefault();
+                            runMutation.mutate(experiment);
+                          }}
+                          disabled={
+                            runningIds.has(experiment.id) ||
+                            experiment.status === "running" ||
+                            experiment.status === "queued"
+                          }
                         >
-                          {runningIds.has(experiment.id) ? <LoaderCircle className="size-4 animate-spin" /> : <Play className="size-4" />}
-                          {experiment.status === "completed" ? "Run again" : "Run"}
+                          {runningIds.has(experiment.id) ? (
+                            <LoaderCircle className="size-4 animate-spin" />
+                          ) : (
+                            <Play className="size-4" />
+                          )}
+                          {experiment.status === "completed"
+                            ? "Run again"
+                            : "Run"}
                         </button>
                         <button
                           type="button"
                           className="btn-danger flex-1 justify-center sm:flex-none"
-                          onClick={(event) => { event.preventDefault(); setExperimentToDelete({ id: experiment.id, name: experiment.name }); }}
+                          onClick={(event) => {
+                            event.preventDefault();
+                            setExperimentToDelete({
+                              id: experiment.id,
+                              name: experiment.name,
+                            });
+                          }}
                           disabled={deletingIds.has(experiment.id)}
                         >
-                          {deletingIds.has(experiment.id) ? <LoaderCircle className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
+                          {deletingIds.has(experiment.id) ? (
+                            <LoaderCircle className="size-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="size-4" />
+                          )}
                           Delete
                         </button>
                       </div>
                     </div>
                     <div className="mt-4 flex flex-wrap items-center gap-3 text-sm text-(--muted-foreground)">
-                      <span className="mono-caption">Created {formatDate(experiment.created_at)}</span>
-                      {experiment.completed_at ? <span className="mono-caption">Completed {formatDate(experiment.completed_at)}</span> : null}
+                      <span className="mono-caption">
+                        Created {formatDate(experiment.created_at)}
+                      </span>
+                      {experiment.completed_at ? (
+                        <span className="mono-caption">
+                          Completed {formatDate(experiment.completed_at)}
+                        </span>
+                      ) : null}
                     </div>
                   </Link>
                 ))}
@@ -344,10 +420,17 @@ export default function ExperimentsPage() {
                 <div className="space-y-3">
                   <div>
                     <div className="section-label">Destructive action</div>
-                    <h2 className="mt-1 text-2xl font-semibold tracking-[-0.04em]">Delete experiment</h2>
+                    <h2 className="mt-1 text-2xl font-semibold tracking-[-0.04em]">
+                      Delete experiment
+                    </h2>
                   </div>
                   <p className="text-sm leading-7 text-(--muted-foreground)">
-                    Remove <span className="font-semibold text-foreground">{experimentToDelete.name}</span> from the experiment catalog and its saved metrics from the results store.
+                    Remove{" "}
+                    <span className="font-semibold text-foreground">
+                      {experimentToDelete.name}
+                    </span>{" "}
+                    from the experiment catalog and its saved metrics from the
+                    results store.
                   </p>
                 </div>
               </div>
@@ -366,7 +449,11 @@ export default function ExperimentsPage() {
                   onClick={() => deleteMutation.mutate(experimentToDelete.id)}
                   disabled={deleteMutation.isPending}
                 >
-                  {deleteMutation.isPending ? <LoaderCircle className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
+                  {deleteMutation.isPending ? (
+                    <LoaderCircle className="size-4 animate-spin" />
+                  ) : (
+                    <Trash2 className="size-4" />
+                  )}
                   Delete experiment
                 </button>
               </div>

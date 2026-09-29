@@ -172,6 +172,13 @@ describe("prompt workbench", () => {
       "production now points to v1",
     );
   });
+  it("shows a runnable Python example for the saved prompt", () => {
+    wrap(<PromptWorkbench initial={detail} />);
+    fireEvent.click(screen.getByRole("button", { name: "Integrate" }));
+    expect(screen.getByText(/print\(prompt\.compile/)).toHaveTextContent(
+      'print(prompt.compile(**{"query":"example"}))',
+    );
+  });
   it("reloads authoritative metadata, releases and template after a stale save", async () => {
     mocks.saveVersion.mockRejectedValueOnce(
       new Error("A newer version was saved."),

@@ -20,6 +20,7 @@ import {
   inputClass,
   buttonClass,
 } from "@/components/prompts/prompt-ui";
+import { PageHeader } from "@/components/ui/primitives";
 
 const sample: DatasetCase[] = [
   { name: "Greeting", inputs: { query: "Hello" }, expected_output: "Hello" },
@@ -269,22 +270,21 @@ export function DatasetsWorkbench() {
     });
   }
   return (
-    <div className="space-y-6 p-6 max-w-7xl mx-auto">
-      <div className="flex justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold">Datasets</h1>
-          <p className="text-sm text-(--muted-foreground)">
-            Version your test cases, then evaluate saved prompts against them.
-          </p>
-        </div>
-        <button
-          className={buttonClass}
-          disabled={busy || dirty}
-          onClick={() => load(null)}
-        >
-          New dataset
-        </button>
-      </div>
+    <div className="space-y-6">
+      <PageHeader
+        eyebrow="Test cases"
+        title="Datasets"
+        description="Version your test cases, then evaluate saved prompts against them."
+        actions={
+          <button
+            className={buttonClass}
+            disabled={busy || dirty}
+            onClick={() => load(null)}
+          >
+            New dataset
+          </button>
+        }
+      />
       {error && (
         <p role="alert" className="text-(--destructive)">
           {error}
@@ -312,7 +312,9 @@ export function DatasetsWorkbench() {
           {list.error && (
             <p role="alert">
               {errorText(list.error)}{" "}
-              <button onClick={() => list.refetch()}>Retry</button>
+              <button className="btn-ghost" onClick={() => list.refetch()}>
+                Retry
+              </button>
             </p>
           )}
           {list.data?.items.length === 0 && (
@@ -336,12 +338,14 @@ export function DatasetsWorkbench() {
           ))}
           <div className="flex gap-2">
             <button
+              className="btn-secondary"
               disabled={!offset}
               onClick={() => setOffset(Math.max(0, offset - 50))}
             >
               Previous
             </button>
             <button
+              className="btn-secondary"
               disabled={!list.data || offset + 50 >= list.data.total}
               onClick={() => setOffset(offset + 50)}
             >
@@ -374,7 +378,9 @@ export function DatasetsWorkbench() {
                 </button>
               )}
               {!selected && dirty && (
-                <button onClick={() => load(null)}>Discard draft</button>
+                <button className="btn-secondary" onClick={() => load(null)}>
+                  Discard draft
+                </button>
               )}
             </div>
             <label className="block text-sm">
@@ -480,6 +486,7 @@ export function DatasetsWorkbench() {
                               <div className="flex gap-2">
                                 <button
                                   type="button"
+                                  className="btn-ghost min-h-8! px-2! text-xs!"
                                   disabled={
                                     !!selected?.dataset.archived ||
                                     busy ||
@@ -497,6 +504,7 @@ export function DatasetsWorkbench() {
                                 </button>
                                 <button
                                   type="button"
+                                  className="btn-ghost min-h-8! px-2! text-xs!"
                                   disabled={
                                     !!selected?.dataset.archived ||
                                     busy ||
@@ -601,6 +609,7 @@ export function DatasetsWorkbench() {
                       </button>
                       <button
                         type="button"
+                        className="btn-ghost"
                         disabled={busy}
                         onClick={() => {
                           setCaseIndex(null);
@@ -827,6 +836,7 @@ export function DatasetsWorkbench() {
                 </p>
                 <div className="flex gap-3">
                   <button
+                    className="btn-secondary"
                     disabled={!historyOffset}
                     onClick={() =>
                       setHistoryOffset(Math.max(0, historyOffset - 50))
@@ -835,6 +845,7 @@ export function DatasetsWorkbench() {
                     Newer revisions
                   </button>
                   <button
+                    className="btn-secondary"
                     disabled={history.data?.length !== 50}
                     onClick={() => setHistoryOffset(historyOffset + 50)}
                   >

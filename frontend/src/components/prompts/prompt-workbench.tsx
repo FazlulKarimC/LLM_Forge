@@ -84,6 +84,9 @@ export function PromptWorkbench({ initial }: { initial?: PromptDetail }) {
           format !== "mustache",
   );
   const variables = draftVariables(template, format);
+  const integrationInputs = Object.fromEntries(
+    (selected?.variables ?? []).map((variable) => [variable, "example"]),
+  );
 
   async function action(kind: string, work: () => Promise<void>) {
     if (pending) return;
@@ -242,7 +245,13 @@ export function PromptWorkbench({ initial }: { initial?: PromptDetail }) {
           ))}
         </nav>
       )}
-      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
+      <div
+        className={
+          tab === "editor"
+            ? "grid items-start gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]"
+            : "grid grid-cols-1"
+        }
+      >
         <div className="space-y-6">
           {tab === "editor" && (
             <section className={`${panelClass} space-y-4`}>
@@ -615,7 +624,7 @@ export function PromptWorkbench({ initial }: { initial?: PromptDetail }) {
           </p>
           <h3 className="text-sm font-semibold">Python SDK</h3>
           <pre className="overflow-auto rounded-xl bg-(--surface-2) p-4 text-xs">
-            <code>{`from llmforge import LLMForge\n\nwith LLMForge() as forge:\n    prompt = forge.get_prompt(${JSON.stringify(prompt.name)}, label="production")\n    print(prompt.compile(**${JSON.stringify(Object.fromEntries((selected?.variables ?? []).map((variable) => [variable, "example"])))})`}</code>
+            <code>{`from llmforge import LLMForge\n\nwith LLMForge() as forge:\n    prompt = forge.get_prompt(${JSON.stringify(prompt.name)}, label="production")\n    print(prompt.compile(**${JSON.stringify(integrationInputs)}))`}</code>
           </pre>
           <h3 className="text-sm font-semibold">HTTP</h3>
           <pre className="overflow-auto rounded-xl bg-(--surface-2) p-4 text-xs">

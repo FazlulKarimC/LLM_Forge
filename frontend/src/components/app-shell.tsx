@@ -18,6 +18,7 @@ import {
   Github,
   Home,
   LayoutDashboard,
+  Menu,
   MoonStar,
   Search,
   SunMedium,
@@ -446,8 +447,12 @@ export function AppShell({ children }: { children: ReactNode }) {
         <div className="min-w-0 overflow-y-auto">
           <header className="sticky top-0 z-40 border-b border-(--border) bg-[color-mix(in_oklab,var(--background)_78%,transparent)] backdrop-blur-xl">
             <div className="page-width flex flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-6">
-              <WorkspaceSwitcher />
-              <UserButton />
+              <div className="flex min-w-0 flex-1 items-center gap-3">
+                <WorkspaceSwitcher />
+                <div className="shrink-0">
+                  <UserButton />
+                </div>
+              </div>
               <div className="flex shrink-0 items-center gap-2">
                 <button
                   type="button"
@@ -455,7 +460,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                   onClick={() => setMobileNavOpen(true)}
                   aria-label="Open navigation"
                 >
-                  <Command className="size-4" />
+                  <Menu className="size-4" />
                 </button>
                 <button
                   type="button"
@@ -470,7 +475,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                   </span>
                 </button>
               </div>
-              <div className="hidden flex-wrap items-center gap-2 sm:flex">
+              <div className="hidden flex-wrap items-center gap-2 xl:flex">
                 <Link href="/" className="btn-ghost shrink-0">
                   <Home className="size-4 shrink-0" />
                   Home

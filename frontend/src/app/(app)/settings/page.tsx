@@ -5,6 +5,7 @@ import { UserButton } from "@clerk/nextjs";
 import { fetchAPI } from "@/lib/api-client";
 import { useWorkspace } from "@/components/workspace-provider";
 import { ProjectAPIKeys } from "@/components/prompts/project-api-keys";
+import { PageHeader } from "@/components/ui/primitives";
 
 export default function SettingsPage() {
   const { organization, project, refresh } = useWorkspace();
@@ -49,13 +50,11 @@ export default function SettingsPage() {
     "mt-3 w-full rounded-xl border border-(--border) bg-(--surface-2) px-4 py-3 outline-none focus:border-(--primary)";
   return (
     <div className="space-y-6">
-      <div>
-        <div className="section-label">Workspace</div>
-        <h1 className="mt-2 text-3xl font-semibold">Settings</h1>
-        <p className="mt-2 text-(--muted-foreground)">
-          Manage project access, keys, and workspaces.
-        </p>
-      </div>
+      <PageHeader
+        eyebrow="Workspace"
+        title="Settings"
+        description="Manage project access, keys, and workspaces."
+      />
       {error ? (
         <p
           role="alert"
