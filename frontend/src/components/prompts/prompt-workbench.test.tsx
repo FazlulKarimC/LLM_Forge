@@ -222,8 +222,10 @@ describe("prompt workbench", () => {
         "Latest {{query}}",
       ),
     );
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
     expect(screen.getByLabelText("Prompt name")).toHaveValue("renamed");
     expect(screen.getByLabelText("Description")).toHaveValue("Updated purpose");
+    fireEvent.click(screen.getByRole("button", { name: "Editor & playground" }));
     expect(
       screen.getByRole("button", { name: "Save new version" }),
     ).toBeDisabled();

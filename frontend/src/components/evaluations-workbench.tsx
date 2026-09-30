@@ -77,6 +77,7 @@ export function EvaluationsWorkbench() {
   const [runOffset, setRunOffset] = useState(0);
   const [view, setView] = useState<"history" | "new" | "detail">("history");
   const [filter, setFilter] = useState("all");
+  const [caseIndex, setCaseIndex] = useState<number | null>(null);
   const [urlReady, setUrlReady] = useState(false);
   useEffect(() => {
     const restore = () => {
@@ -88,6 +89,28 @@ export function EvaluationsWorkbench() {
       const restoredRun = params.get("run") ?? "";
       setRunId(restoredRun);
       setCompareId(params.get("compare") ?? "");
+      const selectedCase = params.get("case");
+      setCaseIndex(
+        selectedCase !== null && /^\d+$/.test(selectedCase)
+          ? Number(selectedCase)
+          : null,
+      );
+      const savedFilter = params.get("filter");
+      setFilter(
+        savedFilter &&
+          [
+            "all",
+            "passed",
+            "failed",
+            "errors",
+            "improved",
+            "regressed",
+            "unchanged",
+            "comparison_errors",
+          ].includes(savedFilter)
+          ? savedFilter
+          : "all",
+      );
       setView(
         restoredRun
           ? "detail"
@@ -115,6 +138,8 @@ export function EvaluationsWorkbench() {
       revision: revisionId,
       run: runId,
       compare: compareId,
+      case: runId && caseIndex !== null ? String(caseIndex) : "",
+      filter: runId && filter !== "all" ? filter : "",
     })) {
       if (value) params.set(key, value);
       else params.delete(key);
@@ -135,6 +160,8 @@ export function EvaluationsWorkbench() {
     revisionId,
     runId,
     compareId,
+    caseIndex,
+    filter,
     view,
   ]);
   const prompts = useQuery({
@@ -242,401 +269,427 @@ export function EvaluationsWorkbench() {
           </p>
         ))}
       {view === "new" && (
-        <section className={panelClass}>
-          <h2 className="font-semibold">Start an evaluation</h2>
-          <div className="space-y-5 mt-4">
-            <div className="grid md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm">
-                  Prompt
-                  <select
-                    aria-label="Evaluation prompt"
-                    className={inputClass}
-                    value={promptId}
-                    onChange={(e) => {
-                      setPromptId(e.target.value);
-                      setVersionId("");
-                      setVersionOffset(0);
-                    }}
-                  >
-                    <option value="">Select a prompt</option>
-                    {prompts.data?.items.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name}
-                      </option>
-                    ))}
-                    {promptId &&
-                      !prompts.data?.items.some((p) => p.id === promptId) && (
-                        <option value={promptId}>
-                          Selected prompt ({promptId})
-                        </option>
-                      )}
-                  </select>
-                </label>
-                <PageControls
-                  offset={promptOffset}
-                  next={
-                    !!prompts.data && promptOffset + 50 < prompts.data.total
-                  }
-                  change={(offset) => {
-                    setPromptOffset(offset);
-                    setPromptId("");
-                    setVersionId("");
-                  }}
-                />
-                <label className="block text-sm">
-                  Saved prompt version
-                  <select
-                    aria-label="Prompt version"
-                    className={inputClass}
-                    value={versionId}
-                    onChange={(e) => setVersionId(e.target.value)}
-                    disabled={!promptId || versions.isLoading}
-                  >
-                    <option value="">Select a version</option>
-                    {versions.data?.map((v) => (
-                      <option key={v.id} value={v.id}>
-                        v{v.version} ·{" "}
-                        {v.variables.join(", ") || "No variables"}
-                      </option>
-                    ))}
-                    {versionId &&
-                      !versions.data?.some((v) => v.id === versionId) && (
-                        <option value={versionId}>
-                          Selected saved version ({versionId})
-                        </option>
-                      )}
-                  </select>
-                </label>
-                <PageControls
-                  offset={versionOffset}
-                  next={versions.data?.length === 50}
-                  change={(offset) => {
-                    setVersionOffset(offset);
-                    setVersionId("");
-                  }}
-                />
-              </div>
-              <div>
-                <label className="block text-sm">
-                  Dataset
-                  <select
-                    aria-label="Evaluation dataset"
-                    className={inputClass}
-                    value={datasetId}
-                    onChange={(e) => {
-                      setDatasetId(e.target.value);
-                      setRevisionId("");
-                      setRevisionOffset(0);
-                    }}
-                  >
-                    <option value="">Select a dataset</option>
-                    {datasets.data?.items.map((d) => (
-                      <option key={d.id} value={d.id}>
-                        {d.name}
-                      </option>
-                    ))}
-                    {datasetId &&
-                      !datasets.data?.items.some((d) => d.id === datasetId) && (
-                        <option value={datasetId}>
-                          Selected dataset ({datasetId})
-                        </option>
-                      )}
-                  </select>
-                </label>
-                <PageControls
-                  offset={datasetOffset}
-                  next={
-                    !!datasets.data && datasetOffset + 50 < datasets.data.total
-                  }
-                  change={(offset) => {
-                    setDatasetOffset(offset);
-                    setDatasetId("");
-                    setRevisionId("");
-                  }}
-                />
-                <label className="block text-sm">
-                  Dataset revision
-                  <select
-                    aria-label="Dataset revision"
-                    className={inputClass}
-                    value={revisionId}
-                    onChange={(e) => setRevisionId(e.target.value)}
-                    disabled={!datasetId || revisions.isLoading}
-                  >
-                    <option value="">Select a revision</option>
-                    {revisions.data?.map((r) => (
-                      <option key={r.id} value={r.id}>
-                        v{r.version} · {r.cases.length} cases
-                      </option>
-                    ))}
-                    {revisionId &&
-                      !revisions.data?.some((r) => r.id === revisionId) && (
-                        <option value={revisionId}>
-                          Selected revision ({revisionId})
-                        </option>
-                      )}
-                  </select>
-                </label>
-                <PageControls
-                  offset={revisionOffset}
-                  next={revisions.data?.length === 50}
-                  change={(offset) => {
-                    setRevisionOffset(offset);
-                    setRevisionId("");
-                  }}
-                />
-              </div>
-            </div>
-            <div className="grid md:grid-cols-3 gap-4">
-              <label className="text-sm">
-                Provider
-                <select
-                  aria-label="Evaluation provider"
-                  className={inputClass}
-                  value={provider}
-                  onChange={(e) => {
-                    const p = e.target.value as Provider;
-                    setProvider(p);
-                    setModel(defaults[p]);
-                    setApiKey("");
-                  }}
-                >
-                  <option value="mock">Demo (echo compiled prompt)</option>
-                  <option value="groq">Groq</option>
-                  <option value="openrouter">OpenRouter</option>
-                  <option value="openai">OpenAI</option>
-                </select>
-              </label>
-              <label className="text-sm">
-                Model
-                <input
-                  aria-label="Evaluation model"
-                  className={inputClass}
-                  value={model}
-                  onChange={(e) => setModel(e.target.value)}
-                  maxLength={255}
-                />
-              </label>
-              {provider !== "mock" && (
-                <label className="text-sm">
-                  Provider API key
-                  <input
-                    aria-label="Evaluation API key"
-                    type="password"
-                    autoComplete="off"
-                    className={inputClass}
-                    value={apiKey}
-                    onChange={(e) => setApiKey(e.target.value)}
-                    maxLength={512}
-                  />
-                </label>
-              )}
-            </div>
-            <div className="flex flex-wrap gap-4">
-              <label className="text-sm">
-                Temperature
-                <input
-                  type="number"
-                  step="0.1"
-                  min="0"
-                  max="2"
-                  className={inputClass}
-                  value={temperature}
-                  onChange={(e) => setTemperature(Number(e.target.value))}
-                />
-              </label>
-              <label className="text-sm">
-                Max output tokens
-                <input
-                  type="number"
-                  min="1"
-                  max="2048"
-                  className={inputClass}
-                  value={maxTokens}
-                  onChange={(e) => setMaxTokens(Number(e.target.value))}
-                />
-              </label>
-            </div>
-            <div className="space-y-3">
-              <h2 className="font-medium">Assertions</h2>
-              {rules.map((rule, index) => (
-                <div key={index} className="flex flex-wrap gap-3 items-end">
-                  <label className="text-sm">
-                    Rule {index + 1}
-                    <select
-                      className={inputClass}
-                      value={rule.kind}
-                      onChange={(e) =>
-                        updateRule(index, {
-                          kind: e.target.value as Assertion["kind"],
-                        })
+        <section className="evaluation-setup">
+          <div className={`${panelClass} evaluation-fields`}>
+            <h2 className="font-semibold">Start an evaluation</h2>
+            <div className="evaluation-fields">
+              <div className="form-section">
+                <h3>1. Prompt &amp; dataset</h3>
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm">
+                      Prompt
+                      <select
+                        aria-label="Evaluation prompt"
+                        className={inputClass}
+                        value={promptId}
+                        onChange={(e) => {
+                          setPromptId(e.target.value);
+                          setVersionId("");
+                          setVersionOffset(0);
+                        }}
+                      >
+                        <option value="">Select a prompt</option>
+                        {prompts.data?.items.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.name}
+                          </option>
+                        ))}
+                        {promptId &&
+                          !prompts.data?.items.some(
+                            (p) => p.id === promptId,
+                          ) && (
+                            <option value={promptId}>
+                              Selected prompt ({promptId})
+                            </option>
+                          )}
+                      </select>
+                    </label>
+                    <PageControls
+                      offset={promptOffset}
+                      next={
+                        !!prompts.data && promptOffset + 50 < prompts.data.total
                       }
-                    >
-                      {Object.entries(ruleNames).map(([value, title]) => (
-                        <option value={value} key={value}>
-                          {title}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  {!["exact_match", "json_valid", "json_reference"].includes(
-                    rule.kind,
-                  ) && (
-                    <label className="flex-1 text-sm">
-                      {rule.kind.startsWith("json_")
-                        ? "Expected JSON value"
-                        : "Text / pattern"}
-                      <input
+                      change={(offset) => {
+                        setPromptOffset(offset);
+                        setPromptId("");
+                        setVersionId("");
+                      }}
+                    />
+                    <label className="block text-sm">
+                      Saved prompt version
+                      <select
+                        aria-label="Prompt version"
                         className={inputClass}
-                        value={rule.value}
-                        onChange={(e) =>
-                          updateRule(index, { value: e.target.value })
-                        }
-                        maxLength={2000}
-                      />
+                        value={versionId}
+                        onChange={(e) => setVersionId(e.target.value)}
+                        disabled={!promptId || versions.isLoading}
+                      >
+                        <option value="">Select a version</option>
+                        {versions.data?.map((v) => (
+                          <option key={v.id} value={v.id}>
+                            v{v.version} ·{" "}
+                            {v.variables.join(", ") || "No variables"}
+                          </option>
+                        ))}
+                        {versionId &&
+                          !versions.data?.some((v) => v.id === versionId) && (
+                            <option value={versionId}>
+                              Selected saved version ({versionId})
+                            </option>
+                          )}
+                      </select>
                     </label>
-                  )}
-                  {rule.kind === "json_path" && (
-                    <label className="text-sm">
-                      Path (e.g. answer.label)
-                      <input
+                    <PageControls
+                      offset={versionOffset}
+                      next={versions.data?.length === 50}
+                      change={(offset) => {
+                        setVersionOffset(offset);
+                        setVersionId("");
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm">
+                      Dataset
+                      <select
+                        aria-label="Evaluation dataset"
                         className={inputClass}
-                        value={rule.path}
-                        onChange={(e) =>
-                          updateRule(index, { path: e.target.value })
-                        }
-                        maxLength={200}
-                      />
+                        value={datasetId}
+                        onChange={(e) => {
+                          setDatasetId(e.target.value);
+                          setRevisionId("");
+                          setRevisionOffset(0);
+                        }}
+                      >
+                        <option value="">Select a dataset</option>
+                        {datasets.data?.items.map((d) => (
+                          <option key={d.id} value={d.id}>
+                            {d.name}
+                          </option>
+                        ))}
+                        {datasetId &&
+                          !datasets.data?.items.some(
+                            (d) => d.id === datasetId,
+                          ) && (
+                            <option value={datasetId}>
+                              Selected dataset ({datasetId})
+                            </option>
+                          )}
+                      </select>
                     </label>
-                  )}
-                  <button
-                    aria-label={`Remove rule ${index + 1}`}
-                    className={buttonClass}
-                    onClick={() =>
-                      setRules(rules.filter((_, i) => i !== index))
-                    }
-                  >
-                    Remove
-                  </button>
+                    <PageControls
+                      offset={datasetOffset}
+                      next={
+                        !!datasets.data &&
+                        datasetOffset + 50 < datasets.data.total
+                      }
+                      change={(offset) => {
+                        setDatasetOffset(offset);
+                        setDatasetId("");
+                        setRevisionId("");
+                      }}
+                    />
+                    <label className="block text-sm">
+                      Dataset revision
+                      <select
+                        aria-label="Dataset revision"
+                        className={inputClass}
+                        value={revisionId}
+                        onChange={(e) => setRevisionId(e.target.value)}
+                        disabled={!datasetId || revisions.isLoading}
+                      >
+                        <option value="">Select a revision</option>
+                        {revisions.data?.map((r) => (
+                          <option key={r.id} value={r.id}>
+                            v{r.version} · {r.cases.length} cases
+                          </option>
+                        ))}
+                        {revisionId &&
+                          !revisions.data?.some((r) => r.id === revisionId) && (
+                            <option value={revisionId}>
+                              Selected revision ({revisionId})
+                            </option>
+                          )}
+                      </select>
+                    </label>
+                    <PageControls
+                      offset={revisionOffset}
+                      next={revisions.data?.length === 50}
+                      change={(offset) => {
+                        setRevisionOffset(offset);
+                        setRevisionId("");
+                      }}
+                    />
+                  </div>
                 </div>
-              ))}
-              <button
-                disabled={rules.length >= 10}
-                className={buttonClass}
-                onClick={() =>
-                  setRules([
-                    ...rules,
-                    { kind: "contains", value: "", path: "" },
-                  ])
-                }
-              >
-                Add assertion
-              </button>
-              <p className="text-xs text-(--muted-foreground)">
-                All checks must pass. Exact match includes whitespace. Regex
-                uses search. JSON comparisons ignore object key order; dot paths
-                access keys and numeric array indexes.
-              </p>
-            </div>
-            <label className="text-sm flex gap-2">
-              <input
-                type="checkbox"
-                checked={judgeEnabled}
-                onChange={(e) => {
-                  setJudgeEnabled(e.target.checked);
-                  setJudge({ ...judge, api_key: "" });
-                }}
-              />{" "}
-              Add LLM judge (one additional provider call per case)
-            </label>
-            {judgeEnabled && (
-              <div className="space-y-3 border border-(--border) rounded-xl p-4">
-                <p className="text-xs text-(--muted-foreground)">
-                  Judge scores are model opinions from 0–1. They may vary and
-                  can be influenced by candidate content. Review reasons
-                  alongside deterministic checks.
-                </p>
+              </div>
+              <div className="form-section space-y-3">
+                <h3>2. Generation</h3>
                 <div className="grid md:grid-cols-3 gap-4">
-                  <label>
-                    Judge provider
+                  <label className="text-sm">
+                    Provider
                     <select
+                      aria-label="Evaluation provider"
                       className={inputClass}
-                      value={judge.provider}
+                      value={provider}
                       onChange={(e) => {
-                        const p = e.target.value as Judge["provider"];
-                        setJudge({
-                          ...judge,
-                          provider: p,
-                          model: defaults[p],
-                          api_key: "",
-                        });
+                        const p = e.target.value as Provider;
+                        setProvider(p);
+                        setModel(defaults[p]);
+                        setApiKey("");
                       }}
                     >
+                      <option value="mock">Demo (echo compiled prompt)</option>
                       <option value="groq">Groq</option>
                       <option value="openrouter">OpenRouter</option>
                       <option value="openai">OpenAI</option>
                     </select>
                   </label>
-                  <label>
-                    Judge model
+                  <label className="text-sm">
+                    Model
                     <input
+                      aria-label="Evaluation model"
                       className={inputClass}
-                      value={judge.model}
-                      onChange={(e) =>
-                        setJudge({ ...judge, model: e.target.value })
-                      }
+                      value={model}
+                      onChange={(e) => setModel(e.target.value)}
                       maxLength={255}
                     />
                   </label>
-                  <label>
-                    Judge API key
+                  {provider !== "mock" && (
+                    <label className="text-sm">
+                      Provider API key
+                      <input
+                        aria-label="Evaluation API key"
+                        type="password"
+                        autoComplete="off"
+                        className={inputClass}
+                        value={apiKey}
+                        onChange={(e) => setApiKey(e.target.value)}
+                        maxLength={512}
+                      />
+                    </label>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-4">
+                  <label className="text-sm">
+                    Temperature
                     <input
-                      aria-label="Judge API key"
-                      type="password"
-                      autoComplete="off"
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      max="2"
                       className={inputClass}
-                      value={judge.api_key}
-                      onChange={(e) =>
-                        setJudge({ ...judge, api_key: e.target.value })
-                      }
-                      maxLength={512}
+                      value={temperature}
+                      onChange={(e) => setTemperature(Number(e.target.value))}
+                    />
+                  </label>
+                  <label className="text-sm">
+                    Max output tokens
+                    <input
+                      type="number"
+                      min="1"
+                      max="2048"
+                      className={inputClass}
+                      value={maxTokens}
+                      onChange={(e) => setMaxTokens(Number(e.target.value))}
                     />
                   </label>
                 </div>
-                <label className="block">
-                  Rubric
-                  <textarea
-                    className={inputClass}
-                    value={judge.rubric}
-                    onChange={(e) =>
-                      setJudge({ ...judge, rubric: e.target.value })
-                    }
-                    maxLength={4000}
-                  />
-                </label>
-                <label>
-                  Passing score
-                  <input
-                    type="number"
-                    min="0"
-                    max="1"
-                    step="0.05"
-                    className={inputClass}
-                    value={judge.threshold}
-                    onChange={(e) =>
-                      setJudge({ ...judge, threshold: Number(e.target.value) })
-                    }
-                  />
-                </label>
               </div>
-            )}
-            <p className="text-xs text-(--muted-foreground)">
-              Limits: 100 demo cases, 50 live cases, or 20 with judging; two
-              active runs per project. Keys stay in memory and are cleared from
-              this form after starting. Cancellation stops subsequent cases; an
-              in-flight call may finish.
-            </p>
+              <div className="form-section space-y-3">
+                <h3>3. Checks &amp; judge</h3>
+                <div className="space-y-3">
+                  <h2 className="font-medium">Assertions</h2>
+                  {rules.map((rule, index) => (
+                    <div key={index} className="flex flex-wrap gap-3 items-end">
+                      <label className="text-sm">
+                        Rule {index + 1}
+                        <select
+                          className={inputClass}
+                          value={rule.kind}
+                          onChange={(e) =>
+                            updateRule(index, {
+                              kind: e.target.value as Assertion["kind"],
+                            })
+                          }
+                        >
+                          {Object.entries(ruleNames).map(([value, title]) => (
+                            <option value={value} key={value}>
+                              {title}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      {![
+                        "exact_match",
+                        "json_valid",
+                        "json_reference",
+                      ].includes(rule.kind) && (
+                        <label className="flex-1 text-sm">
+                          {rule.kind.startsWith("json_")
+                            ? "Expected JSON value"
+                            : "Text / pattern"}
+                          <input
+                            className={inputClass}
+                            value={rule.value}
+                            onChange={(e) =>
+                              updateRule(index, { value: e.target.value })
+                            }
+                            maxLength={2000}
+                          />
+                        </label>
+                      )}
+                      {rule.kind === "json_path" && (
+                        <label className="text-sm">
+                          Path (e.g. answer.label)
+                          <input
+                            className={inputClass}
+                            value={rule.path}
+                            onChange={(e) =>
+                              updateRule(index, { path: e.target.value })
+                            }
+                            maxLength={200}
+                          />
+                        </label>
+                      )}
+                      <button
+                        aria-label={`Remove rule ${index + 1}`}
+                        className={buttonClass}
+                        onClick={() =>
+                          setRules(rules.filter((_, i) => i !== index))
+                        }
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    disabled={rules.length >= 10}
+                    className={buttonClass}
+                    onClick={() =>
+                      setRules([
+                        ...rules,
+                        { kind: "contains", value: "", path: "" },
+                      ])
+                    }
+                  >
+                    Add assertion
+                  </button>
+                  <p className="text-xs text-(--muted-foreground)">
+                    All checks must pass. Exact match includes whitespace. Regex
+                    uses search. JSON comparisons ignore object key order; dot
+                    paths access keys and numeric array indexes.
+                  </p>
+                </div>
+                <label className="text-sm flex gap-2">
+                  <input
+                    type="checkbox"
+                    checked={judgeEnabled}
+                    onChange={(e) => {
+                      setJudgeEnabled(e.target.checked);
+                      setJudge({ ...judge, api_key: "" });
+                    }}
+                  />{" "}
+                  Add LLM judge (one additional provider call per case)
+                </label>
+                {judgeEnabled && (
+                  <div className="space-y-3 border border-(--border) rounded-xl p-4">
+                    <p className="text-xs text-(--muted-foreground)">
+                      Judge scores are model opinions from 0–1. They may vary
+                      and can be influenced by candidate content. Review reasons
+                      alongside deterministic checks.
+                    </p>
+                    <div className="grid md:grid-cols-3 gap-4">
+                      <label>
+                        Judge provider
+                        <select
+                          className={inputClass}
+                          value={judge.provider}
+                          onChange={(e) => {
+                            const p = e.target.value as Judge["provider"];
+                            setJudge({
+                              ...judge,
+                              provider: p,
+                              model: defaults[p],
+                              api_key: "",
+                            });
+                          }}
+                        >
+                          <option value="groq">Groq</option>
+                          <option value="openrouter">OpenRouter</option>
+                          <option value="openai">OpenAI</option>
+                        </select>
+                      </label>
+                      <label>
+                        Judge model
+                        <input
+                          className={inputClass}
+                          value={judge.model}
+                          onChange={(e) =>
+                            setJudge({ ...judge, model: e.target.value })
+                          }
+                          maxLength={255}
+                        />
+                      </label>
+                      <label>
+                        Judge API key
+                        <input
+                          aria-label="Judge API key"
+                          type="password"
+                          autoComplete="off"
+                          className={inputClass}
+                          value={judge.api_key}
+                          onChange={(e) =>
+                            setJudge({ ...judge, api_key: e.target.value })
+                          }
+                          maxLength={512}
+                        />
+                      </label>
+                    </div>
+                    <label className="block">
+                      Rubric
+                      <textarea
+                        className={inputClass}
+                        value={judge.rubric}
+                        onChange={(e) =>
+                          setJudge({ ...judge, rubric: e.target.value })
+                        }
+                        maxLength={4000}
+                      />
+                    </label>
+                    <label>
+                      Passing score
+                      <input
+                        type="number"
+                        min="0"
+                        max="1"
+                        step="0.05"
+                        className={inputClass}
+                        value={judge.threshold}
+                        onChange={(e) =>
+                          setJudge({
+                            ...judge,
+                            threshold: Number(e.target.value),
+                          })
+                        }
+                      />
+                    </label>
+                  </div>
+                )}
+                <p className="text-xs text-(--muted-foreground)">
+                  Limits: 100 demo cases, 50 live cases, or 20 with judging; two
+                  active runs per project. Keys stay in memory and are cleared
+                  from this form after starting. Cancellation stops subsequent
+                  cases; an in-flight call may finish.
+                </p>
+              </div>
+            </div>
+          </div>
+          <aside
+            className={`${panelClass} evaluation-summary`}
+            aria-label="Evaluation configuration"
+          >
             <div className="rounded-lg border border-(--border) p-4 text-sm">
               <h3 className="font-medium">Run configuration</h3>
               <p className="mt-1 text-(--muted-foreground)">
@@ -693,7 +746,7 @@ export function EvaluationsWorkbench() {
             >
               {busy ? "Starting…" : "Start evaluation"}
             </button>
-          </div>
+          </aside>
         </section>
       )}
       {view === "history" && (
@@ -781,33 +834,48 @@ export function EvaluationsWorkbench() {
       )}
       {view === "detail" && detail.data && (
         <section className={panelClass}>
-          <RunSummary detail={detail.data} />
-          <label className="mt-4 block max-w-lg text-sm">
-            Reference run for this candidate
-            <select
-              className={inputClass}
-              value={compareId}
-              onChange={(event) => {
-                setCompareId(event.target.value);
-                setFilter("all");
-              }}
-            >
-              <option value="">No comparison</option>
-              {runs.data?.items
-                .filter((run) => run.id !== runId)
-                .map((run) => (
-                  <option key={run.id} value={run.id}>
-                    {run.config.prompt_name} v{run.config.prompt_version} ·{" "}
-                    {new Date(run.created_at).toLocaleString()}
-                  </option>
-                ))}
-              {compareId &&
-                !runs.data?.items.some((run) => run.id === compareId) && (
-                  <option value={compareId}>Selected comparison</option>
-                )}
-            </select>
-          </label>
-          <div className="flex flex-wrap gap-3 mt-3">
+          <div className="grid gap-4 xl:grid-cols-2">
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-(--muted-foreground)">
+                {comparison.data ? "Candidate run" : "Selected run"}
+              </p>
+              <RunSummary detail={detail.data} />
+            </div>
+            {comparison.data && (
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-(--muted-foreground)">
+                  Reference run
+                </p>
+                <RunSummary detail={comparison.data} />
+              </div>
+            )}
+          </div>
+          <div className="table-toolbar mt-4">
+            <label className="min-w-48 flex-1 text-xs">
+              Reference run for this candidate
+              <select
+                className={inputClass}
+                value={compareId}
+                onChange={(event) => {
+                  setCompareId(event.target.value);
+                  setFilter("all");
+                }}
+              >
+                <option value="">No comparison</option>
+                {runs.data?.items
+                  .filter((run) => run.id !== runId)
+                  .map((run) => (
+                    <option key={run.id} value={run.id}>
+                      {run.config.prompt_name} v{run.config.prompt_version} ·{" "}
+                      {new Date(run.created_at).toLocaleString()}
+                    </option>
+                  ))}
+                {compareId &&
+                  !runs.data?.items.some((run) => run.id === compareId) && (
+                    <option value={compareId}>Selected comparison</option>
+                  )}
+              </select>
+            </label>
             {isActive(detail.data.run) && (
               <button
                 disabled={busy}
@@ -875,6 +943,8 @@ export function EvaluationsWorkbench() {
                 : undefined
             }
             filter={filter}
+            selectedCaseIndex={caseIndex}
+            onSelectCase={setCaseIndex}
           />
         </section>
       )}

@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useUnsavedChanges } from "@/lib/use-unsaved-changes";
@@ -66,6 +66,10 @@ export function DatasetsWorkbench() {
   );
   const [caseView, setCaseView] = useState<"table" | "json">("table");
   const [caseIndex, setCaseIndex] = useState<number | null>(null);
+  const casePanel = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (caseIndex !== null) casePanel.current?.focus();
+  }, [caseIndex]);
   const [caseDraft, setCaseDraft] = useState<{
     name: string;
     inputs: string;
@@ -295,7 +299,7 @@ export function DatasetsWorkbench() {
           {message}
         </p>
       )}
-      <div className="grid lg:grid-cols-[280px_1fr] gap-6">
+      <div className="grid lg:grid-cols-[220px_minmax(0,1fr)] gap-4">
         <aside className="space-y-3">
           <label className="text-sm flex gap-2">
             <input
@@ -324,7 +328,7 @@ export function DatasetsWorkbench() {
           )}
           {list.data?.items.map((item) => (
             <button
-              className="w-full rounded-xl border border-(--border) p-3 text-left disabled:opacity-40"
+              className="w-full rounded-md border border-(--border) p-2.5 text-left disabled:opacity-40"
               key={item.id}
               disabled={busy || dirty}
               onClick={() => act(async () => load(await getDataset(item.id)))}
@@ -336,25 +340,27 @@ export function DatasetsWorkbench() {
               </span>
             </button>
           ))}
-          <div className="flex gap-2">
-            <button
-              className="btn-secondary"
-              disabled={!offset}
-              onClick={() => setOffset(Math.max(0, offset - 50))}
-            >
-              Previous
-            </button>
-            <button
-              className="btn-secondary"
-              disabled={!list.data || offset + 50 >= list.data.total}
-              onClick={() => setOffset(offset + 50)}
-            >
-              Next
-            </button>
-          </div>
+          {(offset > 0 || (list.data?.total ?? 0) > 50) && (
+            <div className="flex gap-2">
+              <button
+                className="btn-secondary"
+                disabled={!offset}
+                onClick={() => setOffset(Math.max(0, offset - 50))}
+              >
+                Previous
+              </button>
+              <button
+                className="btn-secondary"
+                disabled={!list.data || offset + 50 >= list.data.total}
+                onClick={() => setOffset(offset + 50)}
+              >
+                Next
+              </button>
+            </div>
+          )}
         </aside>
         {editing ? (
-          <section className="space-y-4 rounded-xl border border-(--border) p-5">
+          <section className="panel workbench-panel min-w-0 space-y-4">
             <div className="flex flex-wrap gap-3 items-center">
               <h2 className="font-semibold">
                 {selected
@@ -383,6 +389,134 @@ export function DatasetsWorkbench() {
                 </button>
               )}
             </div>
+            <div className="workbench-actions">
+              <button
+                className="btn-primary"
+                disabled={
+                  busy ||
+                  caseDraftDirty ||
+                  selected?.dataset.archived ||
+                  !name.trim() ||
+                  (!!selected && !dirty && !restoringRevision)
+                }
+                onClick={save}
+              >
+                {busy
+                  ? "Saving…"
+                  : selected
+                    ? "Save changes"
+                    : "Create dataset"}
+              </button>
+              {selected && (
+                <>
+                  <button
+                    className={buttonClass}
+                    disabled={busy || dirty}
+                    onClick={() =>
+                      act(async () => {
+                        const updated = await updateDataset(
+                          selected.dataset.id,
+                          { archived: !selected.dataset.archived },
+                        );
+                        setSelected({ ...selected, dataset: updated });
+                        await cache.invalidateQueries({
+                          queryKey: ["datasets"],
+                        });
+                      })
+                    }
+                  >
+                    {selected.dataset.archived ? "Restore" : "Archive"}
+                  </button>
+                  <button
+                    className={buttonClass}
+                    onClick={() =>
+                      exportJson(
+                        `dataset-v${selected.revision.version}.json`,
+                        selected.revision.cases,
+                      )
+                    }
+                  >
+                    Export saved revision
+                  </button>
+                  <button
+                    className={buttonClass}
+                    disabled={
+                      busy || hasDraftChanges || selected.dataset.archived
+                    }
+                    onClick={() =>
+                      router.push(
+                        `/evaluations?${new URLSearchParams({ view: "new", dataset: selected.dataset.id, revision: selected.revision.id })}`,
+                      )
+                    }
+                  >
+                    Evaluate this revision
+                  </button>
+                  {hasDraftChanges && (
+                    <p className="text-xs text-(--muted-foreground)">
+                      Save or discard your draft before evaluating the selected
+                      revision.
+                    </p>
+                  )}
+                </>
+              )}
+            </div>
+            {selected && (
+              <details className="text-sm">
+                <summary className="cursor-pointer text-xs font-medium">
+                  Saved revisions · viewing v{selected.revision.version}
+                </summary>
+                {history.error && (
+                  <p role="alert">{errorText(history.error)}</p>
+                )}
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {history.data?.map((revision) => (
+                    <button
+                      key={revision.id}
+                      disabled={dirty || busy}
+                      className={buttonClass}
+                      onClick={() => {
+                        setSelected({ ...selected, revision });
+                        setText(pretty(revision.cases));
+                        setCaseIndex(null);
+                        setCaseDraft(null);
+                        window.history.replaceState(
+                          null,
+                          "",
+                          `/datasets?${new URLSearchParams({ dataset: selected.dataset.id, revision: revision.id })}`,
+                        );
+                      }}
+                    >
+                      v{revision.version} · {revision.cases.length} cases
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-(--muted-foreground) mt-2">
+                  Selecting an older revision loads it as a draft; saving
+                  creates a new revision. Discard unsaved changes before
+                  switching.
+                </p>
+                {(historyOffset > 0 || history.data?.length === 50) && (
+                  <div className="table-pagination">
+                    <button
+                      className="btn-secondary"
+                      disabled={!historyOffset}
+                      onClick={() =>
+                        setHistoryOffset(Math.max(0, historyOffset - 50))
+                      }
+                    >
+                      Newer revisions
+                    </button>
+                    <button
+                      className="btn-secondary"
+                      disabled={history.data?.length !== 50}
+                      onClick={() => setHistoryOffset(historyOffset + 50)}
+                    >
+                      Older revisions
+                    </button>
+                  </div>
+                )}
+              </details>
+            )}
             <label className="block text-sm">
               Dataset name
               <input
@@ -394,16 +528,21 @@ export function DatasetsWorkbench() {
                 disabled={selected?.dataset.archived || busy}
               />
             </label>
-            <label className="block text-sm">
-              Description
-              <textarea
-                className={inputClass}
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                maxLength={4000}
-                disabled={selected?.dataset.archived || busy}
-              />
-            </label>
+            <details>
+              <summary className="cursor-pointer text-xs text-(--muted-foreground)">
+                Dataset description
+              </summary>
+              <label className="block text-sm">
+                Description
+                <textarea
+                  className={inputClass}
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  maxLength={4000}
+                  disabled={selected?.dataset.archived || busy}
+                />
+              </label>
+            </details>
             <div className="flex flex-wrap items-center justify-between gap-3 border-t border-(--border) pt-4">
               <div>
                 <h3 className="font-medium">Cases</h3>
@@ -443,114 +582,125 @@ export function DatasetsWorkbench() {
                 />
               </label>
             ) : (
-              <div className="space-y-3">
-                {!cases && (
-                  <p role="alert" className="text-sm text-(--destructive)">
-                    The draft is not a JSON array. Correct it in Advanced JSON.
-                  </p>
-                )}
-                {cases && (
-                  <div className="overflow-x-auto rounded-lg border border-(--border)">
-                    <table className="w-full min-w-[560px] text-left text-sm">
-                      <thead>
-                        <tr className="border-b border-(--border)">
-                          <th className="p-3">Case</th>
-                          <th className="p-3">Inputs</th>
-                          <th className="p-3">Reference</th>
-                          <th className="p-3">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {cases.map((row, index) => (
-                          <tr
-                            key={index}
-                            className="border-b border-(--border) last:border-0"
-                          >
-                            <td className="p-3">
-                              <button
-                                type="button"
-                                className="font-medium text-(--primary) hover:underline"
-                                disabled={caseDraftDirty && caseIndex !== index}
-                                onClick={() => openCase(index)}
-                              >
-                                {row.name || `Case ${index + 1}`}
-                              </button>
-                            </td>
-                            <td className="max-w-64 truncate p-3 font-mono text-xs">
-                              {JSON.stringify(row.inputs)}
-                            </td>
-                            <td className="max-w-64 truncate p-3">
-                              {row.expected_output ?? "No reference"}
-                            </td>
-                            <td className="p-3">
-                              <div className="flex gap-2">
-                                <button
-                                  type="button"
-                                  className="btn-ghost min-h-8! px-2! text-xs!"
-                                  disabled={
-                                    !!selected?.dataset.archived ||
-                                    busy ||
-                                    caseDraftDirty
-                                  }
-                                  onClick={() =>
-                                    updateCases([
-                                      ...cases.slice(0, index + 1),
-                                      structuredClone(row),
-                                      ...cases.slice(index + 1),
-                                    ])
-                                  }
-                                >
-                                  Duplicate
-                                </button>
-                                <button
-                                  type="button"
-                                  className="btn-ghost min-h-8! px-2! text-xs!"
-                                  disabled={
-                                    !!selected?.dataset.archived ||
-                                    busy ||
-                                    caseDraftDirty
-                                  }
-                                  onClick={() =>
-                                    updateCases(
-                                      cases.filter(
-                                        (_, rowIndex) => rowIndex !== index,
-                                      ),
-                                    )
-                                  }
-                                >
-                                  Remove
-                                </button>
-                              </div>
-                            </td>
+              <div className={caseDraft ? "case-inspection" : "space-y-3"}>
+                <div className="min-w-0 space-y-3">
+                  {!cases && (
+                    <p role="alert" className="text-sm text-(--destructive)">
+                      The draft is not a JSON array. Correct it in Advanced
+                      JSON.
+                    </p>
+                  )}
+                  {cases && (
+                    <div className="case-table">
+                      <table className="w-full min-w-[560px] text-left text-sm">
+                        <thead>
+                          <tr className="border-b border-(--border)">
+                            <th className="p-3">Case</th>
+                            <th className="p-3">Inputs</th>
+                            <th className="p-3">Reference</th>
+                            <th className="p-3">Actions</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-                {cases && (
-                  <button
-                    type="button"
-                    className={buttonClass}
-                    disabled={
-                      !!selected?.dataset.archived ||
-                      busy ||
-                      caseDraftDirty ||
-                      cases.length >= 100
-                    }
-                    onClick={() => {
-                      const next = [
-                        ...cases,
-                        { name: "", inputs: {}, expected_output: null },
-                      ];
-                      updateCases(next);
-                    }}
-                  >
-                    Add case
-                  </button>
-                )}
+                        </thead>
+                        <tbody>
+                          {cases.map((row, index) => (
+                            <tr
+                              key={index}
+                              aria-selected={caseIndex === index}
+                              className="border-b border-(--border) last:border-0"
+                            >
+                              <td className="p-3">
+                                <button
+                                  type="button"
+                                  className="font-medium text-(--primary) hover:underline"
+                                  disabled={
+                                    caseDraftDirty && caseIndex !== index
+                                  }
+                                  onClick={() => openCase(index)}
+                                >
+                                  {row.name || `Case ${index + 1}`}
+                                </button>
+                              </td>
+                              <td className="max-w-64 truncate p-3 font-mono text-xs">
+                                {JSON.stringify(row.inputs)}
+                              </td>
+                              <td className="max-w-64 truncate p-3">
+                                {row.expected_output ?? "No reference"}
+                              </td>
+                              <td className="p-3">
+                                <div className="flex gap-2">
+                                  <button
+                                    type="button"
+                                    className="btn-ghost min-h-8! px-2! text-xs!"
+                                    disabled={
+                                      !!selected?.dataset.archived ||
+                                      busy ||
+                                      caseDraftDirty
+                                    }
+                                    onClick={() =>
+                                      updateCases([
+                                        ...cases.slice(0, index + 1),
+                                        structuredClone(row),
+                                        ...cases.slice(index + 1),
+                                      ])
+                                    }
+                                  >
+                                    Duplicate
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="btn-ghost min-h-8! px-2! text-xs!"
+                                    disabled={
+                                      !!selected?.dataset.archived ||
+                                      busy ||
+                                      caseDraftDirty
+                                    }
+                                    onClick={() =>
+                                      updateCases(
+                                        cases.filter(
+                                          (_, rowIndex) => rowIndex !== index,
+                                        ),
+                                      )
+                                    }
+                                  >
+                                    Remove
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                  {cases && (
+                    <button
+                      type="button"
+                      className={buttonClass}
+                      disabled={
+                        !!selected?.dataset.archived ||
+                        busy ||
+                        caseDraftDirty ||
+                        cases.length >= 100
+                      }
+                      onClick={() => {
+                        const next = [
+                          ...cases,
+                          { name: "", inputs: {}, expected_output: null },
+                        ];
+                        updateCases(next);
+                      }}
+                    >
+                      Add case
+                    </button>
+                  )}
+                </div>
                 {caseIndex !== null && caseDraft && (
-                  <div className="space-y-3 rounded-lg border border-(--border) p-4">
+                  <div
+                    ref={casePanel}
+                    tabIndex={-1}
+                    aria-label="Dataset case editor"
+                    className="case-detail space-y-3"
+                  >
                     <h4 className="font-medium">Edit case {caseIndex + 1}</h4>
                     <label className="block text-sm">
                       Name
@@ -628,77 +778,6 @@ export function DatasetsWorkbench() {
               null), and an optional name. Maximum 100 cases / 1 MB. Exact match
               requires a reference for every case.
             </p>
-            <div className="flex flex-wrap gap-3">
-              <button
-                className={buttonClass}
-                disabled={
-                  busy ||
-                  caseDraftDirty ||
-                  selected?.dataset.archived ||
-                  !name.trim() ||
-                  (!!selected && !dirty && !restoringRevision)
-                }
-                onClick={save}
-              >
-                {busy
-                  ? "Saving…"
-                  : selected
-                    ? "Save changes"
-                    : "Create dataset"}
-              </button>
-              {selected && (
-                <>
-                  <button
-                    className={buttonClass}
-                    disabled={busy || dirty}
-                    onClick={() =>
-                      act(async () => {
-                        const updated = await updateDataset(
-                          selected.dataset.id,
-                          { archived: !selected.dataset.archived },
-                        );
-                        setSelected({ ...selected, dataset: updated });
-                        await cache.invalidateQueries({
-                          queryKey: ["datasets"],
-                        });
-                      })
-                    }
-                  >
-                    {selected.dataset.archived ? "Restore" : "Archive"}
-                  </button>
-                  <button
-                    className={buttonClass}
-                    onClick={() =>
-                      exportJson(
-                        `dataset-v${selected.revision.version}.json`,
-                        selected.revision.cases,
-                      )
-                    }
-                  >
-                    Export saved revision
-                  </button>
-                  <button
-                    className={buttonClass}
-                    disabled={
-                      busy || hasDraftChanges || selected.dataset.archived
-                    }
-                    onClick={() =>
-                      router.push(
-                        `/evaluations?${new URLSearchParams({ view: "new", dataset: selected.dataset.id, revision: selected.revision.id })}`,
-                      )
-                    }
-                  >
-                    Evaluate this revision
-                  </button>
-                  {hasDraftChanges && (
-                    <p className="text-xs text-(--muted-foreground)">
-                      Save or discard your draft before evaluating the selected
-                      revision.
-                    </p>
-                  )}
-                </>
-              )}
-            </div>
             {!selected?.dataset.archived && (
               <details className="border-t border-(--border) pt-3">
                 <summary>Import CSV or JSON into this draft</summary>
@@ -800,59 +879,6 @@ export function DatasetsWorkbench() {
                   )}
                 </div>
               </details>
-            )}
-            {selected && (
-              <div className="border-t border-(--border) pt-3">
-                <h3 className="font-medium">Saved revisions</h3>
-                {history.error && (
-                  <p role="alert">{errorText(history.error)}</p>
-                )}
-                <div className="flex flex-wrap gap-2 mt-2">
-                  {history.data?.map((revision) => (
-                    <button
-                      key={revision.id}
-                      disabled={dirty || busy}
-                      className={buttonClass}
-                      onClick={() => {
-                        setSelected({ ...selected, revision });
-                        setText(pretty(revision.cases));
-                        setCaseIndex(null);
-                        setCaseDraft(null);
-                        window.history.replaceState(
-                          null,
-                          "",
-                          `/datasets?${new URLSearchParams({ dataset: selected.dataset.id, revision: revision.id })}`,
-                        );
-                      }}
-                    >
-                      v{revision.version} · {revision.cases.length} cases
-                    </button>
-                  ))}
-                </div>
-                <p className="text-xs text-(--muted-foreground) mt-2">
-                  Selecting an older revision loads it as a draft; saving
-                  creates a new revision. Discard unsaved changes before
-                  switching.
-                </p>
-                <div className="flex gap-3">
-                  <button
-                    className="btn-secondary"
-                    disabled={!historyOffset}
-                    onClick={() =>
-                      setHistoryOffset(Math.max(0, historyOffset - 50))
-                    }
-                  >
-                    Newer revisions
-                  </button>
-                  <button
-                    className="btn-secondary"
-                    disabled={history.data?.length !== 50}
-                    onClick={() => setHistoryOffset(historyOffset + 50)}
-                  >
-                    Older revisions
-                  </button>
-                </div>
-              </div>
             )}
           </section>
         ) : (

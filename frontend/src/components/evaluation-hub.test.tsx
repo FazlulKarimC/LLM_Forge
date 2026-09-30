@@ -160,6 +160,7 @@ describe("dataset editor", () => {
     mocks.updateDataset.mockResolvedValue({ ...dataset, latest_version: 3 });
     mount(<DatasetsWorkbench />);
     fireEvent.click(await screen.findByText("Greetings"));
+    fireEvent.click(await screen.findByText(/Saved revisions/));
     fireEvent.click(await screen.findByText("v1 · 1 cases"));
     fireEvent.click(screen.getByText("Save changes"));
     await waitFor(() =>
@@ -176,6 +177,7 @@ describe("dataset editor", () => {
     mocks.listRevisions.mockResolvedValue([latest, revision]);
     mount(<DatasetsWorkbench />);
     fireEvent.click(await screen.findByText("Greetings"));
+    fireEvent.click(await screen.findByText(/Saved revisions/));
     fireEvent.click(
       await screen.findByRole("button", { name: "v1 · 1 cases" }),
     );
@@ -313,6 +315,40 @@ describe("evaluation UI", () => {
     );
     expect(screen.getByLabelText("Dataset revision")).toHaveValue("revision");
     expect(window.location.search).toContain("version=version");
+  });
+  it("restores the inspected case and keeps selection and filters in the URL", async () => {
+    const farewell = {
+      ...result,
+      case_index: 1,
+      name: "Farewell",
+      inputs: { query: "Goodbye" },
+      expected_output: "Goodbye",
+      output: "Goodbye",
+    };
+    mocks.getEvaluation.mockResolvedValue({
+      run: { ...run, total: 2, completed: 2, passed: 2 },
+      results: [result, farewell],
+    });
+    window.history.replaceState(null, "", "/evaluations?run=run&case=1");
+    mount(<EvaluationsWorkbench />);
+    expect(
+      await screen.findByRole("heading", { name: "Farewell" }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Greeting" }));
+    await waitFor(() => expect(window.location.search).toContain("case=0"));
+    expect(screen.getByLabelText("Selected case details")).toHaveFocus();
+    fireEvent.change(screen.getByLabelText("Cases"), {
+      target: { value: "passed" },
+    });
+    await waitFor(() =>
+      expect(window.location.search).toContain("filter=passed"),
+    );
+    window.history.replaceState(null, "", "/evaluations?run=run&case=1");
+    fireEvent.popState(window);
+    expect(
+      await screen.findByRole("heading", { name: "Farewell" }),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Cases")).toHaveValue("all");
   });
   it("starts a live run with saved IDs, clears the key, and displays results", async () => {
     mount(<EvaluationsWorkbench />);

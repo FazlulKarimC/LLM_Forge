@@ -1,17 +1,15 @@
 "use client";
-
 import Link from "next/link";
 import { useDeferredValue, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Plus, Search } from "lucide-react";
-import { PageHeader } from "@/components/ui/primitives";
+import { PageHeader, TableToolbar } from "@/components/ui/primitives";
 import {
   ErrorMessage,
   errorText,
   inputClass,
 } from "@/components/prompts/prompt-ui";
 import { listPrompts } from "@/lib/prompt-api";
-
 export default function PromptsPage() {
   const [search, setSearch] = useState("");
   const [archived, setArchived] = useState(false);
@@ -22,7 +20,6 @@ export default function PromptsPage() {
     queryFn: ({ signal }) =>
       listPrompts(deferredSearch, archived, offset, signal),
   });
-
   return (
     <div className="page-stack">
       <PageHeader
@@ -36,7 +33,7 @@ export default function PromptsPage() {
           </Link>
         }
       />
-      <div className="flex flex-wrap items-end gap-4">
+      <TableToolbar>
         <label className="min-w-48 flex-1 text-sm">
           <span className="inline-flex items-center gap-2">
             <Search className="size-4" />
@@ -67,7 +64,7 @@ export default function PromptsPage() {
             <option value="true">Archived prompts</option>
           </select>
         </label>
-      </div>
+      </TableToolbar>
       <ErrorMessage message={query.error ? errorText(query.error) : null} />
       {query.error && (
         <button

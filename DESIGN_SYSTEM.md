@@ -78,7 +78,7 @@ Headings automatically apply `font-family: var(--font-display)` and `letter-spac
 
 | Token | Value | Usage |
 |-------|-------|-------|
-| `--sidebar-width` | `264px` | Sidebar nav width |
+| `--sidebar-width` | `232px` | Sidebar nav width |
 | `.page-width` | `min(100%, 1180px)` generally; up to `1600px` in `.app-shell` | Content max-width, centred |
 | `.page-stack` | `flex-direction: column; gap: 1.5rem` | Vertical page content flow |
 
@@ -406,3 +406,27 @@ The app shell (`app-shell.tsx`) provides:
 | Data rows | Background-colour on hover | 160ms spring |
 | Page background | Radial gradients (top-left gold, top-right teal) | Static |
 | Grid overlay | 24px dot grid, fades radially | Static, `opacity: 0.1` |
+
+## Workspace placement (October 2026)
+
+The workspace uses compact layout rules scoped to `.app-shell`. The earlier decorative sizes in this guide describe the public/marketing base; workspace controls and panels use the overrides below.
+
+| Pattern | Workspace rule |
+| --- | --- |
+| Page identity | 25.6px desktop title, short context label, inline primary actions; no eyebrow card |
+| Navigation | 232px sidebar, compact 36px rows, utilities anchored below the main workflow |
+| Controls | 34px desktop minimum height, 40px on narrow screens, 7px radius; visible accent focus |
+| Panels | 10px radius, flat surface, 16px internal padding |
+| Collection | `TableToolbar` above a table, `PageControls` below; no pagination controls for a single page |
+| Editor | `.prompt-workspace` pairs template and playground; comparison mode expands the playground |
+| Tabs | `.workspace-tabs` and `.workspace-tab` use quiet underline selection with an accessible current-page state |
+| Inputs | `.workbench-input` is shared by prompt/dataset/evaluation forms and Settings |
+| Evaluation setup | Three grouped form sections; `.evaluation-summary` keeps configuration and Start visible |
+| Case inspection | `.case-inspection` pairs table and `.case-detail` on wide screens and stacks them below 1100px |
+| Feedback | Semantic status text and alerts; color alone never identifies an outcome |
+
+Light mode uses darker semantic text shades for links, success, warning, errors, and focus accents. The warm primary button background remains distinct from the darker `--primary-text` used for inline links.
+
+Saved prompt metadata belongs in Settings; template format, draft/saved state, and version notes belong with editing. Each playground model groups its provider/model controls with its last-run output. Shared generation parameters live in an expandable section. Runs compare an explicitly labeled candidate and reference; case filters and the inspected case are represented in the URL.
+
+Do not add an application-wide filter that only filters one loaded page. Retain the distinction between drafts, immutable versions/revisions, and release labels. Use real demo data to verify result placement and keep provider credentials out of saved run configuration.

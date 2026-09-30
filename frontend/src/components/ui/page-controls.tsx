@@ -7,8 +7,9 @@ export function PageControls({
   next: boolean;
   change: (value: number) => void;
 }) {
+  if (!offset && !next) return null;
   return (
-    <div className="mt-2 flex flex-wrap gap-2">
+    <div className="table-pagination">
       <button
         type="button"
         className="btn-secondary"

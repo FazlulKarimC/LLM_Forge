@@ -24,10 +24,8 @@ import {
 } from "@/lib/prompt-api";
 import { PromptPlayground } from "./prompt-playground";
 import { ErrorMessage, errorText, inputClass, panelClass } from "./prompt-ui";
-
 const DEFAULT_TEMPLATE =
   "Answer the following question clearly and concisely.\n\nQuestion: {{query}}\nAnswer:";
-
 export function PromptWorkbench({ initial }: { initial?: PromptDetail }) {
   const router = useRouter();
   const cache = useQueryClient();
@@ -45,6 +43,7 @@ export function PromptWorkbench({ initial }: { initial?: PromptDetail }) {
   const [format, setFormat] = useState<TemplateFormat>(
     initial?.version.template_format ?? "mustache",
   );
+  const [widePlayground, setWidePlayground] = useState(false);
   const [notes, setNotes] = useState("");
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -87,7 +86,6 @@ export function PromptWorkbench({ initial }: { initial?: PromptDetail }) {
   const integrationInputs = Object.fromEntries(
     (selected?.variables ?? []).map((variable) => [variable, "example"]),
   );
-
   async function action(kind: string, work: () => Promise<void>) {
     if (pending) return;
     setPending(kind);
@@ -161,15 +159,14 @@ export function PromptWorkbench({ initial }: { initial?: PromptDetail }) {
       await refresh();
     });
   }
-
   return (
-    <div className="space-y-6">
+    <div className="page-stack prompt-page">
       <PageHeader
         backHref="/prompts"
         backLabel="All prompts"
         eyebrow={prompt?.archived ? "Archived prompt" : "Prompt engineering"}
         title={prompt ? prompt.name : "Create a prompt"}
-        description="Saved versions are immutable. Test your draft in the playground, then choose which saved version your application receives."
+        description="Edit and test a draft. Save a version when it is ready to evaluate or release."
         actions={
           <>
             <button
@@ -220,10 +217,7 @@ export function PromptWorkbench({ initial }: { initial?: PromptDetail }) {
         </p>
       ) : null}
       {prompt && (
-        <nav
-          aria-label="Prompt workspace sections"
-          className="flex flex-wrap gap-2 border-b border-(--border) pb-3"
-        >
+        <nav aria-label="Prompt workspace sections" className="workspace-tabs">
           {(
             [
               ["editor", "Editor & playground"],
@@ -237,7 +231,7 @@ export function PromptWorkbench({ initial }: { initial?: PromptDetail }) {
               key={value}
               type="button"
               aria-current={tab === value ? "page" : undefined}
-              className={tab === value ? "btn-primary" : "btn-secondary"}
+              className="workspace-tab"
               onClick={() => setTab(value)}
             >
               {label}
@@ -248,11 +242,13 @@ export function PromptWorkbench({ initial }: { initial?: PromptDetail }) {
       <div
         className={
           tab === "editor"
-            ? "grid items-start gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]"
+            ? widePlayground
+              ? "prompt-workspace prompt-workspace-wide"
+              : "prompt-workspace"
             : "grid grid-cols-1"
         }
       >
-        <div className="space-y-6">
+        <div className="min-w-0 space-y-4">
           {tab === "editor" && (
             <section className={`${panelClass} space-y-4`}>
               <h2 className="text-xl font-semibold">
@@ -260,57 +256,33 @@ export function PromptWorkbench({ initial }: { initial?: PromptDetail }) {
                   ? `Editor · v${selected.version}${dirty ? " · unsaved changes" : ""}`
                   : "Prompt editor"}
               </h2>
-              <label className="block text-sm">
-                Prompt name
-                <input
-                  className={inputClass}
-                  value={name}
-                  maxLength={255}
-                  onChange={(event) => setName(event.target.value)}
-                  disabled={!!pending || !!prompt?.archived}
-                  placeholder="support-answer"
-                />
-              </label>
-              <label className="block text-sm">
-                Description
-                <textarea
-                  className={inputClass}
-                  value={description}
-                  rows={2}
-                  maxLength={4000}
-                  onChange={(event) => setDescription(event.target.value)}
-                  disabled={!!pending || !!prompt?.archived}
-                  placeholder="What this prompt is used for"
-                />
-              </label>
-              {prompt ? (
-                <button
-                  className="btn-secondary"
-                  disabled={
-                    !!pending ||
-                    prompt.archived ||
-                    (name === prompt.name &&
-                      description === prompt.description) ||
-                    !name.trim()
-                  }
-                  onClick={() =>
-                    action("metadata", async () => {
-                      setPrompt(
-                        await updatePrompt(prompt.id, {
-                          name: name.trim(),
-                          description,
-                        }),
-                      );
-                      setNotice("Prompt details updated.");
-                      await refresh();
-                    })
-                  }
-                >
-                  {pending === "metadata"
-                    ? "Updating…"
-                    : "Update name and description"}
-                </button>
-              ) : null}
+              {!prompt && (
+                <>
+                  <label className="block text-sm">
+                    Prompt name
+                    <input
+                      className={inputClass}
+                      value={name}
+                      maxLength={255}
+                      onChange={(event) => setName(event.target.value)}
+                      disabled={!!pending}
+                      placeholder="support-answer"
+                    />
+                  </label>
+                  <label className="block text-sm">
+                    Description
+                    <textarea
+                      className={inputClass}
+                      value={description}
+                      rows={2}
+                      maxLength={4000}
+                      onChange={(event) => setDescription(event.target.value)}
+                      disabled={!!pending}
+                      placeholder="What this prompt is used for"
+                    />
+                  </label>
+                </>
+              )}
               <label className="block text-sm">
                 Template format
                 <select
@@ -329,7 +301,7 @@ export function PromptWorkbench({ initial }: { initial?: PromptDetail }) {
                 Template
                 <textarea
                   aria-label="Prompt template"
-                  className={`${inputClass} min-h-64 font-mono leading-6`}
+                  className={`${inputClass} prompt-template font-mono leading-6`}
                   value={template}
                   maxLength={50_000}
                   spellCheck={false}
@@ -376,9 +348,14 @@ export function PromptWorkbench({ initial }: { initial?: PromptDetail }) {
                 </label>
               ) : null}
               {selected ? (
-                <p className="break-all text-xs text-(--muted-foreground)">
-                  Saved snapshot SHA-256: <code>{selected.sha256_hash}</code>
-                </p>
+                <details className="text-xs text-(--muted-foreground)">
+                  <summary className="cursor-pointer">
+                    Snapshot integrity
+                  </summary>
+                  <p className="mt-2 break-all">
+                    Saved snapshot SHA-256: <code>{selected.sha256_hash}</code>
+                  </p>
+                </details>
               ) : null}
             </section>
           )}
@@ -450,8 +427,13 @@ export function PromptWorkbench({ initial }: { initial?: PromptDetail }) {
             </section>
           ) : null}
         </div>
-        <div className="space-y-6">
-          {tab === "editor" && <PromptPlayground draft={draft} />}
+        <div className="min-w-0 space-y-4">
+          {tab === "editor" && (
+            <PromptPlayground
+              draft={draft}
+              onCompareChange={setWidePlayground}
+            />
+          )}
           {tab === "releases" && prompt && selected ? (
             <section className={`${panelClass} space-y-4`}>
               <h2 className="flex items-center gap-2 text-xl font-semibold">
@@ -550,6 +532,59 @@ export function PromptWorkbench({ initial }: { initial?: PromptDetail }) {
           ) : null}
           {tab === "settings" && prompt ? (
             <section className={`${panelClass} space-y-3`}>
+              <h2 className="text-sm font-semibold">Prompt details</h2>
+              <label className="block text-sm">
+                Prompt name
+                <input
+                  className={inputClass}
+                  value={name}
+                  maxLength={255}
+                  onChange={(event) => setName(event.target.value)}
+                  disabled={!!pending || !!prompt?.archived}
+                  placeholder="support-answer"
+                />
+              </label>
+              <label className="block text-sm">
+                Description
+                <textarea
+                  className={inputClass}
+                  value={description}
+                  rows={2}
+                  maxLength={4000}
+                  onChange={(event) => setDescription(event.target.value)}
+                  disabled={!!pending || !!prompt?.archived}
+                  placeholder="What this prompt is used for"
+                />
+              </label>
+              {prompt ? (
+                <button
+                  className="btn-secondary"
+                  disabled={
+                    !!pending ||
+                    prompt.archived ||
+                    (name === prompt.name &&
+                      description === prompt.description) ||
+                    !name.trim()
+                  }
+                  onClick={() =>
+                    action("metadata", async () => {
+                      setPrompt(
+                        await updatePrompt(prompt.id, {
+                          name: name.trim(),
+                          description,
+                        }),
+                      );
+                      setNotice("Prompt details updated.");
+                      await refresh();
+                    })
+                  }
+                >
+                  {pending === "metadata"
+                    ? "Updating…"
+                    : "Update name and description"}
+                </button>
+              ) : null}
+              <hr className="border-(--border)" />
               <h2 className="flex items-center gap-2 text-lg font-semibold">
                 <Archive className="size-4" />
                 {prompt.archived ? "Archived" : "Archive prompt"}

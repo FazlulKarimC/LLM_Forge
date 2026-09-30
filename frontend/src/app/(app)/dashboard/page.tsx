@@ -115,9 +115,9 @@ export default function DashboardPage() {
         </div>
       )}
       {empty ? (
-        <section className="panel p-6 sm:p-8">
+        <section className="panel p-4">
           <div className="section-label">First run</div>
-          <h2 className="mt-2 text-2xl font-semibold">
+          <h2 className="mt-1 text-lg font-semibold">
             See a prompt regression in minutes
           </h2>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-(--muted-foreground)">
@@ -125,7 +125,7 @@ export default function DashboardPage() {
             project. The demo echoes the compiled prompt, so it needs no model
             credits and does not measure model quality.
           </p>
-          <div className="mt-5 flex flex-wrap gap-3">
+          <div className="mt-3 flex flex-wrap gap-2">
             <button
               className="btn-primary"
               disabled={demo.isPending}
@@ -140,7 +140,7 @@ export default function DashboardPage() {
           </div>
         </section>
       ) : (
-        <section className="panel flex flex-wrap items-center justify-between gap-4 p-5">
+        <section className="panel flex flex-wrap items-center justify-between gap-3 p-4">
           <div>
             <h2 className="font-semibold">Continue testing</h2>
             <p className="mt-1 text-sm text-(--muted-foreground)">
@@ -192,7 +192,7 @@ export default function DashboardPage() {
             <Link
               key={item.label}
               href={item.href}
-              className="panel flex items-center justify-between p-5 transition-colors hover:border-(--border-strong)"
+              className="panel flex items-center justify-between p-3 transition-colors hover:border-(--border-strong)"
             >
               <div>
                 <p className="text-sm text-(--muted-foreground)">
@@ -210,7 +210,7 @@ export default function DashboardPage() {
 
       <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
         <section className="panel overflow-hidden">
-          <div className="flex items-center justify-between border-b border-(--border) px-5 py-4">
+          <div className="flex items-center justify-between border-b border-(--border) px-4 py-3">
             <div>
               <h2 className="font-semibold">Recent evaluations</h2>
               <p className="text-sm text-(--muted-foreground)">
@@ -240,7 +240,7 @@ export default function DashboardPage() {
                 <Link
                   key={run.id}
                   href={`/evaluations?run=${run.id}`}
-                  className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 hover:bg-(--surface-2)"
+                  className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 hover:bg-(--surface-2)"
                 >
                   <div className="min-w-0">
                     <p className="truncate text-sm font-semibold">
@@ -269,7 +269,7 @@ export default function DashboardPage() {
           )}
         </section>
         <section className="panel overflow-hidden">
-          <div className="flex items-center justify-between border-b border-(--border) px-5 py-4">
+          <div className="flex items-center justify-between border-b border-(--border) px-4 py-3">
             <div>
               <h2 className="font-semibold">Recent prompts</h2>
               <p className="text-sm text-(--muted-foreground)">
@@ -295,7 +295,7 @@ export default function DashboardPage() {
                 <Link
                   key={prompt.id}
                   href={`/prompts/${prompt.id}`}
-                  className="block px-5 py-4 hover:bg-(--surface-2)"
+                  className="block px-4 py-3 hover:bg-(--surface-2)"
                 >
                   <div className="flex justify-between gap-3">
                     <span className="truncate text-sm font-semibold">

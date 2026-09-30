@@ -1,8 +1,21 @@
 "use client";
 
-import { useEffect, useRef, useState, type HTMLAttributes, type ReactNode } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type HTMLAttributes,
+  type ReactNode,
+} from "react";
 import Link from "next/link";
-import { AlertTriangle, ArrowLeft, CheckCircle2, CircleDashed, LoaderCircle, PauseCircle } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowLeft,
+  CheckCircle2,
+  CircleDashed,
+  LoaderCircle,
+  PauseCircle,
+} from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -28,9 +41,13 @@ export function PanelHeader({
       <div className="space-y-1.5">
         {label ? <div className="section-label">{label}</div> : null}
         <div className="section-title">{title}</div>
-        {description ? <p className="section-description">{description}</p> : null}
+        {description ? (
+          <p className="section-description">{description}</p>
+        ) : null}
       </div>
-      {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
+      {actions ? (
+        <div className="flex flex-wrap items-center gap-2">{actions}</div>
+      ) : null}
     </div>
   );
 }
@@ -54,21 +71,60 @@ export function PageHeader({
 }) {
   return (
     <div className="page-header">
-      {backHref ? (
-        <Link href={backHref} className="inline-flex items-center gap-1.5 text-sm font-medium text-(--muted-foreground) transition-colors hover:text-foreground">
-          <ArrowLeft className="size-3.5" />
-          {backLabel || "Back"}
-        </Link>
-      ) : null}
-      {eyebrow ? <div className="page-eyebrow">{eyebrow}</div> : null}
+      <div className="page-context">
+        {backHref ? (
+          <Link
+            href={backHref}
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-(--muted-foreground) transition-colors hover:text-foreground"
+          >
+            <ArrowLeft className="size-3.5" />
+            {backLabel || "Back"}
+          </Link>
+        ) : null}
+        {eyebrow ? <div className="page-eyebrow">{eyebrow}</div> : null}
+      </div>
       <div className="page-header-row">
         <div className="space-y-3">
           <h1 className="page-title">{title}</h1>
-          {description ? <p className="page-description">{description}</p> : null}
+          {description ? (
+            <p className="page-description">{description}</p>
+          ) : null}
         </div>
-        {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
+        {actions ? (
+          <div className="flex flex-wrap items-center gap-2">{actions}</div>
+        ) : null}
       </div>
       {children}
+    </div>
+  );
+}
+
+export function TableToolbar({ children }: { children: ReactNode }) {
+  return <div className="table-toolbar">{children}</div>;
+}
+
+export function SectionHeading({
+  title,
+  description,
+  actions,
+}: {
+  title: string;
+  description?: string;
+  actions?: ReactNode;
+}) {
+  return (
+    <div className="workbench-heading">
+      <div>
+        <h2 className="text-sm font-semibold">{title}</h2>
+        {description && (
+          <p className="mt-1 text-xs text-(--muted-foreground)">
+            {description}
+          </p>
+        )}
+      </div>
+      {actions && (
+        <div className="flex flex-wrap items-center gap-2">{actions}</div>
+      )}
     </div>
   );
 }
@@ -81,13 +137,23 @@ const statusConfig = {
   failed: { icon: AlertTriangle, className: "status-failed" },
 } as const;
 
-export function StatusPill({ status }: { status: keyof typeof statusConfig | string }) {
-  const config = statusConfig[status as keyof typeof statusConfig] ?? statusConfig.pending;
+export function StatusPill({
+  status,
+}: {
+  status: keyof typeof statusConfig | string;
+}) {
+  const config =
+    statusConfig[status as keyof typeof statusConfig] ?? statusConfig.pending;
   const Icon = config.icon;
 
   return (
     <span className={cn("status-pill", config.className)}>
-      <Icon className={cn("size-3.5", status === "running" ? "animate-spin" : undefined)} />
+      <Icon
+        className={cn(
+          "size-3.5",
+          status === "running" ? "animate-spin" : undefined,
+        )}
+      />
       {status}
     </span>
   );
@@ -120,7 +186,9 @@ export function MetricCard({
   return (
     <div className={cn("metric-card", toneClass, className)}>
       <div className="metric-label">{label}</div>
-      <div className="text-3xl font-semibold tracking-[-0.06em] text-foreground">{value}</div>
+      <div className="text-3xl font-semibold tracking-[-0.06em] text-foreground">
+        {value}
+      </div>
       {detail ? <div className="metric-caption">{detail}</div> : null}
     </div>
   );
@@ -143,7 +211,9 @@ export function AnimatedNumber({
   suffix?: string;
   className?: string;
 }) {
-  const [display, setDisplay] = useState(`${prefix}${value.toFixed(decimals)}${suffix}`);
+  const [display, setDisplay] = useState(
+    `${prefix}${value.toFixed(decimals)}${suffix}`,
+  );
   const rafRef = useRef<number>(0);
 
   useEffect(() => {
@@ -201,7 +271,12 @@ export function EmptyState({
 }
 
 export function SkeletonBlock({ className }: { className?: string }) {
-  return <div className={cn("skeleton rounded-[16px]", className)} aria-hidden="true" />;
+  return (
+    <div
+      className={cn("skeleton rounded-[16px]", className)}
+      aria-hidden="true"
+    />
+  );
 }
 
 /**

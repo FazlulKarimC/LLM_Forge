@@ -77,10 +77,14 @@ export function ResultsGrid({
   detail,
   comparison,
   filter,
+  selectedCaseIndex,
+  onSelectCase,
 }: {
   detail: EvaluationDetail;
   comparison?: EvaluationDetail;
   filter: string;
+  selectedCaseIndex?: number | null;
+  onSelectCase?: (index: number) => void;
 }) {
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const priorCases = new Map(
@@ -109,7 +113,9 @@ export function ResultsGrid({
     return true;
   });
   const selected =
-    rows.find((result) => result.case_index === selectedIndex) ?? rows[0];
+    rows.find(
+      (result) => result.case_index === (selectedCaseIndex ?? selectedIndex),
+    ) ?? rows[0];
   const prior = selected && priorCases.get(selected.case_index);
   const sameChecks =
     JSON.stringify(detail.run.config.assertions ?? []) ===
@@ -119,14 +125,7 @@ export function ResultsGrid({
     <div className="mt-5 space-y-4">
       {comparison && (
         <div className="rounded-lg border border-(--border) p-4">
-          <p className="text-xs text-(--muted-foreground)">Reference run</p>
-          <p className="text-sm">
-            {comparison.run.config.prompt_name} v
-            {comparison.run.config.prompt_version} ·{" "}
-            {comparison.run.config.dataset_name} v
-            {comparison.run.config.dataset_version}
-          </p>
-          <p role="status" className="mt-2 text-sm">
+          <p role="status" className="text-sm">
             Compared with the selected run: {transitions.improved} improved,{" "}
             {transitions.regressed} regressed, {transitions.unchanged}{" "}
             unchanged, {transitions.errors} involving errors.
@@ -139,106 +138,121 @@ export function ResultsGrid({
           )}
         </div>
       )}
-      <div className="overflow-x-auto rounded-lg border border-(--border)">
-        <table className="w-full min-w-[620px] text-left text-sm">
-          <thead>
-            <tr className="border-b border-(--border) bg-(--muted)/30">
-              <th className="p-3">Case</th>
-              <th className="p-3">Result</th>
-              {comparison && <th className="p-3">Change</th>}
-              <th className="p-3">Latency</th>
-              <th className="p-3">Output preview</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((result) => (
-              <tr
-                key={result.case_index}
-                className="border-b border-(--border) last:border-0"
-              >
-                <td className="p-3">
-                  <button
-                    type="button"
-                    className="font-medium text-(--primary) hover:underline"
-                    onClick={() => setSelectedIndex(result.case_index)}
-                  >
-                    {result.name || `Case ${result.case_index + 1}`}
-                  </button>
-                </td>
-                <td className="p-3">
-                  {result.error
-                    ? "Error"
-                    : result.passed
-                      ? "Passed"
-                      : "Failed checks"}
-                </td>
-                {comparison && (
-                  <td className="p-3 capitalize">
-                    {transition(result, priorCases.get(result.case_index))}
-                  </td>
-                )}
-                <td className="p-3">
-                  {result.latency_ms == null
-                    ? "—"
-                    : `${result.latency_ms.toFixed(1)} ms`}
-                </td>
-                <td className="max-w-80 truncate p-3">
-                  {result.output || (result.error ? "—" : "Empty output")}
-                </td>
+      <div className={selected ? "case-inspection" : "space-y-4"}>
+        <div className="case-table">
+          <table className="w-full min-w-[500px] text-left text-sm">
+            <thead>
+              <tr className="border-b border-(--border) bg-(--muted)/30">
+                <th className="p-3">Case</th>
+                <th className="p-3">Result</th>
+                {comparison && <th className="p-3">Change</th>}
+                <th className="p-3">Latency</th>
+                <th className="p-3">Output preview</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-        {!rows.length && (
-          <p className="p-4 text-sm text-(--muted-foreground)">
-            No matching results yet.
-          </p>
-        )}
-      </div>
-      {selected && (
-        <section
-          className="rounded-lg border border-(--border) p-4"
-          aria-label="Selected case details"
-        >
-          <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
-            <h3 className="font-semibold">
-              {selected.name || `Case ${selected.case_index + 1}`}
-            </h3>
-            <p className="text-sm text-(--muted-foreground)">
-              Case {selected.case_index + 1} · {selected.tokens_input ?? "—"}{" "}
-              input tokens · {selected.tokens_output ?? "—"} output tokens
+            </thead>
+            <tbody>
+              {rows.map((result) => (
+                <tr
+                  key={result.case_index}
+                  aria-selected={selected?.case_index === result.case_index}
+                  className="border-b border-(--border) last:border-0"
+                >
+                  <td className="p-3">
+                    <button
+                      type="button"
+                      className="font-medium text-(--primary) hover:underline"
+                      onClick={() => {
+                        setSelectedIndex(result.case_index);
+                        onSelectCase?.(result.case_index);
+                        document
+                          .getElementById("selected-case-detail")
+                          ?.focus();
+                      }}
+                    >
+                      {result.name || `Case ${result.case_index + 1}`}
+                    </button>
+                  </td>
+                  <td className="p-3">
+                    {result.error
+                      ? "Error"
+                      : result.passed
+                        ? "Passed"
+                        : "Failed checks"}
+                  </td>
+                  {comparison && (
+                    <td className="p-3 capitalize">
+                      {transition(result, priorCases.get(result.case_index))}
+                    </td>
+                  )}
+                  <td className="p-3">
+                    {result.latency_ms == null
+                      ? "—"
+                      : `${result.latency_ms.toFixed(1)} ms`}
+                  </td>
+                  <td className="max-w-80 truncate p-3">
+                    {result.output || (result.error ? "—" : "Empty output")}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {!rows.length && (
+            <p className="p-4 text-sm text-(--muted-foreground)">
+              No matching results yet.
             </p>
-          </div>
-          <div className="grid gap-4 lg:grid-cols-2">
-            <DetailField
-              label="Inputs"
-              value={JSON.stringify(selected.inputs, null, 2)}
-            />
-            <DetailField
-              label="Reference output"
-              value={selected.expected_output ?? "No reference"}
-            />
-            <div>
-              <p className="mb-1 text-xs text-(--muted-foreground)">
-                Candidate output and checks
+          )}
+        </div>
+        {selected && (
+          <section
+            className="case-detail"
+            id="selected-case-detail"
+            tabIndex={-1}
+            aria-label="Selected case details"
+          >
+            <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
+              <h3 className="font-semibold">
+                {selected.name || `Case ${selected.case_index + 1}`}
+              </h3>
+              <p className="text-sm text-(--muted-foreground)">
+                Case {selected.case_index + 1} · {selected.tokens_input ?? "—"}{" "}
+                input tokens · {selected.tokens_output ?? "—"} output tokens
               </p>
-              <ResultCell result={selected} />
             </div>
-            {comparison && (
-              <div>
-                <p className="mb-1 text-xs text-(--muted-foreground)">
-                  Reference run output and checks
-                </p>
-                {prior ? (
-                  <ResultCell result={prior} />
-                ) : (
-                  <p className="text-sm">Not processed</p>
+            <div className="space-y-4">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <DetailField
+                  label="Inputs"
+                  value={JSON.stringify(selected.inputs, null, 2)}
+                />
+                <DetailField
+                  label="Reference output"
+                  value={selected.expected_output ?? "No reference"}
+                />
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <p className="mb-1 text-xs text-(--muted-foreground)">
+                    Candidate output and checks
+                  </p>
+                  <ResultCell result={selected} />
+                </div>
+                {comparison && (
+                  <div>
+                    <p className="mb-1 text-xs text-(--muted-foreground)">
+                      Reference run output and checks
+                    </p>
+                    {prior ? (
+                      <ResultCell result={prior} />
+                    ) : (
+                      <p className="text-sm">Not processed</p>
+                    )}
+                  </div>
                 )}
               </div>
-            )}
-          </div>
-        </section>
-      )}
+            </div>
+          </section>
+        )}
+      </div>
     </div>
   );
 }

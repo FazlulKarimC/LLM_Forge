@@ -5,6 +5,7 @@ import { UserButton } from "@clerk/nextjs";
 import { fetchAPI } from "@/lib/api-client";
 import { useWorkspace } from "@/components/workspace-provider";
 import { ProjectAPIKeys } from "@/components/prompts/project-api-keys";
+import { inputClass } from "@/components/prompts/prompt-ui";
 import { PageHeader } from "@/components/ui/primitives";
 
 export default function SettingsPage() {
@@ -46,10 +47,8 @@ export default function SettingsPage() {
     }
   }
 
-  const inputClass =
-    "mt-3 w-full rounded-xl border border-(--border) bg-(--surface-2) px-4 py-3 outline-none focus:border-(--primary)";
   return (
-    <div className="space-y-6">
+    <div className="page-stack settings-layout">
       <PageHeader
         eyebrow="Workspace"
         title="Settings"
@@ -58,7 +57,7 @@ export default function SettingsPage() {
       {error ? (
         <p
           role="alert"
-          className="rounded-xl border border-red-500/30 bg-red-500/10 p-4"
+          className="alert alert-danger"
         >
           {error}
         </p>
@@ -83,7 +82,7 @@ export default function SettingsPage() {
           Create projects in this organization or start a separate organization.
         </p>
       </div>
-      <section className="rounded-xl border border-(--border) bg-(--surface-1) p-6">
+      <section className="panel workbench-panel">
         <div className="flex items-center justify-between gap-4">
           <div>
             <h3 className="text-base font-semibold">{organization.name}</h3>
@@ -107,7 +106,7 @@ export default function SettingsPage() {
       <div className="grid gap-6 md:grid-cols-2">
         <form
           onSubmit={(event) => create(event, "project")}
-          className="rounded-xl border border-(--border) bg-(--surface-1) p-6"
+          className="panel workbench-panel"
         >
           <h2 className="text-xl font-semibold">Create a project</h2>
           <p className="mt-2 text-sm text-(--muted-foreground)">
@@ -141,7 +140,7 @@ export default function SettingsPage() {
         </form>
         <form
           onSubmit={(event) => create(event, "organization")}
-          className="rounded-xl border border-(--border) bg-(--surface-1) p-6"
+          className="panel workbench-panel"
         >
           <h2 className="text-xl font-semibold">Create an organization</h2>
           <p className="mt-2 text-sm text-(--muted-foreground)">
