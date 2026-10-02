@@ -30,7 +30,8 @@ def test_offline_cli_report_and_bad_counts(tmp_path, completed_run):
     assert main(["check", str(report), "--min-pass-rate", "NaN"]) == 2
 
 
-def test_cli_evaluate_writes_artifact(monkeypatch, tmp_path, completed_run):
+@pytest.mark.parametrize("label", ["latest", "experiment-a"])
+def test_cli_evaluate_writes_artifact(monkeypatch, tmp_path, completed_run, label):
     class FakeClient:
         def __enter__(self):
             return self
@@ -39,6 +40,7 @@ def test_cli_evaluate_writes_artifact(monkeypatch, tmp_path, completed_run):
             pass
 
         def get_prompt(self, *_args, **_kwargs):
+            assert _kwargs["label"] == label
             return Prompt("v", "p", "Echo", 1, "{{q}}", "mustache", ("q",))
 
         def get_dataset(self, *_args, **_kwargs):
@@ -59,6 +61,8 @@ def test_cli_evaluate_writes_artifact(monkeypatch, tmp_path, completed_run):
                 "evaluate",
                 "--prompt",
                 "Echo",
+                "--label",
+                label,
                 "--dataset",
                 "Cases",
                 "--output",

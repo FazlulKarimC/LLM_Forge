@@ -31,6 +31,7 @@ from app.models.worker_heartbeat import WorkerHeartbeatRecord
 from app.models.workspace import User, Organization, OrganizationMembership, Project
 from app.models.prompt import Prompt, PromptLabel, ProjectAPIKey
 from app.models.evaluation import Dataset, DatasetRevision, EvaluationRun, EvaluationResult
+from app.models.evaluator import Evaluator, EvaluatorVersion, EvaluationScore
 
 # Alembic Config object
 config = context.config

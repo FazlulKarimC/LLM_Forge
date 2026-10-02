@@ -49,7 +49,7 @@ def main(argv=None):
     evaluate = sub.add_parser("evaluate", help="Run saved prompt and dataset versions")
     evaluate.add_argument("--prompt", required=True)
     selector = evaluate.add_mutually_exclusive_group()
-    selector.add_argument("--label", choices=["staging", "production"])
+    selector.add_argument("--label", help="Release label, including custom labels or latest")
     selector.add_argument("--version", type=int)
     evaluate.add_argument("--dataset", required=True)
     evaluate.add_argument("--dataset-version", type=int)

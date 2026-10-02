@@ -4,7 +4,7 @@
 
 - A standalone Python 3.10+ package in `sdk/python`, imported as `llmforge`, with only HTTPX as a runtime dependency.
 - Fetch production/staging or pinned prompt versions, compile Mustache/restricted brace templates locally, and revalidate cached snapshots with ETags.
-- Evaluation-scoped project keys for dataset reads, bounded server-side runs, polling/cancellation, and external output/check/metric submissions.
+- Evaluation-scoped project keys for dataset/evaluator reads, pinned evaluator selections, bounded server-side runs, scoring saved outputs, polling/cancellation, and external output/check/metric submissions.
 - A CLI quality gate, JSON report export, a reusable GitHub Actions workflow, and SDK test/wheel-build jobs in repository CI.
 - Public `/docs`, an updated landing page describing the actual prompt workflow, and runnable Python examples.
 
@@ -48,6 +48,8 @@ These variables belong to the SDK process; the dashboard continues using Clerk. 
 For a real use case, replace local echo with your application's support-ticket classifier, use a saved JSON-label dataset and JSON-path assertions, and compare the candidate with a prior prompt version. Optional judges call a separate configured provider and return a rubric score/reason. Judge scores remain model opinions.
 
 See [SDK reference](../sdk/python/README.md) for method signatures, wait behavior, secret handling and examples. Submission payloads are limited to 1 MB, 100 results and 20 finite named metrics. Each case needs exactly one result, with an output/check set or error. The backend derives pass/error counts from the submitted checks; external scores and metrics remain self-reported.
+
+Use `list_evaluators()` to discover saved definitions created in the dashboard. Pass pinned version IDs to `start_evaluation(..., assertions=[], evaluators=[...])`, or use `score_evaluation(completed_run_id, evaluators)` to create a new scoring run over saved outputs without generation. Returned `Evaluation.score_summary` includes typed metric coverage and measured means/category counts. Required evaluators gate pass/fail; informational metrics remain visible independently. SDK keys cannot edit the library. Custom/latest prompt labels are accepted by `--label`; `--version` remains the reproducible CLI default. Multi-metric gates and arbitrary task/evaluator callbacks remain deferred.
 
 ## CI/CD integration
 

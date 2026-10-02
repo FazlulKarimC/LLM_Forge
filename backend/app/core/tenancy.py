@@ -57,6 +57,7 @@ def scope_project_queries(state):
     from app.models.background_job import BackgroundJobRecord
     from app.models.prompt import Prompt, PromptLabel, ProjectAPIKey
     from app.models.evaluation import Dataset, DatasetRevision, EvaluationRun, EvaluationResult
+    from app.models.evaluator import Evaluator, EvaluatorVersion, EvaluationScore
 
     # Covers legacy aggregates, exports, comparisons and ORM UPDATE/DELETE too.
     experiment_ids = select(Experiment.id).where(Experiment.project_id == project_id, Experiment.deleted_at.is_(None))
@@ -65,6 +66,9 @@ def scope_project_queries(state):
         with_loader_criteria(DatasetRevision, DatasetRevision.project_id == project_id, include_aliases=True),
         with_loader_criteria(EvaluationRun, EvaluationRun.project_id == project_id, include_aliases=True),
         with_loader_criteria(EvaluationResult, EvaluationResult.project_id == project_id, include_aliases=True),
+        with_loader_criteria(Evaluator, Evaluator.project_id == project_id, include_aliases=True),
+        with_loader_criteria(EvaluatorVersion, EvaluatorVersion.project_id == project_id, include_aliases=True),
+        with_loader_criteria(EvaluationScore, EvaluationScore.project_id == project_id, include_aliases=True),
         with_loader_criteria(Prompt, Prompt.project_id == project_id, include_aliases=True),
         with_loader_criteria(PromptLabel, PromptLabel.project_id == project_id, include_aliases=True),
         with_loader_criteria(ProjectAPIKey, ProjectAPIKey.project_id == project_id, include_aliases=True),
@@ -86,8 +90,9 @@ def scope_project_writes(session, _flush_context, _instances):
     from app.models.background_job import BackgroundJobRecord
     from app.models.prompt import Prompt, PromptLabel, ProjectAPIKey
     from app.models.evaluation import Dataset, DatasetRevision, EvaluationRun, EvaluationResult
+    from app.models.evaluator import Evaluator, EvaluatorVersion, EvaluationScore
     for obj in session.new:
-        if isinstance(obj, (Experiment, PromptVersion, BackgroundJobRecord, Prompt, PromptLabel, ProjectAPIKey, Dataset, DatasetRevision, EvaluationRun, EvaluationResult)):
+        if isinstance(obj, (Experiment, PromptVersion, BackgroundJobRecord, Prompt, PromptLabel, ProjectAPIKey, Dataset, DatasetRevision, EvaluationRun, EvaluationResult, Evaluator, EvaluatorVersion, EvaluationScore)):
             if obj.project_id is not None and obj.project_id != project_id:
                 raise ValueError("Cannot write to a different project")
             obj.project_id = project_id

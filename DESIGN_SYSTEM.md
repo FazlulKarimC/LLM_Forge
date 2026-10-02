@@ -431,6 +431,16 @@ Saved prompt metadata belongs in Settings; template format, draft/saved state, a
 
 Do not add an application-wide filter that only filters one loaded page. Retain the distinction between drafts, immutable versions/revisions, and release labels. Use real demo data to verify result placement and keep provider credentials out of saved run configuration.
 
+### Evaluation components
+
+- Keep Runs and Evaluators within the Evaluations workspace, with clear links between them. Reuse `PageHeader`, `.table-toolbar`, `.data-table`, `.workbench-input`, shared panels and pagination controls; avoid a separate visual language for evaluator configuration.
+- Put catalog search and archive filters above the evaluator table. Detail uses definition/version controls on the left and sample preview on the right, stacked on narrow screens. Score names, types, ranges/categories and passing rules need visible labels. Saving creates an immutable version; show stale-edit errors beside the preserved draft.
+- New-run setup distinguishes inline checks from saved evaluator versions. Selected rows show name/version, required versus informational policy and explicit judge-key fields. Show effective generation settings and generation/judge call counts next to Start. Apply supported saved prompt settings only through an explicit action.
+- Place saved-output scoring as a secondary expandable action on completed runs. Explain the new source-linked run and zero generation calls before starting. Existing outputs and prior scores remain accessible.
+- Put candidate/reference controls and compatibility warnings above results. Reference search is server-filtered to completed runs on the same dataset revision and paginated independently of history. Preserve selected run/case/filter state in the URL.
+- Score summaries show measured coverage, execution errors and missing values separately. Means exclude unscored cases; categorical values show distributions. Pair required/informational labels and pass/fail/error text with color. Numeric deltas require compatible scoring definitions; changed judge rubrics or evaluator versions must be visible.
+- Keep generation and judge usage distinguishable in case detail. Provider-key inputs use password fields and request-only help text; previews do not enter run history. Loading, empty, validation and provider-error states must remain visible and accessible.
+
 ### Prompt management components
 
 - Text/chat type is chosen during creation and remains visible, fixed, on saved prompts. Chat messages pair the role selector with the corresponding content field; reorder/remove controls stay on that message's row.

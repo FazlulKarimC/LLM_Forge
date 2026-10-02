@@ -52,6 +52,8 @@ async def load_inputs(db, prompt_version_id, dataset_revision_id, action):
 
 
 async def dispatch_evaluation(data, tasks, project_id, db):
+    from app.services.evaluator_service import prepare_evaluators, call_budget
+
     # Serialize admission within one project; two live runs is ample for a demo.
     await db.scalar(select(Project).where(Project.id == project_id).with_for_update())
     active = (
@@ -77,14 +79,32 @@ async def dispatch_evaluation(data, tasks, project_id, db):
             f"This run is limited to {maximum} cases; create a smaller dataset revision",
         )
     validate_assertions(data.assertions, revision.cases)
+    snapshots, evaluator_keys = await prepare_evaluators(
+        db, data.evaluators, revision.cases
+    )
+    budget = call_budget(
+        len(revision.cases), data.provider, snapshots, data.judge is not None
+    )
     for index, case in enumerate(revision.cases):
         try:
-            compile_prompt(version.template_text, version.messages, version.prompt_type, case["inputs"], version.template_format)
+            compile_prompt(
+                version.template_text,
+                version.messages,
+                version.prompt_type,
+                case["inputs"],
+                version.template_format,
+            )
         except ValueError as exc:
             raise HTTPException(422, f"Case {index + 1}: {exc}") from exc
     config = data.model_dump(
         mode="json",
-        exclude={"api_key", "judge", "prompt_version_id", "dataset_revision_id"},
+        exclude={
+            "api_key",
+            "judge",
+            "evaluators",
+            "prompt_version_id",
+            "dataset_revision_id",
+        },
     )
     if data.judge:
         config["judge"] = data.judge.model_dump(mode="json", exclude={"api_key"})
@@ -94,6 +114,8 @@ async def dispatch_evaluation(data, tasks, project_id, db):
         dataset_name=dataset.name,
         dataset_version=revision.version,
         is_mock=data.provider == "mock",
+        evaluators=snapshots,
+        call_budget=budget,
     )
     run = EvaluationRun(
         config=config,
@@ -115,11 +137,20 @@ async def dispatch_evaluation(data, tasks, project_id, db):
             "messages": version.messages,
         },
         revision.cases,
+        snapshots,
+        evaluator_keys,
     )
     return run_response(run)
 
 
-async def list_runs(db: AsyncSession, offset: int = 0, limit: int = 50):
+async def list_runs(
+    db: AsyncSession,
+    offset: int = 0,
+    limit: int = 50,
+    dataset_revision_id=None,
+    search="",
+    status=None,
+):
     # Reconcile abandoned runs only in this authorized project.
     active = (
         await db.scalars(
@@ -131,11 +162,22 @@ async def list_runs(db: AsyncSession, offset: int = 0, limit: int = 50):
     for run in active:
         await expire_run(run)
     await db.flush()
-    total = await db.scalar(select(func.count()).select_from(EvaluationRun))
+    query = select(EvaluationRun)
+    if dataset_revision_id:
+        query = query.where(EvaluationRun.dataset_revision_id == dataset_revision_id)
+    if status:
+        query = query.where(EvaluationRun.status == status)
+    if search:
+        escaped = search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        query = query.where(
+            EvaluationRun.config["prompt_name"]
+            .as_string()
+            .ilike(f"%{escaped}%", escape="\\")
+        )
+    total = await db.scalar(select(func.count()).select_from(query.subquery()))
     items = (
         await db.scalars(
-            select(EvaluationRun)
-            .order_by(EvaluationRun.created_at.desc(), EvaluationRun.id)
+            query.order_by(EvaluationRun.created_at.desc(), EvaluationRun.id)
             .offset(offset)
             .limit(limit)
         )
@@ -160,6 +202,11 @@ async def get_run(run_id: UUID, db: AsyncSession):
             {"case_index": result.case_index, **result.data} for result in results
         ],
     }
+    from app.services.evaluator_service import score_summary
+
+    response["score_summary"] = score_summary(
+        response["results"], run.total, run.config
+    )
     await db.commit()
     return response
 
@@ -235,5 +282,95 @@ async def submit_results(data: EvaluationSubmission, db: AsyncSession):
         db.add(
             EvaluationResult(run_id=run.id, case_index=result.case_index, data=record)
         )
+        from app.services.evaluator_service import persist_scores
+
+        persist_scores(
+            db,
+            run.id,
+            result.case_index,
+            [{**check, "source": "external"} for check in record["checks"]],
+        )
     await db.commit()
+    return run_response(run)
+
+
+async def dispatch_scoring(source_id, data, tasks, project_id, db):
+    """A new run scores existing immutable outputs, never generates replacements."""
+    from app.schemas.evaluation import EvaluationCreate
+    from app.services.evaluator_service import prepare_evaluators, call_budget
+
+    await db.scalar(select(Project).where(Project.id == project_id).with_for_update())
+    active = (
+        await db.scalars(
+            select(EvaluationRun)
+            .where(EvaluationRun.status.in_(ACTIVE))
+            .with_for_update()
+        )
+    ).all()
+    for run in active:
+        await expire_run(run)
+    if sum(run.status in ACTIVE for run in active) >= 2:
+        raise HTTPException(
+            409, "Two evaluations are already active; wait or cancel one"
+        )
+    source = await find_run(db, source_id)
+    if source.status != "completed" or source.completed != source.total:
+        raise HTTPException(
+            409, "Select a completed generation run before scoring its outputs"
+        )
+    results = (
+        await db.scalars(
+            select(EvaluationResult)
+            .where(EvaluationResult.run_id == source.id)
+            .order_by(EvaluationResult.case_index)
+        )
+    ).all()
+    if [item.case_index for item in results] != list(range(source.total)):
+        raise HTTPException(409, "Source run is missing saved cases")
+    saved = [item.data for item in results]
+    cases = [
+        {
+            "name": item["name"],
+            "inputs": item["inputs"],
+            "expected_output": item["expected_output"],
+        }
+        for item in saved
+    ]
+    snapshots, keys = await prepare_evaluators(db, data.evaluators, cases)
+    budget = call_budget(len(cases), "mock", snapshots, score_only=True)
+    config = {
+        **source.config,
+        "source": "score_only",
+        "assertions": [],
+        "evaluators": snapshots,
+        "call_budget": budget,
+    }
+    config.pop("judge", None)
+    config.pop("metrics", None)
+    run = EvaluationRun(
+        prompt_version_id=source.prompt_version_id,
+        dataset_revision_id=source.dataset_revision_id,
+        source_run_id=source.id,
+        config=config,
+        total=source.total,
+    )
+    db.add(run)
+    await db.commit()
+    request = EvaluationCreate(
+        prompt_version_id=source.prompt_version_id,
+        dataset_revision_id=source.dataset_revision_id,
+        assertions=[],
+        evaluators=data.evaluators,
+    )
+    tasks.add_task(
+        execute_evaluation,
+        run.id,
+        project_id,
+        request,
+        {},
+        cases,
+        snapshots,
+        keys,
+        saved,
+    )
     return run_response(run)

@@ -21,13 +21,23 @@ class Prompt:
     description: str = ""
     sha256_hash: str = ""
 
-    def compile(self, variables: Mapping[str, str] | None = None, **values: str) -> str | list[dict[str, str]]:
+    def compile(
+        self, variables: Mapping[str, str] | None = None, **values: str
+    ) -> str | list[dict[str, str]]:
         supplied = dict(variables or {})
         if supplied.keys() & values.keys():
             raise ValueError("Variable provided twice")
         supplied.update(values)
         if self.prompt_type == "chat":
-            compiled = [{"role": message["role"], "content": compile_template(message["content"], supplied, self.template_format)} for message in self.messages]
+            compiled = [
+                {
+                    "role": message["role"],
+                    "content": compile_template(
+                        message["content"], supplied, self.template_format
+                    ),
+                }
+                for message in self.messages
+            ]
             if sum(len(message["content"]) for message in compiled) > 100_000:
                 raise ValueError("Compiled prompt exceeds 100,000 characters")
             return compiled
@@ -38,11 +48,14 @@ class Prompt:
 class Evaluation:
     run: dict[str, Any]
     results: list[dict[str, Any]]
+    score_summary: list[dict[str, Any]] = field(default_factory=list)
 
     def __post_init__(self):
         if (
             not isinstance(self.run, dict)
             or not isinstance(self.results, list)
+            or not isinstance(self.score_summary, list)
+            or any(not isinstance(item, dict) for item in self.score_summary)
             or not isinstance(self.run.get("id"), str)
         ):
             raise ValueError("Invalid evaluation response")
@@ -86,4 +99,8 @@ class Evaluation:
         )
 
     def to_dict(self) -> dict[str, Any]:
-        return {"run": self.run, "results": self.results}
+        return {
+            "run": self.run,
+            "results": self.results,
+            **({"score_summary": self.score_summary} if self.score_summary else {}),
+        }

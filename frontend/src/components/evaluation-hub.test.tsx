@@ -24,6 +24,9 @@ const mocks = vi.hoisted(() => ({
   cancelEvaluation: vi.fn(),
   listPrompts: vi.fn(),
   getVersions: vi.fn(),
+  listEvaluators: vi.fn(),
+  listEvaluatorVersions: vi.fn(),
+  scoreSavedOutputs: vi.fn(),
   push: vi.fn(),
 }));
 vi.mock("@/lib/evaluation-api", async (original) => ({
@@ -34,6 +37,11 @@ vi.mock("@/lib/prompt-api", async (original) => ({
   ...(await original<object>()),
   listPrompts: mocks.listPrompts,
   getVersions: mocks.getVersions,
+}));
+vi.mock("@/lib/evaluator-api", async (original) => ({
+  ...(await original<object>()),
+  listEvaluators: mocks.listEvaluators,
+  listEvaluatorVersions: mocks.listEvaluatorVersions,
 }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: mocks.push }) }));
 const cases = [
@@ -114,6 +122,8 @@ beforeEach(() => {
   mocks.listEvaluations.mockResolvedValue({ items: [run], total: 1 });
   mocks.getEvaluation.mockResolvedValue({ run, results: [result] });
   mocks.startEvaluation.mockResolvedValue(run);
+  mocks.listEvaluators.mockResolvedValue({ items: [], total: 0 });
+  mocks.listEvaluatorVersions.mockResolvedValue([]);
 });
 
 describe("dataset editor", () => {
@@ -351,6 +361,19 @@ describe("evaluation UI", () => {
     expect(screen.getByLabelText("Cases")).toHaveValue("all");
   });
   it("starts a live run with saved IDs, clears the key, and displays results", async () => {
+    mocks.getVersions.mockResolvedValue([
+      {
+        id: "version",
+        version: 1,
+        variables: ["query"],
+        config: {
+          temperature: 0.4,
+          max_tokens: 512,
+          api_key: "ignored-saved-key",
+          provider: "openai",
+        },
+      },
+    ]);
     mount(<EvaluationsWorkbench />);
     fireEvent.click(screen.getByRole("button", { name: "New evaluation" }));
     await screen.findByRole("option", { name: "Echo" });
@@ -361,6 +384,9 @@ describe("evaluation UI", () => {
     fireEvent.change(screen.getByLabelText("Prompt version"), {
       target: { value: "version" },
     });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Use saved prompt settings" }),
+    );
     fireEvent.change(screen.getByLabelText("Evaluation dataset"), {
       target: { value: "dataset" },
     });
@@ -382,6 +408,8 @@ describe("evaluation UI", () => {
           dataset_revision_id: "revision",
           provider: "groq",
           api_key: "secret",
+          temperature: 0.4,
+          max_tokens: 512,
           assertions: [{ kind: "exact_match", value: "", path: "" }],
         }),
       ),
@@ -399,6 +427,13 @@ describe("evaluation UI", () => {
     mount(<EvaluationsWorkbench />);
     await screen.findAllByRole("button", { name: "Echo v1" });
     fireEvent.click(screen.getAllByRole("button", { name: "Echo v1" })[0]);
+    await waitFor(() =>
+      expect(
+        screen
+          .getByLabelText("Reference run for this candidate")
+          .querySelector('option[value="other"]'),
+      ).not.toBeNull(),
+    );
     fireEvent.change(
       await screen.findByLabelText("Reference run for this candidate"),
       {
@@ -434,6 +469,13 @@ describe("evaluation UI", () => {
     mount(<EvaluationsWorkbench />);
     await screen.findAllByRole("button", { name: "Echo v1" });
     fireEvent.click(screen.getAllByRole("button", { name: "Echo v1" })[0]);
+    await waitFor(() =>
+      expect(
+        screen
+          .getByLabelText("Reference run for this candidate")
+          .querySelector('option[value="old"]'),
+      ).not.toBeNull(),
+    );
     fireEvent.change(
       await screen.findByLabelText("Reference run for this candidate"),
       { target: { value: "old" } },

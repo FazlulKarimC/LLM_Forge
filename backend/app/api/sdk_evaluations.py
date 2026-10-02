@@ -16,8 +16,21 @@ from app.schemas.evaluation import (
     revision_response,
 )
 from app.services import evaluation_runs
+from app.schemas.evaluator import ScoreOnlyCreate
 
 router = APIRouter(tags=["SDK evaluations"])
+
+
+@router.get("/evaluators")
+async def evaluator_catalog(
+    offset: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100),
+    project_id: UUID = Depends(get_evaluation_project),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.services.evaluator_service import list_evaluators
+
+    return await list_evaluators(db, offset=offset, limit=limit)
 
 
 @router.get("/datasets/{name}")
@@ -72,6 +85,17 @@ async def cancel_run(
     db: AsyncSession = Depends(get_db),
 ):
     return await evaluation_runs.cancel_run(run_id, db)
+
+
+@router.post("/runs/{run_id}/score", status_code=202)
+async def score_outputs(
+    run_id: UUID,
+    data: ScoreOnlyCreate,
+    tasks: BackgroundTasks,
+    project_id: UUID = Depends(get_evaluation_project),
+    db: AsyncSession = Depends(get_db),
+):
+    return await evaluation_runs.dispatch_scoring(run_id, data, tasks, project_id, db)
 
 
 @router.post("/submissions", status_code=201)

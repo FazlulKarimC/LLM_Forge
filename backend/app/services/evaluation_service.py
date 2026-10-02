@@ -247,7 +247,16 @@ async def expire_run(run):
         run.updated_at = now()
 
 
-async def execute_evaluation(run_id, project_id, request, version, cases):
+async def execute_evaluation(
+    run_id,
+    project_id,
+    request,
+    version,
+    cases,
+    snapshots=None,
+    evaluator_keys=None,
+    saved_outputs=None,
+):
     """Credentials live only in this coroutine. Never resume paid calls on restart."""
     try:
         async with async_session_maker() as db:
@@ -282,23 +291,39 @@ async def execute_evaluation(run_id, project_id, request, version, cases):
                 "tokens_output": None,
             }
             try:
-                generated = await generate_playground(
-                    PlaygroundRequest(
-                        template_text=version["template_text"],
-                        template_format=version["template_format"],
-                        prompt_type=version.get("prompt_type", "text"),
-                        messages=version.get("messages", []),
-                        variables=case["inputs"],
-                        provider=request.provider,
-                        model=request.model,
-                        api_key=request.api_key,
-                        temperature=request.temperature,
-                        max_tokens=request.max_tokens,
+                if saved_outputs is not None:
+                    saved = saved_outputs[index]
+                    if saved.get("output") is None:
+                        raise HTTPException(
+                            422, "Source case has no generated output; skipped scoring"
+                        )
+                    generated = {
+                        key: saved.get(key)
+                        for key in (
+                            "output",
+                            "latency_ms",
+                            "tokens_input",
+                            "tokens_output",
+                        )
+                    }
+                else:
+                    generated = await generate_playground(
+                        PlaygroundRequest(
+                            template_text=version["template_text"],
+                            template_format=version["template_format"],
+                            prompt_type=version.get("prompt_type", "text"),
+                            messages=version.get("messages", []),
+                            variables=case["inputs"],
+                            provider=request.provider,
+                            model=request.model,
+                            api_key=request.api_key,
+                            temperature=request.temperature,
+                            max_tokens=request.max_tokens,
+                        )
                     )
-                )
                 output = (
                     generated["compiled_prompt"]
-                    if request.provider == "mock"
+                    if saved_outputs is None and request.provider == "mock"
                     else generated["output"]
                 )
                 if len(output) > 32_000:
@@ -320,14 +345,72 @@ async def execute_evaluation(run_id, project_id, request, version, cases):
                     async with async_session_maker() as db:
                         db.info["project_id"] = project_id
                         current_status = await db.scalar(
-                            select(EvaluationRun.status).where(EvaluationRun.id == run_id)
+                            select(EvaluationRun.status).where(
+                                EvaluationRun.id == run_id
+                            )
                         )
                         if current_status not in ACTIVE:
                             return
-                    record["checks"].append(
-                        await judge_output(request.judge, case, output)
-                    )
-                record["passed"] = all(check["passed"] for check in record["checks"])
+                    try:
+                        record["checks"].append(
+                            await judge_output(request.judge, case, output)
+                        )
+                    except Exception as exc:
+                        message = (
+                            str(exc.detail)
+                            if isinstance(exc, HTTPException)
+                            else "Judge execution failed; check its provider settings"
+                        )
+                        record["checks"].append(
+                            {
+                                "kind": "llm_judge",
+                                "data_type": "numeric",
+                                "passed": False,
+                                "error": message,
+                                "reason": message,
+                            }
+                        )
+                        record["error"] = message
+                from app.services.evaluator_service import (
+                    execute_evaluator,
+                    execution_errors,
+                )
+
+                for snapshot in snapshots or []:
+                    async with async_session_maker() as db:
+                        db.info["project_id"] = project_id
+                        if (
+                            await db.scalar(
+                                select(EvaluationRun.status).where(
+                                    EvaluationRun.id == run_id
+                                )
+                            )
+                            not in ACTIVE
+                        ):
+                            return
+                    try:
+                        record["checks"].extend(
+                            await execute_evaluator(
+                                snapshot,
+                                case,
+                                output,
+                                (evaluator_keys or {}).get(snapshot["version_id"]),
+                            )
+                        )
+                    except Exception as exc:
+                        message = (
+                            str(exc.detail)
+                            if isinstance(exc, HTTPException)
+                            else "Evaluator execution failed; check its provider settings"
+                        )
+                        record["checks"].extend(execution_errors(snapshot, message))
+                        if snapshot["required"]:
+                            record["error"] = message
+                record["passed"] = record["error"] is None and all(
+                    check["passed"]
+                    for check in record["checks"]
+                    if check.get("required", True)
+                )
             except HTTPException as exc:
                 record["error"] = str(exc.detail)
             except Exception:
@@ -344,6 +427,9 @@ async def execute_evaluation(run_id, project_id, request, version, cases):
                 if run is None or run.status not in ACTIVE:
                     return  # Cancellation never gets overwritten by an in-flight call.
                 db.add(EvaluationResult(run_id=run_id, case_index=index, data=record))
+                from app.services.evaluator_service import persist_scores
+
+                persist_scores(db, run_id, index, record["checks"])
                 run.completed += 1
                 run.passed += int(record["passed"])
                 run.errors += int(record["error"] is not None)

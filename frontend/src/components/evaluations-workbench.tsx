@@ -1,5 +1,9 @@
 "use client";
 import { PageControls } from "@/components/ui/page-controls";
+import Link from "next/link";
+import { EvaluatorSelectionFields } from "@/components/evaluations/evaluator-selection";
+import { ScoreSavedOutputs } from "@/components/evaluations/score-saved-outputs";
+import type { EvaluatorSelection } from "@/lib/evaluator-api";
 import {
   ResultsGrid,
   RunSummary,
@@ -75,6 +79,11 @@ export function EvaluationsWorkbench() {
   const [runId, setRunId] = useState("");
   const [compareId, setCompareId] = useState("");
   const [runOffset, setRunOffset] = useState(0);
+  const [runSearch, setRunSearch] = useState("");
+  const [runStatus, setRunStatus] = useState("");
+  const [referenceSearch, setReferenceSearch] = useState("");
+  const [referenceOffset, setReferenceOffset] = useState(0);
+  const [evaluators, setEvaluators] = useState<EvaluatorSelection[]>([]);
   const [view, setView] = useState<"history" | "new" | "detail">("history");
   const [filter, setFilter] = useState("all");
   const [caseIndex, setCaseIndex] = useState<number | null>(null);
@@ -183,8 +192,12 @@ export function EvaluationsWorkbench() {
     enabled: !!datasetId,
   });
   const runs = useQuery({
-    queryKey: ["evaluations", runOffset],
-    queryFn: ({ signal }) => listEvaluations(runOffset, signal),
+    queryKey: ["evaluations", runOffset, runSearch, runStatus],
+    queryFn: ({ signal }) =>
+      listEvaluations(runOffset, signal, {
+        search: runSearch,
+        ...(runStatus ? { status: runStatus } : {}),
+      }),
     refetchInterval: (query) =>
       query.state.data?.items.some(isActive) ? 2500 : false,
   });
@@ -202,6 +215,31 @@ export function EvaluationsWorkbench() {
     refetchInterval: (query) =>
       query.state.data && isActive(query.state.data.run) ? 2500 : false,
   });
+  const references = useQuery({
+    queryKey: [
+      "evaluation-references",
+      detail.data?.run.dataset_revision_id,
+      referenceSearch,
+      referenceOffset,
+    ],
+    queryFn: ({ signal }) =>
+      listEvaluations(referenceOffset, signal, {
+        dataset_revision_id: detail.data!.run.dataset_revision_id,
+        search: referenceSearch,
+        status: "completed",
+      }),
+    enabled: !!detail.data,
+  });
+  const selectedVersion = versions.data?.find((item) => item.id === versionId);
+  const selectedRevision = revisions.data?.find(
+    (item) => item.id === revisionId,
+  );
+  const judgeCount =
+    Number(judgeEnabled) +
+    evaluators.filter((item) => item.kind === "llm_judge").length;
+  const casesCount = selectedRevision?.cases.length;
+  const generationCalls = provider === "mock" ? 0 : casesCount;
+  const judgeCalls = casesCount == null ? undefined : casesCount * judgeCount;
   async function act(task: () => Promise<void>) {
     setBusy(true);
     setError("");
@@ -225,6 +263,9 @@ export function EvaluationsWorkbench() {
         description="Run saved prompt versions against fixed dataset revisions, then inspect every case."
         actions={
           <>
+            <Link className="btn-secondary" href="/evaluations/evaluators">
+              Evaluators
+            </Link>
             <button
               className="btn-secondary"
               onClick={() => {
@@ -499,6 +540,10 @@ export function EvaluationsWorkbench() {
               </div>
               <div className="form-section space-y-3">
                 <h3>3. Checks &amp; judge</h3>
+                <EvaluatorSelectionFields
+                  value={evaluators}
+                  onChange={setEvaluators}
+                />
                 <div className="space-y-3">
                   <h2 className="font-medium">Assertions</h2>
                   {rules.map((rule, index) => (
@@ -692,6 +737,36 @@ export function EvaluationsWorkbench() {
           >
             <div className="rounded-lg border border-(--border) p-4 text-sm">
               <h3 className="font-medium">Run configuration</h3>
+              <button
+                type="button"
+                className="btn-secondary"
+                disabled={!selectedVersion?.config}
+                onClick={() => {
+                  const config = selectedVersion?.config ?? {};
+                  if (
+                    typeof config.temperature === "number" &&
+                    config.temperature >= 0 &&
+                    config.temperature <= 2 &&
+                    Number.isFinite(config.temperature)
+                  )
+                    setTemperature(config.temperature);
+                  if (
+                    typeof config.max_tokens === "number" &&
+                    Number.isInteger(config.max_tokens) &&
+                    config.max_tokens >= 1 &&
+                    config.max_tokens <= 2048
+                  )
+                    setMaxTokens(config.max_tokens);
+                }}
+              >
+                Use saved prompt settings
+              </button>
+              <p className="field-help">
+                Effective generation settings: temperature {temperature},
+                maximum {maxTokens} output tokens. Saved settings apply
+                supported temperature/token values only; edit the generation
+                fields to override them.
+              </p>
               <p className="mt-1 text-(--muted-foreground)">
                 Prompt{" "}
                 {versions.data?.find((entry) => entry.id === versionId)?.version
@@ -704,6 +779,18 @@ export function EvaluationsWorkbench() {
                   : "not selected"}{" "}
                 · {provider} / {model || "no model"} · {rules.length} checks
                 {judgeEnabled ? " + judge" : ""}
+                {evaluators.length
+                  ? ` + ${evaluators.length} saved evaluators`
+                  : ""}
+              </p>
+              <p className="text-sm">
+                {casesCount == null
+                  ? "Select a dataset revision to see call counts."
+                  : `${casesCount} cases · up to ${generationCalls} generation + ${judgeCalls} judge calls`}
+              </p>
+              <p className="field-help">
+                Sequential execution. At most two judges, 60 model calls and 20
+                cases when judging; two active runs per project.
               </p>
             </div>
             <button
@@ -713,7 +800,15 @@ export function EvaluationsWorkbench() {
                 !versionId ||
                 !revisionId ||
                 !model.trim() ||
-                (!rules.length && !judgeEnabled) ||
+                (!rules.length &&
+                  !judgeEnabled &&
+                  !evaluators.some((item) => item.required)) ||
+                judgeCount > 2 ||
+                (generationCalls ?? 0) + (judgeCalls ?? 0) > 60 ||
+                (judgeCount > 0 && (casesCount ?? 0) > 20) ||
+                evaluators.some(
+                  (item) => item.kind === "llm_judge" && !item.api_key?.trim(),
+                ) ||
                 (provider !== "mock" && !apiKey.trim()) ||
                 (judgeEnabled &&
                   (!judge.api_key.trim() ||
@@ -731,10 +826,14 @@ export function EvaluationsWorkbench() {
                     max_tokens: maxTokens,
                     ...(provider !== "mock" ? { api_key: apiKey } : {}),
                     assertions: rules,
+                    ...(evaluators.length ? { evaluators } : {}),
                     ...(judgeEnabled ? { judge } : {}),
                   });
                   setApiKey("");
                   setJudge({ ...judge, api_key: "" });
+                  setEvaluators(
+                    evaluators.map((item) => ({ ...item, api_key: "" })),
+                  );
                   setRunOffset(0);
                   setRunId(run.id);
                   setView("detail");
@@ -752,6 +851,39 @@ export function EvaluationsWorkbench() {
       {view === "history" && (
         <section className={panelClass}>
           <h2 className="font-semibold">Run history</h2>
+          <div className="table-toolbar">
+            <label className="text-sm flex-1">
+              Search prompt names
+              <input
+                className={inputClass}
+                value={runSearch}
+                onChange={(event) => {
+                  setRunSearch(event.target.value);
+                  setRunOffset(0);
+                }}
+              />
+            </label>
+            <label className="text-sm">
+              Run status
+              <select
+                className={inputClass}
+                value={runStatus}
+                onChange={(event) => {
+                  setRunStatus(event.target.value);
+                  setRunOffset(0);
+                }}
+              >
+                <option value="">All statuses</option>
+                {["queued", "running", "completed", "failed", "cancelled"].map(
+                  (status) => (
+                    <option key={status} value={status}>
+                      {status}
+                    </option>
+                  ),
+                )}
+              </select>
+            </label>
+          </div>
           <p className="mt-1 text-sm text-(--muted-foreground)">
             Every row is a saved run. Choose one to inspect its outputs and
             checks.
@@ -800,11 +932,13 @@ export function EvaluationsWorkbench() {
                         {run.config.dataset_name} v{run.config.dataset_version}
                       </td>
                       <td className="p-3">
-                        {run.config.source === "sdk_submission"
-                          ? "External"
-                          : run.config.is_mock
-                            ? "Demo"
-                            : "Live"}
+                        {run.config.source === "score_only"
+                          ? "Saved-output scoring"
+                          : run.config.source === "sdk_submission"
+                            ? "External"
+                            : run.config.is_mock
+                              ? "Demo"
+                              : "Live"}
                       </td>
                       <td className="p-3">
                         {run.config.provider} / {run.config.model}
@@ -851,31 +985,62 @@ export function EvaluationsWorkbench() {
             )}
           </div>
           <div className="table-toolbar mt-4">
-            <label className="min-w-48 flex-1 text-xs">
-              Reference run for this candidate
-              <select
-                className={inputClass}
-                value={compareId}
-                onChange={(event) => {
-                  setCompareId(event.target.value);
-                  setFilter("all");
-                }}
-              >
-                <option value="">No comparison</option>
-                {runs.data?.items
-                  .filter((run) => run.id !== runId)
-                  .map((run) => (
-                    <option key={run.id} value={run.id}>
-                      {run.config.prompt_name} v{run.config.prompt_version} ·{" "}
-                      {new Date(run.created_at).toLocaleString()}
-                    </option>
-                  ))}
-                {compareId &&
-                  !runs.data?.items.some((run) => run.id === compareId) && (
-                    <option value={compareId}>Selected comparison</option>
-                  )}
-              </select>
-            </label>
+            <div className="min-w-48 flex-1 text-xs grid gap-2">
+              <label>
+                Find reference by prompt name
+                <input
+                  className={inputClass}
+                  value={referenceSearch}
+                  onChange={(event) => {
+                    setReferenceSearch(event.target.value);
+                    setReferenceOffset(0);
+                  }}
+                />
+              </label>
+              <label>
+                Reference run for this candidate
+                <select
+                  className={inputClass}
+                  value={compareId}
+                  onChange={(event) => {
+                    setCompareId(event.target.value);
+                    setFilter("all");
+                  }}
+                >
+                  <option value="">No comparison</option>
+                  {references.data?.items
+                    .filter((run) => run.id !== runId)
+                    .map((run) => (
+                      <option key={run.id} value={run.id}>
+                        {run.config.prompt_name} v{run.config.prompt_version} ·{" "}
+                        {new Date(run.created_at).toLocaleString()} ·{" "}
+                        {run.config.source === "score_only"
+                          ? "Scoring"
+                          : run.config.source === "sdk_submission"
+                            ? "External"
+                            : run.config.is_mock
+                              ? "Demo"
+                              : "Live"}
+                        {run.config.evaluators?.length
+                          ? ` · ${run.config.evaluators.map((item) => `${item.name} v${item.version}`).join(", ")}`
+                          : ""}
+                      </option>
+                    ))}
+                  {compareId &&
+                    !references.data?.items.some(
+                      (run) => run.id === compareId,
+                    ) && <option value={compareId}>Selected comparison</option>}
+                </select>
+              </label>
+              <PageControls
+                offset={referenceOffset}
+                next={referenceOffset + 50 < (references.data?.total ?? 0)}
+                change={setReferenceOffset}
+              />
+              {references.error && (
+                <span role="alert">{errorText(references.error)}</span>
+              )}
+            </div>
             {isActive(detail.data.run) && (
               <button
                 disabled={busy}
@@ -946,6 +1111,20 @@ export function EvaluationsWorkbench() {
             selectedCaseIndex={caseIndex}
             onSelectCase={setCaseIndex}
           />
+          {detail.data.run.status === "completed" && (
+            <ScoreSavedOutputs
+              key={detail.data.run.id}
+              run={detail.data.run}
+              started={(run) => {
+                setRunId(run.id);
+                setCompareId("");
+                setFilter("all");
+                setCaseIndex(null);
+                setReferenceOffset(0);
+                cache.invalidateQueries({ queryKey: ["evaluations"] });
+              }}
+            />
+          )}
         </section>
       )}
     </div>

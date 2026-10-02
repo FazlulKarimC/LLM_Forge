@@ -2,14 +2,15 @@
 
 import { useState } from "react";
 import type { EvaluationDetail } from "@/lib/evaluation-api";
+import { canonicalJSON } from "@/lib/prompt-api";
 
 type CaseResult = EvaluationDetail["results"][number];
 
 export function RunSummary({ detail }: { detail: EvaluationDetail }) {
   const { run } = detail;
   const failed = Math.max(0, run.completed - run.passed - run.errors);
-  const passRate = run.completed
-    ? `${Math.round((run.passed / run.completed) * 100)}%`
+  const passRate = run.total
+    ? `${Math.round((run.passed / run.total) * 100)}%`
     : "—";
   return (
     <div className="space-y-2">
@@ -21,7 +22,14 @@ export function RunSummary({ detail }: { detail: EvaluationDetail }) {
         <span className="text-sm text-(--muted-foreground)">{run.status}</span>
       </div>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        <SummaryMetric label="Pass rate" value={passRate} />
+        <SummaryMetric
+          label={
+            run.status === "completed"
+              ? "Pass rate · all cases"
+              : "Provisional pass rate · all cases"
+          }
+          value={passRate}
+        />
         <SummaryMetric
           label="Processed"
           value={`${run.completed}/${run.total}`}
@@ -31,13 +39,46 @@ export function RunSummary({ detail }: { detail: EvaluationDetail }) {
       </div>
       <p className="text-xs text-(--muted-foreground)">
         {run.passed} passed · {run.config.provider} / {run.config.model} ·{" "}
-        {run.config.source === "sdk_submission"
-          ? "Outputs supplied by your application"
-          : run.config.is_mock
-            ? "Echo demo; no generation model called"
-            : "Live provider generation"}
+        {run.config.source === "score_only"
+          ? "Saved outputs reused; no generation calls"
+          : run.config.source === "sdk_submission"
+            ? "Outputs supplied by your application"
+            : run.config.is_mock
+              ? "Echo demo; no generation model called"
+              : "Live provider generation"}
         {run.config.judge &&
           ` · Judge: ${run.config.judge.provider} / ${run.config.judge.model}`}
+      </p>
+      {run.source_run_id && (
+        <a
+          className="text-sm text-(--accent)"
+          href={`/evaluations?run=${run.source_run_id}`}
+        >
+          View source run
+        </a>
+      )}
+      {run.config.call_budget && (
+        <p className="field-help">
+          Call budget: {run.config.call_budget.generation} generation +{" "}
+          {run.config.call_budget.judging} judge calls · maximum{" "}
+          {run.config.call_budget.maximum}. Counts are upper bounds;
+          errors/cancellation can reduce calls.
+        </p>
+      )}
+      {run.config.evaluators?.length ? (
+        <p className="field-help">
+          Pinned evaluators:{" "}
+          {run.config.evaluators
+            .map(
+              (item) =>
+                `${item.name} v${item.version}${item.required ? "" : " (informational)"}`,
+            )
+            .join(" · ")}
+        </p>
+      ) : null}
+      <p className="field-help">
+        Pass rate uses all {run.total} cases, including errors and pending
+        cases. Inspect processed coverage and score coverage separately.
       </p>
       {run.config.metrics && Object.keys(run.config.metrics).length > 0 && (
         <details className="text-xs">
@@ -117,9 +158,23 @@ export function ResultsGrid({
       (result) => result.case_index === (selectedCaseIndex ?? selectedIndex),
     ) ?? rows[0];
   const prior = selected && priorCases.get(selected.case_index);
+  const scoringConfig = (run: EvaluationDetail["run"]) => ({
+    assertions: run.config.assertions ?? [],
+    judge: run.config.judge ?? null,
+    evaluators: (run.config.evaluators ?? []).map((item) => ({
+      version_id: item.version_id,
+      required: item.required,
+      definition: item.definition,
+    })),
+  });
   const sameChecks =
-    JSON.stringify(detail.run.config.assertions ?? []) ===
-    JSON.stringify(comparison?.run.config.assertions ?? []);
+    !comparison ||
+    canonicalJSON(scoringConfig(detail.run)) ===
+      canonicalJSON(scoringConfig(comparison.run));
+  const comparableScores =
+    sameChecks &&
+    detail.run.config.source !== "sdk_submission" &&
+    comparison?.run.config.source !== "sdk_submission";
 
   return (
     <div className="mt-5 space-y-4">
@@ -132,12 +187,88 @@ export function ResultsGrid({
           </p>
           {!sameChecks && (
             <p className="mt-2 text-sm text-(--warning)">
-              These runs use different assertions; pass/fail changes may reflect
-              the checks rather than the outputs.
+              These runs use different scoring configurations (assertions,
+              judge, evaluator version or passing policy). Pass/fail changes may
+              reflect the checks rather than the outputs.
+            </p>
+          )}
+          {(detail.run.config.source === "sdk_submission" ||
+            comparison.run.config.source === "sdk_submission") && (
+            <p className="mt-2 text-sm text-(--warning)">
+              External scores are self-reported and have no pinned evaluator
+              definition. Numeric deltas are unavailable.
             </p>
           )}
         </div>
       )}
+      {detail.score_summary?.length ? (
+        <section className="rounded-lg border border-(--border) p-4 grid gap-3">
+          <h3 className="font-medium">Scores and coverage</h3>
+          <div className="overflow-x-auto">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Score</th>
+                  <th>Mean / categories</th>
+                  <th>Scored</th>
+                  <th>Errors / missing</th>
+                  {comparison && <th>Mean delta</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {detail.score_summary.map((metric) => {
+                  const reference = comparison?.score_summary?.find(
+                    (item) =>
+                      item.assignment === metric.assignment &&
+                      item.name === metric.name,
+                  );
+                  return (
+                    <tr key={`${metric.assignment}:${metric.name}`}>
+                      <td>
+                        {metric.evaluator_name
+                          ? `${metric.evaluator_name} · `
+                          : ""}
+                        {metric.name}
+                        <span className="block field-help">
+                          {metric.required ? "Required" : "Informational"}
+                        </span>
+                      </td>
+                      <td>
+                        {metric.mean != null
+                          ? metric.mean.toFixed(3)
+                          : Object.entries(metric.categories)
+                              .map(
+                                ([category, count]) => `${category}: ${count}`,
+                              )
+                              .join(" · ") || "—"}
+                      </td>
+                      <td>
+                        {metric.count}/{detail.run.total}
+                      </td>
+                      <td>
+                        {metric.errors} / {metric.missing}
+                      </td>
+                      {comparison && (
+                        <td>
+                          {comparableScores &&
+                          reference?.mean != null &&
+                          metric.mean != null
+                            ? (metric.mean - reference.mean).toFixed(3)
+                            : "Not comparable"}
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <p className="field-help">
+            Means include scored cases only. Missing scores and execution errors
+            are not counted as zero.
+          </p>
+        </section>
+      ) : null}
       <div className={selected ? "case-inspection" : "space-y-4"}>
         <div className="case-table">
           <table className="w-full min-w-[500px] text-left text-sm">
@@ -288,9 +419,22 @@ function ResultCell({ result }: { result: CaseResult }) {
       </pre>
       {result.checks.map((check, index) => (
         <p key={index} className="mt-2 text-xs">
-          {check.passed ? "✓" : "✗"} {check.kind}
-          {check.score !== undefined && ` (${check.score.toFixed(2)})`}:{" "}
-          {check.reason}
+          {check.error ? "Error" : check.passed ? "✓" : "✗"}{" "}
+          {check.evaluator_name
+            ? `${check.evaluator_name} v${check.evaluator_version} · `
+            : ""}
+          {check.kind}
+          {check.value !== undefined
+            ? ` (${String(check.value)})`
+            : check.score !== undefined && ` (${check.score.toFixed(2)})`}
+          {check.required === false ? " · Informational" : ""}: {check.reason}
+          {check.latency_ms != null && (
+            <span className="block field-help">
+              Judge: {check.latency_ms.toFixed(0)} ms ·{" "}
+              {check.tokens_input ?? "—"} input / {check.tokens_output ?? "—"}{" "}
+              output tokens
+            </span>
+          )}
         </p>
       ))}
     </div>

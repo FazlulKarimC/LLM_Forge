@@ -85,6 +85,12 @@ class JudgeConfig(StrictModel):
     threshold: float = Field(default=0.7, ge=0, le=1, allow_inf_nan=False)
 
 
+class EvaluatorSelection(StrictModel):
+    version_id: UUID
+    required: bool = True
+    api_key: SecretStr | None = Field(default=None, max_length=512)
+
+
 class EvaluationCreate(StrictModel):
     prompt_version_id: UUID
     dataset_revision_id: UUID
@@ -95,10 +101,15 @@ class EvaluationCreate(StrictModel):
     max_tokens: int = Field(default=256, ge=1, le=2048)
     assertions: list[Assertion] = Field(default_factory=list, max_length=10)
     judge: JudgeConfig | None = None
+    evaluators: list[EvaluatorSelection] = Field(default_factory=list, max_length=10)
 
     @model_validator(mode="after")
     def requires_checks_and_key(self):
-        if not self.assertions and self.judge is None:
+        if (
+            not self.assertions
+            and self.judge is None
+            and not any(item.required for item in self.evaluators)
+        ):
             raise ValueError("Choose at least one assertion or an LLM judge")
         if self.provider != "mock" and (
             not self.api_key or not self.api_key.get_secret_value().strip()
@@ -106,6 +117,8 @@ class EvaluationCreate(StrictModel):
             raise ValueError("An API key is required for live generation")
         if self.judge and not self.judge.api_key.get_secret_value().strip():
             raise ValueError("An API key is required for judging")
+        if len({item.version_id for item in self.evaluators}) != len(self.evaluators):
+            raise ValueError("Select each evaluator version once")
         return self
 
 
@@ -159,6 +172,7 @@ def run_response(run):
             "id",
             "prompt_version_id",
             "dataset_revision_id",
+            "source_run_id",
             "config",
             "status",
             "total",

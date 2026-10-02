@@ -1,5 +1,10 @@
 import { fetchAPI } from "./api-client";
 import type { Provider } from "./prompt-api";
+import {
+  selectionPayload,
+  type EvaluatorSelection,
+  type EvaluatorSnapshot,
+} from "./evaluator-api";
 
 export type DatasetCase = {
   inputs: Record<string, string>;
@@ -51,14 +56,23 @@ export type EvaluationRequest = {
   max_tokens: number;
   assertions: Assertion[];
   judge?: Judge;
+  evaluators?: EvaluatorSelection[];
 };
 export type EvaluationRun = {
   id: string;
   prompt_version_id: string;
   dataset_revision_id: string;
+  source_run_id?: string | null;
   config: {
     provider: Provider | "external";
-    source?: "sdk_submission";
+    source?: "sdk_submission" | "score_only";
+    evaluators?: EvaluatorSnapshot[];
+    call_budget?: {
+      generation: number;
+      judging: number;
+      total: number;
+      maximum: number;
+    };
     metrics?: Record<string, number>;
     model: string;
     prompt_name: string;
@@ -85,12 +99,47 @@ export type CaseResult = {
   output: string | null;
   passed: boolean;
   error: string | null;
-  checks: { kind: string; passed: boolean; reason: string; score?: number }[];
+  checks: {
+    kind: string;
+    passed: boolean;
+    reason: string;
+    score?: number;
+    name?: string;
+    value?: string | number | boolean;
+    data_type?: string;
+    required?: boolean;
+    evaluator_name?: string;
+    evaluator_version?: number;
+    evaluator_version_id?: string;
+    assignment?: string;
+    error?: string;
+    latency_ms?: number;
+    tokens_input?: number | null;
+    tokens_output?: number | null;
+  }[];
   latency_ms: number | null;
   tokens_input: number | null;
   tokens_output: number | null;
 };
-export type EvaluationDetail = { run: EvaluationRun; results: CaseResult[] };
+export type ScoreSummary = {
+  assignment: string;
+  name: string;
+  evaluator_name: string | null;
+  evaluator_version_id: string | null;
+  data_type: string;
+  required: boolean;
+  count: number;
+  errors: number;
+  passed: number;
+  missing: number;
+  mean: number | null;
+  categories: Record<string, number>;
+};
+export type EvaluationDetail = {
+  run: EvaluationRun;
+  results: CaseResult[];
+  score_summary?: ScoreSummary[];
+};
 export type DemoExamples = {
   prompt_id: string;
   prompt_version_id: string;
@@ -101,7 +150,11 @@ const json = (method: string, body: unknown) => ({
   method,
   body: JSON.stringify(body),
 });
-export const listDatasets = (archived = false, offset = 0, signal?: AbortSignal) =>
+export const listDatasets = (
+  archived = false,
+  offset = 0,
+  signal?: AbortSignal,
+) =>
   fetchAPI<{ items: Dataset[]; total: number }>(
     `/datasets?archived=${archived}&offset=${offset}&limit=50`,
     { signal },
@@ -141,12 +194,36 @@ export const saveRevision = (
     json("POST", { cases, base_version: baseVersion }),
   );
 export const startEvaluation = (request: EvaluationRequest) =>
-  fetchAPI<EvaluationRun>("/evaluations", json("POST", request));
+  fetchAPI<EvaluationRun>(
+    "/evaluations",
+    json("POST", {
+      ...request,
+      ...(request.evaluators
+        ? { evaluators: selectionPayload(request.evaluators) }
+        : {}),
+    }),
+  );
+export const scoreSavedOutputs = (
+  runId: string,
+  evaluators: EvaluatorSelection[],
+) =>
+  fetchAPI<EvaluationRun>(
+    `/evaluations/${runId}/score`,
+    json("POST", { evaluators: selectionPayload(evaluators) }),
+  );
 export const createDemoExamples = () =>
   fetchAPI<DemoExamples>("/demo/setup", { method: "POST" });
-export const listEvaluations = (offset = 0, signal?: AbortSignal) =>
+export const listEvaluations = (
+  offset = 0,
+  signal?: AbortSignal,
+  filters: {
+    dataset_revision_id?: string;
+    search?: string;
+    status?: string;
+  } = {},
+) =>
   fetchAPI<{ items: EvaluationRun[]; total: number }>(
-    `/evaluations?offset=${offset}&limit=50`,
+    `/evaluations?${new URLSearchParams({ offset: String(offset), limit: "50", ...filters })}`,
     { signal },
   );
 export const getEvaluation = (id: string, signal?: AbortSignal) =>

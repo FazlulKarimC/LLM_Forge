@@ -17,6 +17,7 @@ from app.api import prompts as prompts_api
 from app.api import workspaces
 from app.api import prompt_library, project_keys, sdk_prompts
 from app.api import datasets, evaluations
+from app.api import evaluators
 from app.api import sdk_evaluations
 from app.api import demo
 from app.core.tenancy import get_project_context
@@ -134,6 +135,7 @@ def create_application() -> FastAPI:
     app.include_router(sdk_evaluations.router, prefix=f"{settings.API_V1_PREFIX}/sdk/evaluations")
     app.include_router(datasets.router, prefix=f"{settings.API_V1_PREFIX}/datasets", dependencies=[Depends(get_project_context)])
     app.include_router(evaluations.router, prefix=f"{settings.API_V1_PREFIX}/evaluations", dependencies=[Depends(get_project_context)])
+    app.include_router(evaluators.router, prefix=f"{settings.API_V1_PREFIX}/evaluators", dependencies=[Depends(get_project_context)])
     app.include_router(prompt_library.router, prefix=f"{settings.API_V1_PREFIX}/prompt-library", dependencies=[Depends(get_project_context)])
     app.include_router(project_keys.router, prefix=f"{settings.API_V1_PREFIX}/project-keys", dependencies=[Depends(get_project_context)])
     app.include_router(sdk_prompts.router, prefix=f"{settings.API_V1_PREFIX}/sdk/prompts")

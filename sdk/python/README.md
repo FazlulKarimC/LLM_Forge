@@ -68,6 +68,29 @@ Mock mode echoes the compiled prompt and does not measure model quality. For liv
 
 `wait_for_evaluation` returns completed, failed or cancelled runs. Its timeout raises `EvaluationTimeout` with `run_id`. Default timeout behavior leaves the run running; `cancel_on_timeout=True` attempts cancellation. An in-flight provider call may still finish. HTTP requests use a 10-second timeout by default (`LLMForge(timeout=...)`); there are no automatic retries, avoiding duplicate runs/submissions. A wait can exceed its deadline by an in-flight HTTP request timeout.
 
+## Reuse evaluators and score saved outputs
+
+Create evaluators in the dashboard, then use an evaluation-enabled project key to discover and pin their version IDs. The catalog is paginated (default 50). SDK keys select definitions; they do not author or archive evaluators.
+
+```python
+with LLMForge() as forge:
+    catalog = forge.list_evaluators()
+    evaluator_version_id = catalog["items"][0]["latest"]["id"]
+    selected = [{"version_id": evaluator_version_id, "required": True}]
+    run_id = forge.start_evaluation(
+        prompt_version_id, dataset_revision_id,
+        assertions=[], evaluators=selected,
+    )
+    result = forge.wait_for_evaluation(run_id)
+    scoring_id = forge.score_evaluation(result.id, selected)
+    rescored = forge.wait_for_evaluation(scoring_id)
+    print(rescored.score_summary)
+```
+
+Supply at least one required evaluator when omitting inline assertions/judge. `assertions=[]` removes the SDK's default exact-match assertion. Judges require `api_key` in their selection; keys are request-only and excluded from saved definitions, reports and error text. Informational selections use `required=False` and do not gate pass/fail. A version change creates a new ID; pin it explicitly for repeatable CI.
+
+`score_evaluation` creates a separate run linked to a completed source, reuses its outputs and makes no generation calls. Missing source outputs stay errors. Judges still consume provider calls. Limits are ten saved selections, two judges including the inline judge, 20 cases with judges, and 60 model calls per run. Typed summaries keep missing/error coverage separate from measured means; `Evaluation.to_dict()` includes available summaries.
+
 ## Submit your application's results
 
 ```python
