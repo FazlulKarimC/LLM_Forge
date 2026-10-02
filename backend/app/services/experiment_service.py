@@ -125,11 +125,16 @@ class ExperimentService:
 
                 raise ValidationException(f"PromptVersion {data.config.prompt_version_id} not found")
             prompt_version_manifest = {
+                # Chat evaluation uses the prompt/dataset workspace, whose provider
+                # path preserves message roles. Legacy benchmark adapters are text-only.
                 "id": str(prompt_version.id),
                 "name": prompt_version.name,
                 "version": prompt_version.version,
                 "sha256_hash": prompt_version.sha256_hash,
             }
+            if getattr(prompt_version, "prompt_type", "text") == "chat":
+                from app.core.custom_exceptions import ValidationException
+                raise ValidationException("Chat prompts are supported in Evaluations; benchmark prompt adapters require a text version")
         
         # Build immutable run manifest for reproducibility
         manifest_data = {

@@ -40,6 +40,8 @@ class DatasetCreate(RevisionCreate):
     @field_validator("name")
     @classmethod
     def clean_name(cls, value):
+        if "/" in value:
+            raise ValueError("Dataset names cannot include /")
         return PromptCreate.clean_name(value)
 
 
@@ -51,6 +53,8 @@ class DatasetUpdate(StrictModel):
     @field_validator("name")
     @classmethod
     def clean_name(cls, value):
+        if value is not None and "/" in value:
+            raise ValueError("Dataset names cannot include /")
         return PromptCreate.clean_name(value) if value is not None else None
 
 

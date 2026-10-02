@@ -4,6 +4,8 @@ FastAPI API for authenticated projects, versioned prompts and datasets, evaluati
 
 The prompt workflow saves immutable versions, runs fixed cases with assertions or an optional judge, and exposes released prompts to the Python SDK. The experiment workflow runs reasoning methods through configured providers and records per-sample results, routing, cost, metrics, and regression checks.
 
+Prompt versions support text or role-preserving chat content and JSON configuration. Labels include automatic latest plus mutable custom labels; tags and folder paths organize the catalog. Project keys read by default, with optional prompts:write for creation and label movement. See the [prompt-management comparison](../docs/PROMPT_MANAGEMENT_COMPARISON.md) for contracts and deliberate scope choices.
+
 ---
 
 ## 🛠️ Technology Stack

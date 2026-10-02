@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { FlaskConical, Plus, X } from "lucide-react";
 import {
-  draftVariables,
+  promptDraftVariables,
   compileDraft,
   runPlayground,
   type Provider,
@@ -26,13 +26,30 @@ export function PromptPlayground({
   draft: VersionDraft;
   onCompareChange?: (value: boolean) => void;
 }) {
-  const names = draftVariables(draft.template_text, draft.template_format);
+  const names = promptDraftVariables(draft);
+  const contentReady =
+    draft.prompt_type === "chat"
+      ? (draft.messages ?? []).some((message) => message.content.trim())
+      : !!draft.template_text.trim();
   const [variables, setVariables] = useState<Record<string, string>>({});
   const [targets, setTargets] = useState<Target[]>([
     { id: 1, provider: "mock", model: "demo-model", key: "" },
   ]);
-  const [temperature, setTemperature] = useState(0.7);
-  const [maxTokens, setMaxTokens] = useState(256);
+  const [temperature, setTemperature] = useState(
+    typeof draft.config?.temperature === "number" &&
+      draft.config.temperature >= 0 &&
+      draft.config.temperature <= 2
+      ? draft.config.temperature
+      : 0.7,
+  );
+  const [maxTokens, setMaxTokens] = useState(
+    typeof draft.config?.max_tokens === "number" &&
+      Number.isInteger(draft.config.max_tokens) &&
+      draft.config.max_tokens > 0 &&
+      draft.config.max_tokens <= 2048
+      ? draft.config.max_tokens
+      : 256,
+  );
   const [compiled, setCompiled] = useState<string | null>(null);
   const [outcomes, setOutcomes] = useState<Outcome[]>([]);
   const [pending, setPending] = useState(false);
@@ -104,7 +121,7 @@ export function PromptPlayground({
             className="btn-primary"
             disabled={
               pending ||
-              !draft.template_text.trim() ||
+              !contentReady ||
               targets.some(
                 (target) =>
                   !target.model.trim() ||
@@ -293,7 +310,7 @@ export function PromptPlayground({
         )}
         <button
           className="btn-ghost"
-          disabled={pending || !draft.template_text.trim()}
+          disabled={pending || !contentReady}
           onClick={() => run(true)}
         >
           Preview compiled prompt

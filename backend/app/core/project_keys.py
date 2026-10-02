@@ -36,6 +36,12 @@ async def get_sdk_project(key: ProjectAPIKey = Depends(get_sdk_key)) -> UUID:
     return key.project_id
 
 
+async def get_prompt_write_project(key: ProjectAPIKey = Depends(get_sdk_key)) -> UUID:
+    if "prompts:write" not in key.scopes:
+        raise HTTPException(403, "This key does not allow prompt writes")
+    return key.project_id
+
+
 async def get_evaluation_project(key: ProjectAPIKey = Depends(get_sdk_key)) -> UUID:
     if "evaluations:write" not in key.scopes:
         raise HTTPException(403, "Create a project API key with evaluations:write in Settings to use this endpoint")

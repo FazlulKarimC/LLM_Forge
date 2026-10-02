@@ -183,7 +183,7 @@ class OpenAIEngine(InferenceEngine):
         start = time.perf_counter()
         kwargs = {
             "model": self._model_name,
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": prompt if isinstance(prompt, list) else [{"role": "user", "content": prompt}],
             "temperature": config.temperature,
             "max_completion_tokens": config.max_tokens,
         }

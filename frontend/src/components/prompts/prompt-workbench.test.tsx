@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PromptWorkbench } from "./prompt-workbench";
 import { PromptPlayground } from "./prompt-playground";
 import { ProjectAPIKeys } from "./project-api-keys";
+import { VersionComparison } from "./version-comparison";
 import type { PromptDetail } from "@/lib/prompt-api";
 
 const mocks = vi.hoisted(() => ({
@@ -110,6 +111,98 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("prompt workbench", () => {
+  it("creates a role-preserving chat version with configuration", async () => {
+    mocks.createPrompt.mockResolvedValue(detail);
+    wrap(<PromptWorkbench />);
+    fireEvent.change(screen.getByLabelText("Prompt name"), {
+      target: { value: "support/chat" },
+    });
+    fireEvent.change(screen.getByLabelText("Prompt type"), {
+      target: { value: "chat" },
+    });
+    fireEvent.change(screen.getByLabelText("Message 1 content"), {
+      target: { value: "Use {{language}}" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Move message 2 up" }));
+    fireEvent.click(screen.getByText("Version configuration"));
+    fireEvent.change(screen.getByLabelText("Configuration JSON"), {
+      target: { value: '{"temperature":0}' },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create prompt" }));
+    await waitFor(() =>
+      expect(mocks.createPrompt).toHaveBeenCalledWith(
+        "support/chat",
+        expect.objectContaining({
+          prompt_type: "chat",
+          template_text: "",
+          config: { temperature: 0 },
+          messages: [
+            { role: "user", content: "{{query}}" },
+            { role: "system", content: "Use {{language}}" },
+          ],
+        }),
+      ),
+    );
+  });
+  it("saves config-only changes and blocks malformed config", async () => {
+    mocks.saveVersion.mockResolvedValue({
+      ...first,
+      version: 2,
+      id: "v2",
+      config: { temperature: 0 },
+    });
+    wrap(<PromptWorkbench initial={detail} />);
+    fireEvent.click(screen.getByText("Version configuration"));
+    fireEvent.change(screen.getByLabelText("query"), {
+      target: { value: "Preserve my sample input" },
+    });
+    fireEvent.change(screen.getByLabelText("Configuration JSON"), {
+      target: { value: "[invalid" },
+    });
+    expect(
+      screen.getByRole("button", { name: "Save new version" }),
+    ).toBeDisabled();
+    expect(screen.getByRole("alert")).toHaveTextContent("valid JSON object");
+    fireEvent.change(screen.getByLabelText("Configuration JSON"), {
+      target: { value: '{"temperature":0}' },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save new version" }));
+    await waitFor(() =>
+      expect(mocks.saveVersion).toHaveBeenCalledWith(
+        "p1",
+        expect.objectContaining({
+          config: { temperature: 0 },
+          template_text: first.template_text,
+        }),
+      ),
+    );
+    expect(screen.getByLabelText("query")).toHaveValue(
+      "Preserve my sample input",
+    );
+  });
+  it("assigns custom labels after confirmation and reserves latest", async () => {
+    wrap(<PromptWorkbench initial={detail} />);
+    fireEvent.click(screen.getByRole("button", { name: "Releases" }));
+    fireEvent.change(screen.getByLabelText("Custom label"), {
+      target: { value: "latest" },
+    });
+    expect(
+      screen.getByRole("button", { name: "Assign label to v1" }),
+    ).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("Custom label"), {
+      target: { value: "experiment-a" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Assign label to v1" }));
+    expect(mocks.promoteVersion).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Confirm promotion" }));
+    await waitFor(() =>
+      expect(mocks.promoteVersion).toHaveBeenCalledWith(
+        "p1",
+        "experiment-a",
+        "v1",
+      ),
+    );
+  });
   it("creates a stable prompt and navigates to its editor", async () => {
     mocks.createPrompt.mockResolvedValue(detail);
     wrap(<PromptWorkbench />);
@@ -225,7 +318,9 @@ describe("prompt workbench", () => {
     fireEvent.click(screen.getByRole("button", { name: "Settings" }));
     expect(screen.getByLabelText("Prompt name")).toHaveValue("renamed");
     expect(screen.getByLabelText("Description")).toHaveValue("Updated purpose");
-    fireEvent.click(screen.getByRole("button", { name: "Editor & playground" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Editor & playground" }),
+    );
     expect(
       screen.getByRole("button", { name: "Save new version" }),
     ).toBeDisabled();
@@ -250,6 +345,24 @@ describe("prompt workbench", () => {
         screen.getByRole("button", { name: "Save new version" }),
       ).toBeDisabled(),
     );
+  });
+});
+
+describe("version comparison", () => {
+  it("shows configuration changes when prompt content is unchanged", () => {
+    const second = {
+      ...first,
+      id: "v2",
+      version: 2,
+      config: { temperature: 0 },
+    };
+    render(<VersionComparison versions={[second, first]} />);
+    expect(
+      screen.getByText("Prompt content is unchanged."),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Candidate config")).toBeInTheDocument();
+    expect(screen.getByLabelText("Reference version")).toHaveValue("v1");
+    expect(screen.getByLabelText("Candidate version")).toHaveValue("v2");
   });
 });
 

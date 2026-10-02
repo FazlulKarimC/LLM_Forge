@@ -1,5 +1,6 @@
 import math
 import os
+import re
 import time
 from collections import OrderedDict
 from typing import Any
@@ -122,14 +123,14 @@ class LLMForge:
     def get_prompt(
         self, name: str, *, label: str | None = None, version: int | None = None
     ) -> Prompt:
-        if not name or name in (".", "..") or "/" in name:
-            raise ValueError("Prompt name cannot be blank, . or .., or contain /")
+        if not name or any(segment in ("", ".", "..") for segment in name.split("/")) or any(ord(char) < 32 for char in name):
+            raise ValueError("Use a valid prompt name or folder/name path")
         if label is not None and version is not None:
             raise ValueError("Choose a label or a version, not both")
-        if label not in (None, "staging", "production") or (
+        if (label is not None and (not isinstance(label, str) or not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_.-]{0,63}", label))) or (
             version is not None and (type(version) is not int or version < 1)
         ):
-            raise ValueError("Use staging/production or a positive version number")
+            raise ValueError("Use a valid label or a positive version number")
         params = (
             {"version": version}
             if version is not None
@@ -154,25 +155,7 @@ class LLMForge:
             self._cache.move_to_end(cache_key)
             return cached[1]
         data = self._json(response)
-        try:
-            prompt = Prompt(
-                **{
-                    key: data[key]
-                    for key in (
-                        "id",
-                        "prompt_id",
-                        "name",
-                        "version",
-                        "template_text",
-                        "template_format",
-                    )
-                },
-                variables=tuple(data["variables"]),
-            )
-        except (KeyError, TypeError):
-            raise LLMForgeError(
-                "LLMForge returned an invalid prompt snapshot"
-            ) from None
+        prompt = self._snapshot(data)
         etag = response.headers.get("etag")
         self._cache.pop(cache_key, None)
         if etag:
@@ -181,6 +164,43 @@ class LLMForge:
             if len(self._cache) > 128:
                 self._cache.popitem(last=False)
         return prompt
+
+    def create_prompt(self, name: str, prompt: str | list[dict[str, str]], *, config: dict | None = None,
+                      labels: list[str] | None = None, tags: list[str] | None = None,
+                      commit_message: str = "", template_format: str = "mustache", base_version: int | None = None) -> Prompt:
+        """Create a named prompt or its next immutable version. Requires prompts:write."""
+        body = {"name": name, "prompt_type": "text" if isinstance(prompt, str) else "chat",
+                "template_text": prompt if isinstance(prompt, str) else "", "messages": [] if isinstance(prompt, str) else prompt,
+                "config": config or {}, "labels": labels or [], "description": commit_message,
+                "template_format": template_format, "base_version": base_version}
+        if tags is not None:
+            body["tags"] = tags
+        data = self._json(self._request("POST", "sdk/prompts", body=body))
+        self._cache.clear()
+        return self._snapshot(data)
+
+    def list_prompts(self, *, tag: str | None = None, label: str | None = None, offset: int = 0, limit: int = 50) -> dict[str, Any]:
+        """List active prompts and their labels/tags, with server-side filtering."""
+        return self._json(self._request("GET", "sdk/prompts", params={"offset": offset, "limit": limit, **({"tag": tag} if tag else {}), **({"label": label} if label else {})}))
+
+    def set_prompt_label(self, name: str, version: int, label: str) -> Prompt:
+        """Move a label to a saved version, including rollback. Requires prompts:write."""
+        if not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_.-]{0,63}", label) or label == "latest":
+            raise ValueError("Use a mutable label; latest is automatic")
+        data = self._json(self._request("PUT", "sdk/prompts/" + quote(name, safe="") + "/labels/" + quote(label, safe=""), body={"version": version}))
+        self._cache.clear()
+        return self._snapshot(data)
+
+    @staticmethod
+    def _snapshot(data):
+        try:
+            return Prompt(**{key: data[key] for key in ("id", "prompt_id", "name", "version", "template_text", "template_format")},
+                variables=tuple(data["variables"]), prompt_type=data.get("prompt_type", "text"),
+                messages=tuple(data.get("messages", [])), config=data.get("config", {}),
+                labels=tuple(data.get("labels", [])), tags=tuple(data.get("tags", [])),
+                description=data.get("description") or "", sha256_hash=data.get("sha256_hash", ""))
+        except (KeyError, TypeError):
+            raise LLMForgeError("LLMForge returned an invalid prompt snapshot") from None
 
     def get_dataset(self, name: str, *, version: int | None = None) -> dict[str, Any]:
         if (

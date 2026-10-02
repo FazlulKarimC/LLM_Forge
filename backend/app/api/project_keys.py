@@ -18,7 +18,7 @@ router = APIRouter(tags=["Project API keys"])
 
 class KeyCreate(StrictModel):
     name: str = Field(min_length=1, max_length=120)
-    scopes: list[Literal["prompts:read", "evaluations:write"]] = Field(default_factory=lambda: ["prompts:read"], min_length=1, max_length=2)
+    scopes: list[Literal["prompts:read", "prompts:write", "evaluations:write"]] = Field(default_factory=lambda: ["prompts:read"], min_length=1, max_length=3)
 
     @field_validator("name")
     @classmethod

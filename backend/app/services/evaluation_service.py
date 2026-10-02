@@ -286,6 +286,8 @@ async def execute_evaluation(run_id, project_id, request, version, cases):
                     PlaygroundRequest(
                         template_text=version["template_text"],
                         template_format=version["template_format"],
+                        prompt_type=version.get("prompt_type", "text"),
+                        messages=version.get("messages", []),
                         variables=case["inputs"],
                         provider=request.provider,
                         model=request.model,

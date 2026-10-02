@@ -34,13 +34,14 @@ async def create_prompt_version(data: PromptVersionCreate, context: ProjectConte
     else:
         prompt = (await db.execute(select(Prompt).where(Prompt.name == data.name).with_for_update())).scalar_one_or_none()
         if prompt is None:
-            prompt = Prompt(project_id=context.project_id, name=data.name, description=data.description)
+            prompt = Prompt(project_id=context.project_id, name=data.name, description=data.description, prompt_type=data.prompt_type, tags=data.tags)
             db.add(prompt)
             await flush_unique(db, "This prompt was created concurrently. Reload and retry.")
         elif prompt.archived:
             raise HTTPException(409, "Prompt is archived. Restore it in the prompt library.")
     version = await add_version(db, prompt, VersionCreate(template_text=data.template_text,
-        template_format=data.template_format, description=data.description, base_version=base))
+        template_format=data.template_format, description=data.description, base_version=base,
+        prompt_type=data.prompt_type, messages=data.messages, config=data.config, labels=data.labels))
     await db.commit()
     return version_response(version)
 

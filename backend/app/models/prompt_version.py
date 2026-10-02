@@ -10,7 +10,7 @@ import hashlib
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from sqlalchemy import Column, String, Text, Integer, ForeignKey, DateTime, UniqueConstraint, CheckConstraint
+from sqlalchemy import Column, String, Text, Integer, ForeignKey, DateTime, UniqueConstraint, CheckConstraint, JSON
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 
 from app.core.database import Base
@@ -37,6 +37,10 @@ class PromptVersion(Base):
     id = Column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
     name = Column(String(255), nullable=False, index=True)
     template_text = Column(Text, nullable=False)
+    prompt_type = Column(String(8), nullable=False, default="text", server_default="text")
+    messages = Column(JSON, nullable=False, default=list, server_default="[]")
+    config = Column(JSON, nullable=False, default=dict, server_default="{}")
+    created_by = Column(String(16), nullable=False, default="UI", server_default="UI")
     version = Column(Integer, nullable=False, default=1)
     sha256_hash = Column(String(64), nullable=False, index=True)
     parent_id = Column(PG_UUID(as_uuid=True), ForeignKey("prompt_versions.id"), nullable=True)

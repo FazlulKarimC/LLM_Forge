@@ -430,3 +430,11 @@ Light mode uses darker semantic text shades for links, success, warning, errors,
 Saved prompt metadata belongs in Settings; template format, draft/saved state, and version notes belong with editing. Each playground model groups its provider/model controls with its last-run output. Shared generation parameters live in an expandable section. Runs compare an explicitly labeled candidate and reference; case filters and the inspected case are represented in the URL.
 
 Do not add an application-wide filter that only filters one loaded page. Retain the distinction between drafts, immutable versions/revisions, and release labels. Use real demo data to verify result placement and keep provider credentials out of saved run configuration.
+
+### Prompt management components
+
+- Text/chat type is chosen during creation and remains visible, fixed, on saved prompts. Chat messages pair the role selector with the corresponding content field; reorder/remove controls stay on that message's row.
+- Version configuration belongs in a disclosure inside the editor. Prompt tags belong in Settings; catalog tag/folder filters operate on the server before pagination.
+- Versions places the saved history above an explicit Reference/Candidate comparison. Content and configuration changes have separate areas; color accompanies written added/removed labels. Comparison columns stack on narrow screens.
+- Releases shows automatic latest separately from mutable staging, production and custom labels. Assigning a custom label uses the same saved-version confirmation as other promotions.
+- Integration explains string versus chat compilation, version/config retrieval, and selector behavior. Additional API-key capabilities use explicit, unchecked-by-default controls in Settings.

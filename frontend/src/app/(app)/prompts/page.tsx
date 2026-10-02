@@ -14,11 +14,25 @@ export default function PromptsPage() {
   const [search, setSearch] = useState("");
   const [archived, setArchived] = useState(false);
   const [offset, setOffset] = useState(0);
+  const [tag, setTag] = useState("");
+  const [folder, setFolder] = useState("");
+  const deferredTag = useDeferredValue(tag.trim());
+  const deferredFolder = useDeferredValue(folder.trim());
   const deferredSearch = useDeferredValue(search);
   const query = useQuery({
-    queryKey: ["prompt-library", deferredSearch, archived, offset],
+    queryKey: [
+      "prompt-library",
+      deferredSearch,
+      archived,
+      offset,
+      deferredTag,
+      deferredFolder,
+    ],
     queryFn: ({ signal }) =>
-      listPrompts(deferredSearch, archived, offset, signal),
+      listPrompts(deferredSearch, archived, offset, signal, {
+        tag: deferredTag,
+        folder: deferredFolder,
+      }),
   });
   return (
     <div className="page-stack">
@@ -48,6 +62,32 @@ export default function PromptsPage() {
             }}
             placeholder="Find a prompt by name"
             maxLength={255}
+          />
+        </label>
+        <label className="text-sm">
+          Tag
+          <input
+            className={inputClass}
+            value={tag}
+            onChange={(event) => {
+              setTag(event.target.value);
+              setOffset(0);
+            }}
+            maxLength={64}
+            placeholder="Exact tag"
+          />
+        </label>
+        <label className="text-sm">
+          Folder
+          <input
+            className={inputClass}
+            value={folder}
+            onChange={(event) => {
+              setFolder(event.target.value);
+              setOffset(0);
+            }}
+            maxLength={255}
+            placeholder="support"
           />
         </label>
         <label className="text-sm">
@@ -103,6 +143,35 @@ export default function PromptsPage() {
                     <p className="mt-1 max-w-md truncate text-xs text-(--muted-foreground)">
                       {prompt.description || "No description"}
                     </p>
+                    <div className="mt-2 flex flex-wrap gap-1 text-xs text-(--muted-foreground)">
+                      <span className="chip">
+                        {prompt.prompt_type ?? "text"}
+                      </span>
+                      {prompt.tags?.map((tag) => (
+                        <button
+                          key={tag}
+                          className="chip hover:underline"
+                          onClick={() => {
+                            setTag(tag);
+                            setOffset(0);
+                          }}
+                        >
+                          {tag}
+                        </button>
+                      ))}
+                      {prompt.labels
+                        .filter(
+                          (label) =>
+                            !["latest", "staging", "production"].includes(
+                              label.label,
+                            ),
+                        )
+                        .map((label) => (
+                          <span key={label.label} className="chip">
+                            {label.label} · v{label.version}
+                          </span>
+                        ))}
+                    </div>
                   </td>
                   <td className="p-4">v{prompt.latest_version}</td>
                   <td className="p-4">
@@ -129,18 +198,18 @@ export default function PromptsPage() {
         !query.error && (
           <div className="panel py-14 text-center">
             <h2 className="text-xl font-semibold">
-              {search
+              {search || tag || folder
                 ? "No matching prompts"
                 : archived
                   ? "No archived prompts"
                   : "Your first prompt starts here"}
             </h2>
             <p className="mt-2 text-sm text-(--muted-foreground)">
-              {search
-                ? "Try another name."
+              {search || tag || folder
+                ? "Try another name, tag, or folder."
                 : "Write a reusable template and test it before releasing it."}
             </p>
-            {!archived && !search && (
+            {!archived && !search && !tag && !folder && (
               <Link href="/prompts/new" className="btn-primary mt-6">
                 Create a prompt
               </Link>

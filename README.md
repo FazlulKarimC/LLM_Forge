@@ -29,7 +29,8 @@ This demo checks a deterministic output contract; it does **not** measure real m
 - **Prompts:** draft editor and playground, immutable versions, staging/production labels, rollback, and an Integrate tab for SDK access.
 - **Datasets:** versioned cases, case-table and advanced JSON editing, CSV/JSON import preview, and exact revision links into evaluation setup.
 - **Evaluations:** exact match, contains, regex, JSON checks including per-case JSON references, optional LLM judge, cancellation, per-case results, and comparison on the same dataset revision. The results view distinguishes candidate from reference and warns when assertions differ.
-- **Workspaces and keys:** Clerk sessions for the web app; organization/project isolation; hashed project keys with read-only access by default and optional evaluation scope for CI. Owners manage project keys in Settings.
+- **Workspaces and keys:** Clerk sessions for the web app; organization/project isolation; hashed project keys with read-only access by default and optional prompt-write/evaluation scopes. Owners manage project keys in Settings.
+- **Prompt management:** text or role-preserving chat versions, saved JSON configuration, tags/folder paths, custom labels, automatic latest, and saved-version comparisons. See [the Langfuse comparison](docs/PROMPT_MANAGEMENT_COMPARISON.md) for implemented capabilities and remaining learning extensions.
 - **Python SDK and CI:** fetch a released or pinned prompt, compile variables locally, run a version-pinned evaluation, submit application-computed results, and fail a quality gate. The SDK installs from this repository; it is not published to PyPI. External submissions are self-reported.
 - **Reasoning benchmarks:** a separate Benchmarks area supports Naive, CoT, RAG, and ReAct experiments, provider routing, execution provenance, and statistical comparison. See [benchmark details](docs/BENCHMARKS.md).
 

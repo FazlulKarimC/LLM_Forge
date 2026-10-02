@@ -47,3 +47,32 @@ def compile_template(template: str, values: dict[str, str], template_format: str
     if len(compiled) > MAX_COMPILED_LENGTH:
         raise ValueError("Compiled prompt exceeds 100,000 characters")
     return compiled
+
+
+def message_dict(message):
+    return message.model_dump() if hasattr(message, "model_dump") else dict(message)
+
+
+def prompt_variables(text, messages, prompt_type="text", template_format="mustache"):
+    if prompt_type == "text":
+        return template_variables(text, template_format)
+    names = sorted({name for message in messages for name in template_variables(message_dict(message)["content"], template_format)})
+    if len(names) > 100:
+        raise ValueError("A prompt may contain at most 100 variables")
+    return names
+
+
+def compile_prompt(text, messages, prompt_type, values, template_format="mustache"):
+    """Preserve role boundaries rather than flattening chat into a user message."""
+    if prompt_type == "text":
+        return compile_template(text, values, template_format)
+    compiled = [{"role": message_dict(message)["role"],
+                 "content": compile_template(message_dict(message)["content"], values, template_format)}
+                for message in messages]
+    if sum(len(message["content"]) for message in compiled) > MAX_COMPILED_LENGTH:
+        raise ValueError("Compiled prompt exceeds 100,000 characters")
+    return compiled
+
+
+def prompt_preview(compiled):
+    return compiled if isinstance(compiled, str) else "\n\n".join(f"[{message['role']}]\n{message['content']}" for message in compiled)

@@ -10,7 +10,9 @@ import { useUnsavedChanges } from "@/lib/use-unsaved-changes";
 import {
   archivePrompt,
   createPrompt,
-  draftVariables,
+  promptDraftVariables,
+  canonicalJSON,
+  parsePromptConfig,
   getPrompt,
   getVersions,
   promoteVersion,
@@ -21,8 +23,12 @@ import {
   type PromptVersion,
   type ReleaseLabel,
   type TemplateFormat,
+  type PromptType,
+  type ChatMessage,
 } from "@/lib/prompt-api";
 import { PromptPlayground } from "./prompt-playground";
+import { ChatEditor } from "./chat-editor";
+import { VersionComparison } from "./version-comparison";
 import { ErrorMessage, errorText, inputClass, panelClass } from "./prompt-ui";
 const DEFAULT_TEMPLATE =
   "Answer the following question clearly and concisely.\n\nQuestion: {{query}}\nAnswer:";
@@ -43,6 +49,29 @@ export function PromptWorkbench({ initial }: { initial?: PromptDetail }) {
   const [format, setFormat] = useState<TemplateFormat>(
     initial?.version.template_format ?? "mustache",
   );
+  const [promptType, setPromptType] = useState<PromptType>(
+    initial?.version.prompt_type ?? "text",
+  );
+  const [messages, setMessages] = useState<ChatMessage[]>(
+    initial?.version.messages ?? [
+      { role: "system", content: "You are a helpful assistant." },
+      { role: "user", content: "{{query}}" },
+    ],
+  );
+  const [configText, setConfigText] = useState(
+    JSON.stringify(initial?.version.config ?? {}, null, 2),
+  );
+  const [tagsText, setTagsText] = useState(
+    (initial?.prompt.tags ?? []).join(", "),
+  );
+  const [customLabel, setCustomLabel] = useState("");
+  let config: Record<string, unknown> = {};
+  let configError: string | null = null;
+  try {
+    config = parsePromptConfig(configText);
+  } catch {
+    configError = "Configuration must be a valid JSON object.";
+  }
   const [widePlayground, setWidePlayground] = useState(false);
   const [notes, setNotes] = useState("");
   const [pending, setPending] = useState<string | null>(null);
@@ -65,24 +94,51 @@ export function PromptWorkbench({ initial }: { initial?: PromptDetail }) {
       lastPage.length === 50 ? pages.length * 50 : undefined,
   });
   const draft = {
-    template_text: template,
+    template_text: promptType === "text" ? template : "",
     template_format: format,
     description: notes,
+    prompt_type: promptType,
+    messages: promptType === "chat" ? messages : [],
+    config,
   };
+  const tags = [
+    ...new Set(
+      tagsText
+        .split(",")
+        .map((tag) => tag.trim())
+        .filter(Boolean),
+    ),
+  ].sort();
+  const contentReady =
+    promptType === "text"
+      ? !!template.trim()
+      : messages.some((message) => message.content.trim());
   const dirty = selected
-    ? template !== selected.template_text || format !== selected.template_format
+    ? (promptType === "text"
+        ? template !== selected.template_text
+        : JSON.stringify(messages) !==
+          JSON.stringify(selected.messages ?? [])) ||
+      format !== selected.template_format ||
+      canonicalJSON(config) !== canonicalJSON(selected.config ?? {}) ||
+      !!configError
     : true;
   const metadataDirty =
-    !!prompt && (name !== prompt.name || description !== prompt.description);
+    !!prompt &&
+    (name !== prompt.name ||
+      description !== prompt.description ||
+      tags.join(",") !== [...(prompt.tags ?? [])].sort().join(","));
   useUnsavedChanges(
     prompt
       ? dirty || metadataDirty || !!notes.trim()
       : !!name.trim() ||
           !!description.trim() ||
           template !== DEFAULT_TEMPLATE ||
-          format !== "mustache",
+          format !== "mustache" ||
+          promptType === "chat" ||
+          configText !== "{}" ||
+          !!tagsText.trim(),
   );
-  const variables = draftVariables(template, format);
+  const variables = promptDraftVariables(draft);
   const integrationInputs = Object.fromEntries(
     (selected?.variables ?? []).map((variable) => [variable, "example"]),
   );
@@ -110,6 +166,9 @@ export function PromptWorkbench({ initial }: { initial?: PromptDetail }) {
     setSelected(version);
     setTemplate(version.template_text);
     setFormat(version.template_format);
+    setPromptType(version.prompt_type ?? "text");
+    setMessages(version.messages ?? []);
+    setConfigText(JSON.stringify(version.config ?? {}, null, 2));
     setNotes("");
     setReleaseRequested(null);
     setError(null);
@@ -122,6 +181,7 @@ export function PromptWorkbench({ initial }: { initial?: PromptDetail }) {
       setPrompt(latest.prompt);
       setName(latest.prompt.name);
       setDescription(latest.prompt.description);
+      setTagsText((latest.prompt.tags ?? []).join(", "));
       chooseVersion(latest.version);
       cache.setQueryData(["prompt-detail", prompt.id], latest);
       await Promise.all([
@@ -137,13 +197,26 @@ export function PromptWorkbench({ initial }: { initial?: PromptDetail }) {
           ...draft,
           base_version: prompt.latest_version,
         });
-        setPrompt({ ...prompt, latest_version: saved.version });
+        setPrompt({
+          ...prompt,
+          latest_version: saved.version,
+          labels: [
+            ...prompt.labels.filter((label) => label.label !== "latest"),
+            {
+              label: "latest",
+              version_id: saved.id,
+              version: saved.version,
+              updated_at: saved.created_at,
+            },
+          ],
+        });
         chooseVersion(saved);
         await refresh();
       } else {
         const created = await createPrompt(name.trim(), {
           ...draft,
           description,
+          tags,
         });
         await cache.invalidateQueries({ queryKey: ["prompt-library"] });
         router.push(`/prompts/${created.prompt.id}`);
@@ -175,7 +248,8 @@ export function PromptWorkbench({ initial }: { initial?: PromptDetail }) {
                 !!pending ||
                 !!prompt?.archived ||
                 !name.trim() ||
-                !template.trim() ||
+                !contentReady ||
+                !!configError ||
                 (!!prompt && !dirty)
               }
               onClick={save}
@@ -284,6 +358,20 @@ export function PromptWorkbench({ initial }: { initial?: PromptDetail }) {
                 </>
               )}
               <label className="block text-sm">
+                Prompt type
+                <select
+                  className={inputClass}
+                  value={promptType}
+                  disabled={!!prompt || !!pending}
+                  onChange={(event) =>
+                    setPromptType(event.target.value as PromptType)
+                  }
+                >
+                  <option value="text">Text template</option>
+                  <option value="chat">Chat messages</option>
+                </select>
+              </label>
+              <label className="block text-sm">
                 Template format
                 <select
                   className={inputClass}
@@ -297,18 +385,26 @@ export function PromptWorkbench({ initial }: { initial?: PromptDetail }) {
                   <option value="fstring">Brace · {"{variable}"}</option>
                 </select>
               </label>
-              <label className="block text-sm">
-                Template
-                <textarea
-                  aria-label="Prompt template"
-                  className={`${inputClass} prompt-template font-mono leading-6`}
-                  value={template}
-                  maxLength={50_000}
-                  spellCheck={false}
-                  onChange={(event) => setTemplate(event.target.value)}
+              {promptType === "text" ? (
+                <label className="block text-sm">
+                  Template
+                  <textarea
+                    aria-label="Prompt template"
+                    className={`${inputClass} prompt-template font-mono leading-6`}
+                    value={template}
+                    maxLength={50_000}
+                    spellCheck={false}
+                    onChange={(event) => setTemplate(event.target.value)}
+                    disabled={!!pending || !!prompt?.archived}
+                  />
+                </label>
+              ) : (
+                <ChatEditor
+                  messages={messages}
+                  onChange={setMessages}
                   disabled={!!pending || !!prompt?.archived}
                 />
-              </label>
+              )}
               <div className="flex flex-wrap gap-2 text-xs">
                 {variables.length ? (
                   variables.map((variable) => (
@@ -325,7 +421,14 @@ export function PromptWorkbench({ initial }: { initial?: PromptDetail }) {
                   </span>
                 )}
                 <span className="ml-auto text-(--muted-foreground)">
-                  {template.length.toLocaleString()} / 50,000 characters
+                  {(promptType === "text"
+                    ? template.length
+                    : messages.reduce(
+                        (sum, message) => sum + message.content.length,
+                        0,
+                      )
+                  ).toLocaleString()}{" "}
+                  / 50,000 characters
                 </span>
               </div>
               <p className="text-xs text-(--muted-foreground)">
@@ -333,6 +436,28 @@ export function PromptWorkbench({ initial }: { initial?: PromptDetail }) {
                   ? "Use simple names inside double braces. JSON braces remain literal. Expressions and sections are not supported."
                   : "Use simple names inside single braces. Escape literal braces as {{ and }}. Expressions and formatting directives are not supported."}
               </p>
+              <details className="border-t border-(--border) pt-3">
+                <summary className="cursor-pointer text-xs font-medium">
+                  Version configuration
+                </summary>
+                <label className="block mt-3 text-xs">
+                  Configuration JSON
+                  <textarea
+                    className={`${inputClass} min-h-32 font-mono`}
+                    value={configText}
+                    onChange={(event) => setConfigText(event.target.value)}
+                    disabled={!!pending || !!prompt?.archived}
+                    spellCheck={false}
+                    maxLength={20_000}
+                  />
+                </label>
+                <p className="mt-2 text-xs text-(--muted-foreground)">
+                  Saved with each version and returned by the SDK. Your
+                  application decides how to use it. Keep provider keys in your
+                  environment.
+                </p>
+                <ErrorMessage message={configError} />
+              </details>
               {prompt ? (
                 <label className="block text-sm">
                   Version notes
@@ -386,6 +511,11 @@ export function PromptWorkbench({ initial }: { initial?: PromptDetail }) {
                   >
                     <div className="flex items-center gap-2">
                       <span className="font-semibold">v{version.version}</span>
+                      {version.created_by && (
+                        <span className="text-xs text-(--muted-foreground)">
+                          {version.created_by === "API" ? "API" : "Editor"}
+                        </span>
+                      )}
                       {prompt.labels
                         .filter((label) => label.version_id === version.id)
                         .map((label) => (
@@ -424,6 +554,7 @@ export function PromptWorkbench({ initial }: { initial?: PromptDetail }) {
                   Load older versions
                 </button>
               ) : null}
+              <VersionComparison versions={versions.data?.pages.flat() ?? []} />
             </section>
           ) : null}
         </div>
@@ -450,7 +581,47 @@ export function PromptWorkbench({ initial }: { initial?: PromptDetail }) {
               >
                 Evaluate saved v{selected.version}
               </Link>
-              {(["staging", "production"] as ReleaseLabel[]).map((label) => (
+              <p className="text-xs text-(--muted-foreground)">
+                latest → v{prompt.latest_version} · automatically follows the
+                newest saved version. Production moves only when you promote it.
+              </p>
+              <div className="flex flex-wrap items-end gap-2">
+                <label className="min-w-48 flex-1 text-xs">
+                  Custom label
+                  <input
+                    className={inputClass}
+                    value={customLabel}
+                    maxLength={64}
+                    placeholder="experiment-a"
+                    onChange={(event) => setCustomLabel(event.target.value)}
+                    disabled={!!pending || prompt.archived}
+                  />
+                </label>
+                <button
+                  className="btn-secondary"
+                  disabled={
+                    !!pending ||
+                    prompt.archived ||
+                    dirty ||
+                    customLabel === "latest" ||
+                    !/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,63}$/.test(customLabel)
+                  }
+                  onClick={() => setReleaseRequested(customLabel)}
+                >
+                  Assign label to v{selected.version}
+                </button>
+              </div>
+              {(
+                [
+                  ...new Set([
+                    "staging",
+                    "production",
+                    ...prompt.labels
+                      .map((label) => label.label)
+                      .filter((label) => label !== "latest"),
+                  ]),
+                ] as ReleaseLabel[]
+              ).map((label) => (
                 <div
                   key={label}
                   className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-(--border) p-3"
@@ -556,24 +727,41 @@ export function PromptWorkbench({ initial }: { initial?: PromptDetail }) {
                   placeholder="What this prompt is used for"
                 />
               </label>
+              <label className="block text-sm">
+                Tags
+                <input
+                  className={inputClass}
+                  value={tagsText}
+                  onChange={(event) => setTagsText(event.target.value)}
+                  disabled={!!pending || prompt.archived}
+                  placeholder="support, classification"
+                  maxLength={1300}
+                />
+                <span className="text-xs text-(--muted-foreground)">
+                  Comma-separated; up to 20 tags. Tags organize the prompt
+                  across its versions.
+                </span>
+              </label>
               {prompt ? (
                 <button
                   className="btn-secondary"
                   disabled={
                     !!pending ||
                     prompt.archived ||
-                    (name === prompt.name &&
-                      description === prompt.description) ||
+                    !metadataDirty ||
                     !name.trim()
                   }
                   onClick={() =>
                     action("metadata", async () => {
-                      setPrompt(
-                        await updatePrompt(prompt.id, {
-                          name: name.trim(),
-                          description,
-                        }),
-                      );
+                      const updated = await updatePrompt(prompt.id, {
+                        name: name.trim(),
+                        description,
+                        tags,
+                      });
+                      setPrompt(updated);
+                      setName(updated.name);
+                      setDescription(updated.description);
+                      setTagsText((updated.tags ?? []).join(", "));
                       setNotice("Prompt details updated.");
                       await refresh();
                     })
@@ -581,7 +769,7 @@ export function PromptWorkbench({ initial }: { initial?: PromptDetail }) {
                 >
                   {pending === "metadata"
                     ? "Updating…"
-                    : "Update name and description"}
+                    : "Update prompt details"}
                 </button>
               ) : null}
               <hr className="border-(--border)" />
@@ -654,13 +842,30 @@ export function PromptWorkbench({ initial }: { initial?: PromptDetail }) {
             <Link href="/settings" className="underline">
               Settings
             </Link>
-            . Promote a saved version to production before fetching it. Store
-            the key in an environment variable.
+            . Promote a saved version to production for the default fetch, or
+            pin a version explicitly. Store the key in an environment variable.
           </p>
           <h3 className="text-sm font-semibold">Python SDK</h3>
           <pre className="overflow-auto rounded-xl bg-(--surface-2) p-4 text-xs">
             <code>{`from llmforge import LLMForge\n\nwith LLMForge() as forge:\n    prompt = forge.get_prompt(${JSON.stringify(prompt.name)}, label="production")\n    print(prompt.compile(**${JSON.stringify(integrationInputs)}))`}</code>
           </pre>
+          <p className="text-xs text-(--muted-foreground)">
+            Text prompts compile to a string; chat prompts compile to an ordered
+            list of role/content messages. Configuration is available as{" "}
+            <code>prompt.config</code>.
+          </p>
+          <h3 className="text-sm font-semibold">
+            Choose a saved version or label
+          </h3>
+          <pre className="overflow-auto rounded-lg bg-(--surface-2) p-4 text-xs">
+            <code>{`# Pin a version for reproducibility (no release required)\nprompt = forge.get_prompt(${JSON.stringify(prompt.name)}, version=${selected?.version ?? prompt.latest_version})\n\n# Follow the newest saved version during development\nprompt = forge.get_prompt(${JSON.stringify(prompt.name)}, label="latest")\n\n# Read versioned application settings\nsettings = prompt.config`}</code>
+          </pre>
+          <p className="text-xs text-(--muted-foreground)">
+            Missing labels return an error; there is no silent fallback. Use an
+            API key with prompts:write only when calling{" "}
+            <code>forge.create_prompt(...)</code> or{" "}
+            <code>forge.set_prompt_label(...)</code>.
+          </p>
           <h3 className="text-sm font-semibold">HTTP</h3>
           <pre className="overflow-auto rounded-xl bg-(--surface-2) p-4 text-xs">
             <code>{`curl -H "Authorization: Bearer $LLMFORGE_API_KEY" "${getApiBaseUrl()}/sdk/prompts/${encodeURIComponent(prompt.name)}?label=production"`}</code>

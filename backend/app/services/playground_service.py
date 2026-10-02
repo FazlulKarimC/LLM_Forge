@@ -3,7 +3,7 @@ import asyncio
 import time
 from fastapi import HTTPException
 from openai import APIConnectionError, APIStatusError, APITimeoutError
-from app.services.prompt_templates import compile_template
+from app.services.prompt_templates import compile_prompt, prompt_preview
 from app.services.inference.base import GenerationConfig
 from app.services.inference.openai_engine import OpenAIEngine
 
@@ -16,14 +16,16 @@ PROVIDERS = {
 
 async def generate_playground(data):
     try:
-        compiled = compile_template(data.template_text, data.variables, data.template_format)
+        compiled = compile_prompt(data.template_text, data.messages, data.prompt_type, data.variables, data.template_format)
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
     start = time.perf_counter()
+    preview = prompt_preview(compiled)
     if data.provider == "mock":
         # A reliable demo, explicitly distinguished from actual model inference.
-        return {"output": "[Demo output — no model was called]\n" + compiled[:2000],
-            "compiled_prompt": compiled, "provider": "mock", "model": data.model, "is_mock": True,
+        return {"output": "[Demo output — no model was called]\n" + preview[:2000],
+            "compiled_prompt": preview, "compiled_messages": compiled if isinstance(compiled, list) else None,
+            "provider": "mock", "model": data.model, "is_mock": True,
             "latency_ms": round((time.perf_counter() - start) * 1000, 2),
             "tokens_input": None, "tokens_output": None, "finish_reason": "demo"}
     key = data.api_key.get_secret_value().strip() if data.api_key else ""
@@ -51,6 +53,6 @@ async def generate_playground(data):
         raise HTTPException(502, "The provider returned an invalid completion response.") from exc
     finally:
         engine.unload_model()
-    return {"output": result.text, "compiled_prompt": compiled, "provider": data.provider,
+    return {"output": result.text, "compiled_prompt": preview, "compiled_messages": compiled if isinstance(compiled, list) else None, "provider": data.provider,
         "model": data.model, "is_mock": False, "latency_ms": round(result.latency_ms, 2),
         "tokens_input": result.tokens_input, "tokens_output": result.tokens_output, "finish_reason": result.finish_reason}

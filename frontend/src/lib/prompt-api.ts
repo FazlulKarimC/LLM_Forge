@@ -1,10 +1,17 @@
 import { fetchAPI } from "./api-client";
 
 export type TemplateFormat = "mustache" | "fstring";
-export type ReleaseLabel = "staging" | "production";
+export type ReleaseLabel = string;
+export type ChatMessage = {
+  role: "system" | "user" | "assistant";
+  content: string;
+};
+export type PromptType = "text" | "chat";
 export type Prompt = {
   id: string;
   name: string;
+  prompt_type?: PromptType;
+  tags?: string[];
   description: string;
   archived: boolean;
   latest_version: number;
@@ -22,6 +29,10 @@ export type PromptVersion = {
   prompt_id: string;
   name: string;
   template_text: string;
+  prompt_type?: PromptType;
+  messages?: ChatMessage[];
+  config?: Record<string, unknown>;
+  created_by?: string;
   template_format: TemplateFormat;
   version: number;
   sha256_hash: string;
@@ -36,6 +47,10 @@ export type VersionDraft = {
   template_format: TemplateFormat;
   description: string;
   base_version?: number;
+  prompt_type?: PromptType;
+  messages?: ChatMessage[];
+  config?: Record<string, unknown>;
+  tags?: string[];
 };
 export type Provider = "mock" | "groq" | "openrouter" | "openai";
 export type PlaygroundResult = {
@@ -68,9 +83,10 @@ export const listPrompts = (
   archived: boolean,
   offset: number,
   signal?: AbortSignal,
+  filters?: { tag?: string; folder?: string; label?: string },
 ) =>
   fetchAPI<{ items: Prompt[]; total: number }>(
-    `/prompt-library?${new URLSearchParams({ search, archived: String(archived), offset: String(offset) })}`,
+    `/prompt-library?${new URLSearchParams({ search, archived: String(archived), offset: String(offset), ...filters })}`,
     { signal },
   );
 export const getPrompt = (id: string, signal?: AbortSignal) =>
@@ -89,7 +105,7 @@ export const saveVersion = (id: string, draft: VersionDraft) =>
   );
 export const updatePrompt = (
   id: string,
-  changes: Partial<Pick<Prompt, "name" | "description" | "archived">>,
+  changes: Partial<Pick<Prompt, "name" | "description" | "archived" | "tags">>,
 ) => fetchAPI<Prompt>(`/prompt-library/${id}`, json("PATCH", changes));
 export const archivePrompt = (id: string) =>
   fetchAPI<void>(`/prompt-library/${id}`, { method: "DELETE" });
@@ -139,12 +155,24 @@ export const runPlayground = (
     { timeoutMs: 35_000, maxRetries: 0 },
   );
 export const listProjectKeys = () => fetchAPI<ProjectKey[]>("/project-keys");
-export const createProjectKey = (name: string, evaluations = false) =>
+export const createProjectKey = (
+  name: string,
+  evaluations = false,
+  promptWrites = false,
+) =>
   fetchAPI<ProjectKey & { secret: string }>(
     "/project-keys",
     json("POST", {
       name,
-      ...(evaluations ? { scopes: ["prompts:read", "evaluations:write"] } : {}),
+      ...(evaluations || promptWrites
+        ? {
+            scopes: [
+              "prompts:read",
+              ...(evaluations ? ["evaluations:write"] : []),
+              ...(promptWrites ? ["prompts:write"] : []),
+            ],
+          }
+        : {}),
     }),
   );
 export const revokeProjectKey = (id: string) =>
@@ -168,4 +196,40 @@ export function draftVariables(
       ),
     ),
   ].sort();
+}
+
+export function promptDraftVariables(draft: VersionDraft): string[] {
+  return draft.prompt_type === "chat"
+    ? [
+        ...new Set(
+          (draft.messages ?? []).flatMap((message) =>
+            draftVariables(message.content, draft.template_format),
+          ),
+        ),
+      ].sort()
+    : draftVariables(draft.template_text, draft.template_format);
+}
+
+export function canonicalJSON(value: unknown): string {
+  return JSON.stringify(value, (_key, item) =>
+    item && typeof item === "object" && !Array.isArray(item)
+      ? Object.fromEntries(
+          Object.keys(item)
+            .sort()
+            .map((key) => [key, item[key]]),
+        )
+      : item,
+  );
+}
+
+export function parsePromptConfig(text: string): Record<string, unknown> {
+  const value: unknown = JSON.parse(text);
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    throw new Error("Configuration must be a JSON object.");
+  JSON.stringify(value, (_key, item) => {
+    if (typeof item === "number" && !Number.isFinite(item))
+      throw new Error("Configuration numbers must be finite.");
+    return item;
+  });
+  return value as Record<string, unknown>;
 }

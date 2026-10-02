@@ -1,15 +1,15 @@
-"""Workspace prompt hub. SDK fetching lives in a separate read-only router."""
+"""Workspace prompt hub. Project-key access lives in a separate SDK router."""
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
-from sqlalchemy import select, func
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.tenancy import get_project_context, ProjectContext
 from app.models.prompt import Prompt, PromptLabel
 from app.models.prompt_version import PromptVersion
 from app.schemas.prompt import PromptCreate, PromptUpdate, VersionCreate, Promotion, CompileRequest, PlaygroundRequest, ReleaseLabel, PromptResponse, VersionResponse, version_response
-from app.services.prompt_service import find_prompt, add_version, flush_unique, describe_prompt, describe_prompts
-from app.services.prompt_templates import compile_template
+from app.services.prompt_service import find_prompt, add_version, flush_unique, describe_prompt, assign_label, list_prompt_catalog
+from app.services.prompt_templates import compile_prompt, prompt_preview
 
 router = APIRouter(tags=["Prompt library"])
 
@@ -17,10 +17,10 @@ router = APIRouter(tags=["Prompt library"])
 @router.post("/compile")
 async def compile_draft(data: CompileRequest):
     try:
-        compiled = compile_template(data.template_text, data.variables, data.template_format)
+        compiled = compile_prompt(data.template_text, data.messages, data.prompt_type, data.variables, data.template_format)
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
-    return {"compiled_prompt": compiled}
+    return {"compiled_prompt": prompt_preview(compiled), "compiled_messages": compiled if isinstance(compiled, list) else None}
 
 
 @router.post("/playground")
@@ -35,21 +35,15 @@ async def run_playground(data: PlaygroundRequest, db: AsyncSession = Depends(get
 @router.get("")
 async def list_prompts(search: str = Query("", max_length=255), archived: bool = False,
                        offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=100),
+                       tag: str = Query("", max_length=64), folder: str = Query("", max_length=255),
+                       label: ReleaseLabel | None = None,
                        db: AsyncSession = Depends(get_db)):
-    filters = [Prompt.archived == archived]
-    if search.strip():
-        # Treat %, _ and backslash as literal search characters.
-        pattern = search.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-        filters.append(Prompt.name.ilike(f"%{pattern}%", escape="\\"))
-    total = (await db.execute(select(func.count()).select_from(Prompt).where(*filters))).scalar_one()
-    prompts = (await db.execute(select(Prompt).where(*filters).order_by(Prompt.updated_at.desc(), Prompt.id)
-        .offset(offset).limit(limit))).scalars().all()
-    return {"items": await describe_prompts(db, prompts), "total": total}
+    return await list_prompt_catalog(db, search=search, archived=archived, offset=offset, limit=limit, tag=tag, folder=folder, label=label)
 
 
 @router.post("", status_code=201)
 async def create_prompt(data: PromptCreate, context: ProjectContext = Depends(get_project_context), db: AsyncSession = Depends(get_db)):
-    prompt = Prompt(project_id=context.project_id, name=data.name, description=data.description)
+    prompt = Prompt(project_id=context.project_id, name=data.name, description=data.description, prompt_type=data.prompt_type, tags=data.tags)
     db.add(prompt)
     await flush_unique(db, "A prompt with this name already exists in this project, including archived prompts.")
     version = await add_version(db, prompt, data)
@@ -110,12 +104,7 @@ async def promote(prompt_id: UUID, label: ReleaseLabel, data: Promotion, db: Asy
         PromptVersion.prompt_id == prompt.id))).scalar_one_or_none()
     if version is None:
         raise HTTPException(404, "Version not found in this prompt")
-    release = (await db.execute(select(PromptLabel).where(PromptLabel.prompt_id == prompt.id, PromptLabel.label == label))).scalar_one_or_none()
-    if release:
-        release.version_id = version.id
-    else:
-        db.add(PromptLabel(project_id=prompt.project_id, prompt_id=prompt.id, label=label, version_id=version.id))
-    await db.flush()
+    await assign_label(db, prompt, label, version.id)
     payload = await describe_prompt(db, prompt)
     await db.commit()
     return payload
@@ -123,6 +112,8 @@ async def promote(prompt_id: UUID, label: ReleaseLabel, data: Promotion, db: Asy
 
 @router.delete("/{prompt_id}/labels/{label}", status_code=204)
 async def remove_label(prompt_id: UUID, label: ReleaseLabel, db: AsyncSession = Depends(get_db)):
+    if label == "latest":
+        raise HTTPException(422, "latest is managed automatically and cannot be removed")
     prompt = await find_prompt(db, prompt_id, lock=True)
     release = (await db.execute(select(PromptLabel).where(PromptLabel.prompt_id == prompt.id, PromptLabel.label == label))).scalar_one_or_none()
     if release:

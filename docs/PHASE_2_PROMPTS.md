@@ -54,12 +54,12 @@ curl -H "Authorization: Bearer $LLMFORGE_API_KEY" \
   'http://localhost:8000/api/v1/sdk/prompts/support-answer?label=production'
 ```
 
-Use `?label=staging` for staging, or `?version=2` for a fixed snapshot. Supplying
+Use `?label=staging`, `?label=latest`, or a custom label; use `?version=2` for a fixed snapshot. Supplying
 both selectors is invalid. Prompt names are case-sensitive and must be URL-encoded.
 The response includes ID, version, template text/format, required variables,
 SHA-256 hash and timestamp. Conditional reads support `If-None-Match` / ETag;
 promoting or rolling back a label changes the returned snapshot immediately.
-Keys grant `prompts:read` only. They cannot invoke the playground or dashboard APIs.
+Keys grant `prompts:read` by default. Owners may explicitly enable `prompts:write` for API creation/label changes and `evaluations:write` for CI. Keys cannot invoke the playground or dashboard APIs.
 Workspace owners can create/revoke up to 20 active keys per project.
 
 Python example for a mustache prompt, using only the standard library:
@@ -107,9 +107,10 @@ Phase 2 provides the authenticated fetch contract they will use.
   fetch name; existing snapshot names remain historical metadata.
 - `base_version` detects stale editor saves with 409. PostgreSQL locks the prompt
   while allocating a version, preventing duplicate version numbers.
-- Identical text/format cannot create another version. Roll back by moving a label.
+- Versions store text or role-preserving chat messages and a bounded JSON config object. Changing only config creates a version; identical content/format/config is rejected. Roll back by moving a label.
+- Prompt type is fixed across versions. Tags organize the named prompt across all its snapshots; folder/name paths are supported.
 - The benchmark runner accepts both formats and maps `query`, `question`, and
-  `input` to the sample question, with its existing context/example variables.
+  `input` to the sample question, with its existing context/example variables. Chat snapshots use Evaluations; legacy benchmark adapters reject them.
 
 ## API and models
 
@@ -121,8 +122,10 @@ Phase 2 provides the authenticated fetch contract they will use.
 | `/api/v1/prompt-library/{id}/labels/{label}` | Atomic release promotion/removal |
 | `/api/v1/prompt-library/compile` | Validate and compile editor drafts |
 | `/api/v1/prompt-library/playground` | Request-only generation |
-| `/api/v1/project-keys` | Owner-managed read-only credentials |
+| `/api/v1/project-keys` | Owner-managed credentials with explicit optional scopes |
+| `/api/v1/sdk/prompts` | Project-key listing; POST creates a prompt or next version |
 | `/api/v1/sdk/prompts/{name}` | Released or pinned snapshot fetch |
+| `/api/v1/sdk/prompts/{name}/labels/{label}` | Write-key label assignment to a saved version |
 
 Dashboard routes require Clerk authentication and authorized project selection.
 The old `/api/v1/prompts` snapshot API remains available for benchmark clients.
@@ -130,6 +133,8 @@ New tables: `prompts`, `prompt_labels`, `project_api_keys`. `prompt_versions`
 now belongs to a stable prompt and records its template format. Migration
 `j3k4l5m6n7o8` preserves existing text and IDs while normalizing old version numbering.
 No playground output or provider key is persisted.
+
+The October 2026 extension adds chat content/config, tags, custom/latest labels, and source metadata through migration `m6n7o8p9q0r1`. See the [comparison and scope decisions](PROMPT_MANAGEMENT_COMPARISON.md) and [Python SDK](../sdk/python/README.md) for the current contracts.
 
 ## Verification
 

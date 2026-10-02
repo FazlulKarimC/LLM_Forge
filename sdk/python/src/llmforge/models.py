@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Mapping
 
 from .templates import compile_template
@@ -13,12 +13,24 @@ class Prompt:
     template_text: str
     template_format: str
     variables: tuple[str, ...]
+    prompt_type: str = "text"
+    messages: tuple[dict[str, str], ...] = ()
+    config: dict[str, Any] = field(default_factory=dict)
+    labels: tuple[str, ...] = ()
+    tags: tuple[str, ...] = ()
+    description: str = ""
+    sha256_hash: str = ""
 
-    def compile(self, variables: Mapping[str, str] | None = None, **values: str) -> str:
+    def compile(self, variables: Mapping[str, str] | None = None, **values: str) -> str | list[dict[str, str]]:
         supplied = dict(variables or {})
         if supplied.keys() & values.keys():
             raise ValueError("Variable provided twice")
         supplied.update(values)
+        if self.prompt_type == "chat":
+            compiled = [{"role": message["role"], "content": compile_template(message["content"], supplied, self.template_format)} for message in self.messages]
+            if sum(len(message["content"]) for message in compiled) > 100_000:
+                raise ValueError("Compiled prompt exceeds 100,000 characters")
+            return compiled
         return compile_template(self.template_text, supplied, self.template_format)
 
 

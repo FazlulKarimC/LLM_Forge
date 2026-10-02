@@ -22,7 +22,7 @@ from app.services.evaluation_service import (
     expire_run,
     validate_assertions,
 )
-from app.services.prompt_templates import compile_template
+from app.services.prompt_templates import compile_prompt
 
 
 async def find_run(db, run_id):
@@ -79,9 +79,7 @@ async def dispatch_evaluation(data, tasks, project_id, db):
     validate_assertions(data.assertions, revision.cases)
     for index, case in enumerate(revision.cases):
         try:
-            compile_template(
-                version.template_text, case["inputs"], version.template_format
-            )
+            compile_prompt(version.template_text, version.messages, version.prompt_type, case["inputs"], version.template_format)
         except ValueError as exc:
             raise HTTPException(422, f"Case {index + 1}: {exc}") from exc
     config = data.model_dump(
@@ -113,6 +111,8 @@ async def dispatch_evaluation(data, tasks, project_id, db):
         {
             "template_text": version.template_text,
             "template_format": version.template_format,
+            "prompt_type": version.prompt_type,
+            "messages": version.messages,
         },
         revision.cases,
     )

@@ -19,7 +19,32 @@ with LLMForge() as forge:
     print(prompt.version, text)
 ```
 
-`get_prompt(name)` selects production. Select `label="staging"` or `version=2` explicitly; labels and versions are mutually exclusive. Unreleased/archived prompts return an error. There is no fallback to another release. Compile accepts keyword inputs or a string mapping. Mustache and restricted Python-brace templates match the server's single-pass substitution rules. No attributes, expressions, loops, conversions or format specifications are evaluated.
+`get_prompt(name)` selects production. Select a custom label, `label="latest"`, or `version=2` explicitly; labels and versions are mutually exclusive. Unassigned labels and archived prompts return an error; pinned/latest reads do not need production to be assigned. There is no fallback to another release. Names may use folder paths such as `support/answer`. Compile accepts keyword inputs or a string mapping. Mustache and restricted Python-brace templates match the server's single-pass substitution rules. No attributes, expressions, loops, conversions or format specifications are evaluated.
+
+Text prompts compile to a string. Chat prompts compile to an ordered list of `role`/`content` messages (system, user, assistant). `prompt.config` contains the saved version's JSON configuration; `prompt.tags`, `prompt.labels`, `prompt.description`, and `prompt.sha256_hash` expose metadata. Applications decide how to apply config. Runtime message placeholders and tool calls are not supported.
+
+## Create and release prompts
+
+Enable **Allow prompt creation and label changes (prompts:write)** when an owner creates a new key in Settings. Existing/default keys remain read-only. This capability can move production; use a separate read-only key in applications that only fetch prompts.
+
+```python
+with LLMForge() as forge:
+    prompt = forge.create_prompt(
+        "support/answer",
+        [
+            {"role": "system", "content": "Reply in {{language}}."},
+            {"role": "user", "content": "{{query}}"},
+        ],
+        config={"temperature": 0, "max_tokens": 256},
+        tags=["support"],
+        commit_message="Initial chat prompt",
+    )
+    messages = prompt.compile(language="English", query="How do I reset my password?")
+    forge.set_prompt_label("support/answer", prompt.version, "staging")
+    catalog = forge.list_prompts(tag="support", label="staging", limit=50)
+```
+
+Creating the same named prompt again saves its next version. Type is fixed; omitted tags inherit, while config describes the new snapshot and defaults to `{}`. Supply `base_version` for stale-write protection. Optional `labels=["production"]` explicitly assigns labels in the creation transaction; otherwise production remains unchanged. `latest` follows the newest version automatically and cannot be assigned. To roll back, move a label to an earlier version. Exact duplicate content/format/config is rejected. Creation and label changes are never retried automatically.
 
 An in-memory cache holds up to 128 prompt snapshots. Every fetch contacts the server with an ETag, so promotions/revocations take effect on the next fetch. Network/auth failures raise an error; there is no offline fallback. Compilation of a snapshot you already fetched remains local.
 

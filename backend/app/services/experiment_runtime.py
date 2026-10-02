@@ -244,6 +244,8 @@ class ExperimentRuntimeBuilder:
         prompt_version = prompt_result.scalar_one_or_none()
         if not prompt_version:
             raise ValueError(f"PromptVersion {prompt_version_id} not found")
+        if getattr(prompt_version, "prompt_type", "text") == "chat":
+            raise ValueError("Chat prompts require the Evaluations workspace; benchmark adapters are text-only")
 
         logger.info(
             "[EXECUTE] Applying PromptVersion %s v%s (%s)",
