@@ -6,6 +6,7 @@ from sqlalchemy import (
     String,
     Text,
     Integer,
+    Index,
     Boolean,
     ForeignKey,
     DateTime,
@@ -66,6 +67,7 @@ class EvaluationRun(Base):
             "status IN ('queued','running','completed','failed','cancelled')",
             name="ck_evaluation_status",
         ),
+        Index("ix_evaluation_history", "project_id", "created_at", "id"),
     )
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     project_id = Column(

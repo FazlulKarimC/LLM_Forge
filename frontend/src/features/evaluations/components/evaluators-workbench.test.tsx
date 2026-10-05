@@ -218,7 +218,7 @@ describe("evaluator workflows", () => {
           required: true,
           kind: "builtin",
         }),
-      ]),
+      ], expect.any(String)),
     );
     expect(started).toHaveBeenCalledWith(
       expect.objectContaining({ id: "scored", source_run_id: "source" }),

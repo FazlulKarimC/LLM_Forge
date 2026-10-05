@@ -132,3 +132,11 @@ python -m pip install -e './sdk/python[test]'
 python -m pytest sdk/python/tests
 python -m pip wheel --no-deps ./sdk/python -w dist
 ```
+
+## Durable recovery and dispatch identity
+
+Creation, scoring, external submission and resume accept `idempotency_key="your-stable-key"`. Reuse it after an uncertain response: the same non-secret intent returns the existing run for 24 hours; changed intent returns 409. Keys are scoped by project, SDK key and operation. Provider credentials are never persisted or fingerprinted. Authentication/scopes are rechecked, and HTTP mutations still do not retry automatically.
+
+`get_evaluation_summary(run_id)` returns compact aggregates, usage and recovery metadata. `list_evaluation_cases(run_id, offset=0, limit=25)` returns previews; `get_evaluation_case(run_id, case_index)` fetches full detail. Existing `get_evaluation` remains supported.
+
+`resume_evaluation(run_id, api_key=..., judge_key=..., evaluator_keys={...}, idempotency_key=...)` preserves the run and pinned configuration and appends an attempt. It only accepts interrupted work with durable checkpoints. Re-enter keys explicitly; a response lost before checkpointing may require another charged call. `wait_for_evaluation` and the CLI stop on interruption as an operational failure. CI never resumes paid work automatically. See [architecture semantics](../../docs/ARCHITECTURE.md).

@@ -49,6 +49,7 @@ class Evaluation:
     run: dict[str, Any]
     results: list[dict[str, Any]]
     score_summary: list[dict[str, Any]] = field(default_factory=list)
+    recovery: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self):
         if (
@@ -103,4 +104,5 @@ class Evaluation:
             "run": self.run,
             "results": self.results,
             **({"score_summary": self.score_summary} if self.score_summary else {}),
+            **({"recovery": self.recovery} if self.recovery else {}),
         }

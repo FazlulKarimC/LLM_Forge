@@ -103,6 +103,8 @@ class LLMForge:
                 judge = body.get("judge")
                 secrets += [
                     body.get("api_key", ""),
+                    body.get("judge_key", ""),
+                    *body.get("evaluator_keys", {}).values(),
                     judge.get("api_key", "") if isinstance(judge, dict) else "",
                 ]
                 for evaluator in (
@@ -310,6 +312,7 @@ class LLMForge:
         max_tokens: int = 256,
         judge: dict | None = None,
         evaluators: list[dict] | None = None,
+        idempotency_key: str | None = None,
     ) -> str:
         body = {
             "prompt_version_id": prompt_version_id,
@@ -328,7 +331,7 @@ class LLMForge:
             body["judge"] = judge
         if evaluators:
             body["evaluators"] = evaluators
-        return self._json(self._request("POST", "sdk/evaluations/runs", body=body))[
+        return self._json(self._request("POST", "sdk/evaluations/runs", body=body, headers={"Idempotency-Key": idempotency_key} if idempotency_key else None))[
             "id"
         ]
 
@@ -342,13 +345,14 @@ class LLMForge:
             )
         )
 
-    def score_evaluation(self, run_id: str, evaluators: list[dict]) -> str:
+    def score_evaluation(self, run_id: str, evaluators: list[dict], *, idempotency_key: str | None = None) -> str:
         """Score saved outputs in a new run; never regenerates source outputs."""
         return self._json(
             self._request(
                 "POST",
                 "sdk/evaluations/runs/" + quote(run_id, safe="") + "/score",
                 body={"evaluators": evaluators},
+                headers={"Idempotency-Key": idempotency_key} if idempotency_key else None,
             )
         )["id"]
 
@@ -361,6 +365,7 @@ class LLMForge:
                 run=data["run"],
                 results=data["results"],
                 score_summary=data.get("score_summary", []),
+                recovery=data.get("recovery") or {},
             )
             if result.status not in (
                 "queued",
@@ -375,6 +380,26 @@ class LLMForge:
             raise LLMForgeError(
                 "LLMForge returned an invalid evaluation response"
             ) from None
+
+    def get_evaluation_summary(self, run_id: str) -> dict:
+        """Read progress and recovery information without downloading outputs."""
+        return self._json(self._request("GET", "sdk/evaluations/runs/" + quote(run_id, safe="") + "/summary"))
+
+    def list_evaluation_cases(self, run_id: str, *, offset: int = 0, limit: int = 25, filter: str = "all", reference_id: str | None = None) -> dict:
+        params = {"offset": offset, "limit": limit, "filter": filter}
+        if reference_id:
+            params["reference_id"] = reference_id
+        return self._json(self._request("GET", "sdk/evaluations/runs/" + quote(run_id, safe="") + "/cases", params=params))
+
+    def get_evaluation_case(self, run_id: str, case_index: int) -> dict:
+        return self._json(self._request("GET", "sdk/evaluations/runs/" + quote(run_id, safe="") + "/cases/" + str(case_index)))
+
+    def resume_evaluation(self, run_id: str, *, api_key: str | None = None, judge_key: str | None = None,
+                          evaluator_keys: dict[str, str] | None = None, idempotency_key: str | None = None) -> str:
+        """Explicitly resume an interrupted attempt; unknown paid calls may repeat."""
+        return self._json(self._request("POST", "sdk/evaluations/runs/" + quote(run_id, safe="") + "/resume",
+            body={"api_key": api_key, "judge_key": judge_key, "evaluator_keys": evaluator_keys or {}},
+            headers={"Idempotency-Key": idempotency_key} if idempotency_key else None))["id"]
 
     def cancel_evaluation(self, run_id: str) -> dict:
         return self._json(
@@ -421,6 +446,7 @@ class LLMForge:
         model: str,
         results: list[dict],
         metrics: dict[str, float] | None = None,
+        idempotency_key: str | None = None,
     ) -> str:
         """Persist application-computed outputs/checks; never calls a provider."""
         body = {
@@ -431,5 +457,5 @@ class LLMForge:
             "metrics": metrics or {},
         }
         return self._json(
-            self._request("POST", "sdk/evaluations/submissions", body=body)
+            self._request("POST", "sdk/evaluations/submissions", body=body, headers={"Idempotency-Key": idempotency_key} if idempotency_key else None)
         )["id"]

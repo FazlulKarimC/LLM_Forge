@@ -10,6 +10,7 @@ Database models for:
 """
 
 from app.models.background_job import BackgroundJobRecord
+from app.models.evaluation_execution import EvaluationExecution, EvaluationCheckpoint, EvaluationIdempotency, EvaluationCapacity
 from app.models.evaluator import Evaluator, EvaluatorVersion, EvaluationScore
 from app.models.evaluation import (
     Dataset,
@@ -44,4 +45,8 @@ __all__ = [
     "Evaluator",
     "EvaluatorVersion",
     "EvaluationScore",
+    "EvaluationExecution",
+    "EvaluationCheckpoint",
+    "EvaluationIdempotency",
+    "EvaluationCapacity",
 ]

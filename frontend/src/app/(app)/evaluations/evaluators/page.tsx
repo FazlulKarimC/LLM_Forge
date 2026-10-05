@@ -1,4 +1,4 @@
-import { EvaluatorsWorkbench } from "@/components/evaluations/evaluators-workbench";
+import { EvaluatorsWorkbench } from "@/features/evaluations/components/evaluators-workbench";
 
 export default function EvaluatorsPage() {
   return <EvaluatorsWorkbench />;

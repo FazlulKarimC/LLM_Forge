@@ -8,6 +8,8 @@ from fastapi import HTTPException
 from sqlalchemy import func, select
 
 from app.models.evaluator import Evaluator, EvaluatorVersion, EvaluationScore
+from app.services.prompt_service import flush_unique
+from app.schemas.evaluation import EvaluatorSelection
 from app.schemas.evaluator import EvaluatorDefinition
 from app.schemas.prompt import PlaygroundRequest
 from app.services.evaluation_service import (
@@ -306,13 +308,14 @@ def execution_errors(snapshot, message):
     ]
 
 
-def persist_scores(db, run_id, case_index, checks):
+def persist_scores(db, run_id, case_index, checks, *, project_id=None):
     for index, check in enumerate(checks):
         if check.get("error"):
             continue
         numeric = "score" in check
         db.add(
             EvaluationScore(
+                project_id=project_id or db.info.get("project_id"),
                 run_id=run_id,
                 case_index=case_index,
                 evaluator_version_id=UUID(check["evaluator_version_id"])
@@ -420,3 +423,67 @@ def score_summary(results, total, config=None):
             else None
         )
     return list(summaries.values())
+
+
+async def create_evaluator(db, data):
+    item = Evaluator(name=data.name, description=data.description)
+    db.add(item)
+    await flush_unique(
+        db, "An evaluator with this name already exists, including archived evaluators"
+    )
+    await add_version(db, item, data)
+    payload = await describe(db, item)
+    await db.commit()
+    return payload
+
+
+async def get_evaluator(db, identifier):
+    return await describe(db, await find_evaluator(db, identifier))
+
+
+async def update_evaluator(db, identifier, data):
+    item = await find_evaluator(db, identifier, lock=True)
+    item.archived = data.archived
+    payload = await describe(db, item)
+    await db.commit()
+    return payload
+
+
+async def versions(db, identifier, offset, limit):
+    await find_evaluator(db, identifier)
+    from app.models.evaluator import EvaluatorVersion
+
+    return [
+        version_response(item)
+        for item in (
+            await db.scalars(
+                select(EvaluatorVersion)
+                .where(EvaluatorVersion.evaluator_id == identifier)
+                .order_by(EvaluatorVersion.version.desc())
+                .offset(offset)
+                .limit(limit)
+            )
+        ).all()
+    ]
+
+
+async def save_version(db, identifier, data):
+    payload = version_response(
+        await add_version(db, await find_evaluator(db, identifier, lock=True), data)
+    )
+    await db.commit()
+    return payload
+
+
+async def test_evaluator(db, version_id, data):
+    case = {"inputs": data.inputs, "expected_output": data.expected_output}
+    snapshots, keys = await prepare_evaluators(
+        db, [EvaluatorSelection(version_id=version_id, api_key=data.api_key)], [case]
+    )
+    await db.rollback()  # No database transaction spans a provider call.
+    return {
+        "checks": await execute_evaluator(
+            snapshots[0], case, data.output, keys.get(str(version_id))
+        ),
+        "preview": True,
+    }

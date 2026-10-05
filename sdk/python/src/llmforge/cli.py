@@ -36,6 +36,8 @@ def gate(result, minimum):
         f"{result.id}: {result.status}; {passed}/{total} passed ({result.pass_rate:.1%}); {errors} errors"
     )
     if result.status != "completed":
+        if result.recovery.get("available"):
+            print("Execution interrupted; saved progress is preserved. Resume explicitly in the workspace or SDK with provider keys. CI does not retry paid work.")
         return 2
     return 0 if result.meets_threshold(minimum) else 1
 

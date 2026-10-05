@@ -32,7 +32,7 @@ async def test_explicit_key_scope_and_revoke(api, monkeypatch):
             json={"name": "CI", "scopes": ["prompts:read", "evaluations:write"]},
         )
     ).json()
-    sdk_headers = {"Authorization": "Bearer " + key["secret"]}
+    sdk_headers = {"Authorization": "Bearer " + key["secret"], "Idempotency-Key": "sdk-intent"}
     data = await client.get(
         "/api/v1/sdk/evaluations/datasets/Greetings?version=1", headers=sdk_headers
     )
@@ -46,6 +46,12 @@ async def test_explicit_key_scope_and_revoke(api, monkeypatch):
         f"/api/v1/sdk/evaluations/runs/{run_id}", headers=sdk_headers
     )
     assert detail.json()["run"]["passed"] == 1
+    replay = await client.post("/api/v1/sdk/evaluations/runs", headers=sdk_headers, json=request)
+    assert replay.json()["id"] == run_id
+    for suffix in ("/summary", "/cases", "/cases/0"):
+        assert (await client.get(f"/api/v1/sdk/evaluations/runs/{run_id}" + suffix, headers=read_headers)).status_code == 403
+        assert (await client.get(f"/api/v1/sdk/evaluations/runs/{run_id}" + suffix, headers=sdk_headers)).status_code == 200
+    assert (await client.post(f"/api/v1/sdk/evaluations/runs/{run_id}/resume", headers=read_headers, json={})).status_code == 403
     # SDK keys cannot authorize dashboard edits even when evaluation-enabled.
     app.dependency_overrides.pop(get_current_user)
     assert (
@@ -72,7 +78,7 @@ async def test_external_submission_counts_and_tenant_isolation(api, monkeypatch)
             json={"name": "CI", "scopes": ["evaluations:write"]},
         )
     ).json()
-    sdk_headers = {"Authorization": "Bearer " + key["secret"]}
+    sdk_headers = {"Authorization": "Bearer " + key["secret"], "Idempotency-Key": "sdk-intent"}
     body = {
         "prompt_version_id": request["prompt_version_id"],
         "dataset_revision_id": request["dataset_revision_id"],
@@ -93,6 +99,11 @@ async def test_external_submission_counts_and_tenant_isolation(api, monkeypatch)
     assert submitted.status_code == 201
     assert submitted.json()["passed"] == 1 and submitted.json()["errors"] == 1
     run_id = submitted.json()["id"]
+    replay = await client.post("/api/v1/sdk/evaluations/submissions", headers=sdk_headers, json=body)
+    assert replay.json()["id"] == run_id
+    conflict = await client.post("/api/v1/sdk/evaluations/submissions", headers=sdk_headers, json={**body, "metrics": {"accuracy": 1}})
+    assert conflict.status_code == 409
+    sdk_headers.pop("Idempotency-Key")
     detail = (await client.get(f"/api/v1/evaluations/{run_id}", headers=headers)).json()
     assert detail["run"]["config"]["source"] == "sdk_submission"
     assert detail["run"]["config"]["metrics"] == {"accuracy": 0.5}
@@ -127,6 +138,9 @@ async def test_external_submission_counts_and_tenant_isolation(api, monkeypatch)
         )
     ).json()
     other_sdk = {"Authorization": "Bearer " + other_key["secret"]}
+    for suffix in ("/summary", "/cases", "/cases/0"):
+        assert (await client.get(f"/api/v1/sdk/evaluations/runs/{run_id}" + suffix, headers=other_sdk)).status_code == 404
+    assert (await client.post(f"/api/v1/sdk/evaluations/runs/{run_id}/resume", headers=other_sdk, json={})).status_code == 404
     assert (
         await client.get(f"/api/v1/sdk/evaluations/runs/{run_id}", headers=other_sdk)
     ).status_code == 404

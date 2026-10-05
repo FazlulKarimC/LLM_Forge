@@ -1,8 +1,8 @@
 "use client";
 import { use } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { PromptWorkbench } from "@/components/prompts/prompt-workbench";
-import { ErrorMessage, errorText, panelClass } from "@/components/prompts/prompt-ui";
+import { PromptWorkbench } from "@/features/prompts/components/prompt-workbench";
+import { ErrorMessage, errorText, panelClass } from "@/features/prompts/components/prompt-ui";
 import { getPrompt } from "@/lib/prompt-api";
 
 export default function PromptPage({ params }: { params: Promise<{ id: string }> }) {

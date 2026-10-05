@@ -40,3 +40,12 @@ npm run build
 Stop `next dev` before building because both use `.next`. Production builds and component tests verify compilation and behavior; they do not constitute browser visual acceptance testing.
 
 For a database-backed smoke test, use a separate shell with the normal backend environment, apply migrations, and run the API locally. Then run `python -m scripts.smoke_sdk` from `backend`. It creates a disposable project, exercises the actual SDK and CLI over HTTP, checks passing/failing gates and revocation, and removes its own workspace. It doesn't call a model. Do not use the deliberately invalid test database URL for this smoke test.
+
+
+## Durable execution and API contracts
+
+Real locking tests are separate from the default SQLite suite. Configure `LLMFORGE_TEST_POSTGRES_URL` to a dedicated development PostgreSQL database (CI uses its PostgreSQL service), then run `python -m scripts.check_postgres` and `python -m scripts.check_migrations` from `backend`. Explicit script invocation can also use the configured development URL. Checks create uniquely named temporary schemas; ORM tables are schema-qualified to remain isolated behind connection poolers. Migration checks run the complete chain inside one transaction and roll it back. Never point these checks at production.
+
+Recovery tests interrupt after generation and between evaluators, preserve error-stage checkpoints, fence late writes, check global/project admission, and enforce SDK scopes/tenant isolation. Structured-log tests discard secret/context fields. Frontend tests retain dispatch identity after an uncertain resume response and clear credentials after acceptance. A browser walkthrough should show the same run progressing from interrupted to completed with a new attempt and preserved case content. Fully checkpointed fixtures can exercise the UI without paid calls; provider crash semantics are covered by injected interruption tests.
+
+Regenerate contracts with `python -m scripts.export_openapi` followed by `npm run contracts:generate` from `frontend`. Repeating generation must produce identical files. CI checks the committed schema and generated frontend types before deployment sync; SDK contract tests use the same exported schema.

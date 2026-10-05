@@ -3,7 +3,7 @@
 import csv
 import io
 import json
-import logging
+import time
 from datetime import timedelta
 
 import regex
@@ -18,7 +18,8 @@ from app.schemas.evaluation import RevisionCreate
 from app.schemas.prompt import PlaygroundRequest
 from app.services.playground_service import generate_playground
 
-logger = logging.getLogger(__name__)
+from app.core.diagnostics import logger
+
 ACTIVE = ("queued", "running")
 
 
@@ -237,7 +238,29 @@ async def judge_output(config, case, output):
     }
 
 
-async def expire_run(run):
+async def expire_run(run, db=None):
+    if db is not None:
+        from app.models.evaluation_execution import EvaluationExecution
+        from app.repositories.evaluation_execution import expired
+
+        execution = await db.scalar(
+            select(EvaluationExecution)
+            .where(EvaluationExecution.run_id == run.id)
+            .order_by(EvaluationExecution.attempt.desc())
+            .limit(1)
+        )
+        if execution:
+            if run.status in ACTIVE and expired(execution.lease_until):
+                execution.status, execution.failure_code = (
+                    "interrupted",
+                    "runner_interrupted",
+                )
+                run.status, run.error, run.updated_at = (
+                    "failed",
+                    "Execution interrupted. Saved progress is preserved; resume unfinished work.",
+                    now(),
+                )
+            return
     stamp = run.updated_at
     if stamp.tzinfo is None:
         stamp = stamp.replace(tzinfo=now().tzinfo)
@@ -256,32 +279,60 @@ async def execute_evaluation(
     snapshots=None,
     evaluator_keys=None,
     saved_outputs=None,
+    *,
+    execution_id,
+    owner,
 ):
-    """Credentials live only in this coroutine. Never resume paid calls on restart."""
-    try:
+    """Each provider boundary and write is fenced; stages commit independently."""
+    from app.repositories import evaluation_execution as repository
+    from app.services.evaluator_service import execute_evaluator, execution_errors
+
+    async def session_call(callback):
         async with async_session_maker() as db:
             db.info["project_id"] = project_id
-            run = await db.scalar(
-                select(EvaluationRun)
-                .where(EvaluationRun.id == run_id)
-                .with_for_update()
+            return await callback(db)
+
+    async def allowed():
+        return bool(
+            await session_call(lambda db: repository.fence(db, execution_id, owner))
+        )
+
+    async def save(index, stage, data, checks=None, started=None):
+        saved = await session_call(
+            lambda db: repository.checkpoint(
+                db, execution_id, owner, index, stage, data, checks
             )
-            if run is None or run.status != "queued":
-                return
-            run.status, run.updated_at = "running", now()
-            await db.commit()
+        )
+        logger.info(
+            "evaluation_stage_committed",
+            extra={
+                "run_id": str(run_id),
+                "project_id": str(project_id),
+                "stage": stage,
+                "duration_ms": round((time.perf_counter() - started) * 1000, 2)
+                if started
+                else None,
+                "outcome": "committed" if saved else "fenced",
+            },
+        )
+        return saved
+
+    try:
         for index, case in enumerate(cases):
+            if not await allowed():
+                return
             async with async_session_maker() as db:
                 db.info["project_id"] = project_id
-                run = await db.scalar(
-                    select(EvaluationRun).where(EvaluationRun.id == run_id)
-                )
-                if run is None or run.status not in ACTIVE:
-                    return
+                if await db.scalar(
+                    select(EvaluationResult.id).where(
+                        EvaluationResult.run_id == run_id,
+                        EvaluationResult.case_index == index,
+                    )
+                ):
+                    continue
+                stages = await repository.checkpoints(db, run_id, index)
             record = {
-                "name": case["name"],
-                "inputs": case["inputs"],
-                "expected_output": case["expected_output"],
+                **case,
                 "output": None,
                 "checks": [],
                 "passed": False,
@@ -290,165 +341,158 @@ async def execute_evaluation(
                 "tokens_input": None,
                 "tokens_output": None,
             }
-            try:
-                if saved_outputs is not None:
-                    saved = saved_outputs[index]
-                    if saved.get("output") is None:
+            generation = stages.get("generation")
+            if generation is None:
+                started = time.perf_counter()
+                if not await allowed():
+                    return
+                try:
+                    if saved_outputs is not None:
+                        saved = saved_outputs[index]
+                        if saved.get("output") is None:
+                            raise HTTPException(
+                                422,
+                                "Source case has no generated output; skipped scoring",
+                            )
+                        generated = {
+                            key: saved.get(key)
+                            for key in (
+                                "output",
+                                "latency_ms",
+                                "tokens_input",
+                                "tokens_output",
+                            )
+                        }
+                    else:
+                        generated = await generate_playground(
+                            PlaygroundRequest(
+                                template_text=version["template_text"],
+                                template_format=version["template_format"],
+                                prompt_type=version.get("prompt_type", "text"),
+                                messages=version.get("messages", []),
+                                variables=case["inputs"],
+                                provider=request.provider,
+                                model=request.model,
+                                api_key=request.api_key,
+                                temperature=request.temperature,
+                                max_tokens=request.max_tokens,
+                            )
+                        )
+                    output = (
+                        generated["compiled_prompt"]
+                        if saved_outputs is None and request.provider == "mock"
+                        else generated["output"]
+                    )
+                    if len(output) > 32_000:
                         raise HTTPException(
-                            422, "Source case has no generated output; skipped scoring"
+                            502, "Output exceeded the 32,000 character evaluation limit"
                         )
-                    generated = {
-                        key: saved.get(key)
-                        for key in (
-                            "output",
-                            "latency_ms",
-                            "tokens_input",
-                            "tokens_output",
-                        )
+                    generation = {
+                        key: generated.get(key)
+                        for key in ("latency_ms", "tokens_input", "tokens_output")
                     }
-                else:
-                    generated = await generate_playground(
-                        PlaygroundRequest(
-                            template_text=version["template_text"],
-                            template_format=version["template_format"],
-                            prompt_type=version.get("prompt_type", "text"),
-                            messages=version.get("messages", []),
-                            variables=case["inputs"],
-                            provider=request.provider,
-                            model=request.model,
-                            api_key=request.api_key,
-                            temperature=request.temperature,
-                            max_tokens=request.max_tokens,
-                        )
-                    )
-                output = (
-                    generated["compiled_prompt"]
-                    if saved_outputs is None and request.provider == "mock"
-                    else generated["output"]
-                )
-                if len(output) > 32_000:
-                    raise HTTPException(
-                        502, "Output exceeded the 32,000 character evaluation limit"
-                    )
-                record.update(
-                    output=output,
-                    latency_ms=generated["latency_ms"],
-                    tokens_input=generated["tokens_input"],
-                    tokens_output=generated["tokens_output"],
-                )
-                record["checks"] = [
-                    check_assertion(rule, output, case["expected_output"])
-                    for rule in request.assertions
-                ]
+                    generation["output"] = output
+                except Exception as exc:
+                    generation = {
+                        "error": str(exc.detail)
+                        if isinstance(exc, HTTPException)
+                        else "Generation execution failed; check provider settings"
+                    }
+                if not await save(index, "generation", generation, started=started):
+                    return
+            record.update(generation)
+            if record["error"] is None:
+                assignments = [("assertions", None)]
                 if request.judge:
-                    # Cancellation during generation must not start another paid call.
-                    async with async_session_maker() as db:
-                        db.info["project_id"] = project_id
-                        current_status = await db.scalar(
-                            select(EvaluationRun.status).where(
-                                EvaluationRun.id == run_id
-                            )
-                        )
-                        if current_status not in ACTIVE:
-                            return
-                    try:
-                        record["checks"].append(
-                            await judge_output(request.judge, case, output)
-                        )
-                    except Exception as exc:
-                        message = (
-                            str(exc.detail)
-                            if isinstance(exc, HTTPException)
-                            else "Judge execution failed; check its provider settings"
-                        )
-                        record["checks"].append(
-                            {
-                                "kind": "llm_judge",
-                                "data_type": "numeric",
-                                "passed": False,
-                                "error": message,
-                                "reason": message,
-                            }
-                        )
-                        record["error"] = message
-                from app.services.evaluator_service import (
-                    execute_evaluator,
-                    execution_errors,
+                    assignments.append(("inline_judge", None))
+                assignments.extend(
+                    (item["version_id"], item) for item in snapshots or []
                 )
-
-                for snapshot in snapshots or []:
-                    async with async_session_maker() as db:
-                        db.info["project_id"] = project_id
-                        if (
-                            await db.scalar(
-                                select(EvaluationRun.status).where(
-                                    EvaluationRun.id == run_id
-                                )
-                            )
-                            not in ACTIVE
-                        ):
+                for stage, snapshot in assignments:
+                    outcome = stages.get(stage)
+                    if outcome is None:
+                        started = time.perf_counter()
+                        if not await allowed():
                             return
-                    try:
-                        record["checks"].extend(
-                            await execute_evaluator(
-                                snapshot,
-                                case,
-                                output,
-                                (evaluator_keys or {}).get(snapshot["version_id"]),
+                        try:
+                            if stage == "assertions":
+                                checks = [
+                                    dict(
+                                        check_assertion(
+                                            rule,
+                                            record["output"],
+                                            case["expected_output"],
+                                        ),
+                                        assignment=f"inline:{i}",
+                                    )
+                                    for i, rule in enumerate(request.assertions)
+                                ]
+                            elif stage == "inline_judge":
+                                checks = [
+                                    dict(
+                                        await judge_output(
+                                            request.judge, case, record["output"]
+                                        ),
+                                        assignment=f"inline:{len(request.assertions)}",
+                                    )
+                                ]
+                            else:
+                                checks = await execute_evaluator(
+                                    snapshot,
+                                    case,
+                                    record["output"],
+                                    (evaluator_keys or {}).get(stage),
+                                )
+                        except Exception as exc:
+                            message = (
+                                str(exc.detail)
+                                if isinstance(exc, HTTPException)
+                                else "Evaluator execution failed; check provider settings"
                             )
-                        )
-                    except Exception as exc:
-                        message = (
-                            str(exc.detail)
-                            if isinstance(exc, HTTPException)
-                            else "Evaluator execution failed; check its provider settings"
-                        )
-                        record["checks"].extend(execution_errors(snapshot, message))
-                        if snapshot["required"]:
-                            record["error"] = message
+                            checks = (
+                                execution_errors(snapshot, message)
+                                if snapshot
+                                else [
+                                    {
+                                        "kind": "llm_judge",
+                                        "assignment": f"inline:{len(request.assertions)}",
+                                        "data_type": "numeric",
+                                        "passed": False,
+                                        "error": message,
+                                        "reason": message,
+                                    }
+                                ]
+                            )
+                        outcome = {"checks": checks}
+                        if not await save(index, stage, outcome, checks, started):
+                            return
+                    record["checks"].extend(outcome["checks"])
+                required_errors = [
+                    check["error"]
+                    for check in record["checks"]
+                    if check.get("error") and check.get("required", True)
+                ]
+                record["error"] = required_errors[0] if required_errors else None
                 record["passed"] = record["error"] is None and all(
                     check["passed"]
                     for check in record["checks"]
                     if check.get("required", True)
                 )
-            except HTTPException as exc:
-                record["error"] = str(exc.detail)
-            except Exception:
-                record["error"] = (
-                    "Evaluation failed unexpectedly; check provider settings and start a new run"
-                )
-            async with async_session_maker() as db:
-                db.info["project_id"] = project_id
-                run = await db.scalar(
-                    select(EvaluationRun)
-                    .where(EvaluationRun.id == run_id)
-                    .with_for_update()
-                )
-                if run is None or run.status not in ACTIVE:
-                    return  # Cancellation never gets overwritten by an in-flight call.
-                db.add(EvaluationResult(run_id=run_id, case_index=index, data=record))
-                from app.services.evaluator_service import persist_scores
-
-                persist_scores(db, run_id, index, record["checks"])
-                run.completed += 1
-                run.passed += int(record["passed"])
-                run.errors += int(record["error"] is not None)
-                run.updated_at = now()
-                if run.completed == run.total:
-                    run.status = "completed"
-                await db.commit()
+            if not await session_call(
+                lambda db: repository.finalize(db, execution_id, owner, index, record)
+            ):
+                return
     except Exception:
         logger.error(
-            "Evaluation runner failed for run %s", run_id
-        )  # No provider credentials/content.
+            "evaluation_execution_failed",
+            extra={"run_id": str(run_id), "project_id": str(project_id)},
+        )
         async with async_session_maker() as db:
             db.info["project_id"] = project_id
-            run = await db.scalar(
-                select(EvaluationRun)
-                .where(EvaluationRun.id == run_id)
-                .with_for_update()
-            )
-            if run and run.status in ACTIVE:
+            execution = await repository.fence(db, execution_id, owner)
+            if execution:
+                execution.status, execution.failure_code = "failed", "runner_failed"
+                run = await db.get(EvaluationRun, run_id)
                 run.status, run.error, run.updated_at = (
                     "failed",
                     "Runner failed; start a new run",

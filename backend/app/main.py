@@ -46,11 +46,13 @@ logging.basicConfig(
 # No performance tracing, no PII collection.
 if settings.SENTRY_DSN:
     import sentry_sdk
+    from app.core.diagnostics import sanitize_sentry_event
     sentry_sdk.init(
         dsn=settings.SENTRY_DSN,
         traces_sample_rate=0.0,
         enable_tracing=False,
         send_default_pii=False,
+        before_send=sanitize_sentry_event,
         environment=settings.ENVIRONMENT,
         release=settings.VERSION,
     )
@@ -88,8 +90,13 @@ async def lifespan(app: FastAPI):
 
     logger.info("CORS allowed origins: %s", settings.cors_origins_list)
 
-    # Startup must not mutate work owned by another API/worker instance.
-    yield
+    from app.services.evaluation_runner import runner
+    await runner.start()
+    app.state.evaluation_runner = runner
+    try:
+        yield
+    finally:
+        await runner.stop()
 
     # Shutdown
     logger.info("Shutting down...")

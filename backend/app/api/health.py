@@ -78,33 +78,35 @@ async def readiness_check(db: AsyncSession = Depends(get_db)):
 
     # Database
     if isinstance(db_result, Exception):
-        checks["database"] = f"unhealthy: {str(db_result)[:120]}"
+        checks["database"] = "unhealthy: dependency check failed"
     else:
         checks["database"] = db_result
 
     # Vector DB
     if isinstance(vector_result, Exception):
-        checks["vector_db"] = "unhealthy: timed out" if isinstance(vector_result, TimeoutError) else f"unhealthy: {str(vector_result)[:120]}"
+        checks["vector_db"] = "unhealthy: timed out" if isinstance(vector_result, TimeoutError) else "unhealthy: dependency check failed"
     else:
         checks["vector_db"] = vector_result
 
     # Models
     if isinstance(model_result, Exception):
-        checks["models"] = f"unhealthy: {str(model_result)[:120]}"
+        checks["models"] = "unhealthy: dependency check failed"
     else:
         checks["models"] = model_result
 
     # Dispatch (task_dispatch, upstash, rq_worker)
     if isinstance(dispatch_result, Exception):
-        checks["task_dispatch"] = "unhealthy: timed out" if isinstance(dispatch_result, TimeoutError) else f"unhealthy: {str(dispatch_result)[:120]}"
+        checks["task_dispatch"] = "unhealthy: timed out" if isinstance(dispatch_result, TimeoutError) else "unhealthy: dependency check failed"
         checks["upstash"] = "unknown"
         checks["rq_worker"] = "unknown"
     else:
         checks.update(dispatch_result)
 
+    from app.services.evaluation_runner import runner
+    checks["evaluation_runner"] = runner.health()
     database_ready = checks.get("database") in _CRITICAL_READY_VALUES
     dispatch_ready = checks.get("task_dispatch") in _READY_TASK_DISPATCH_STATUSES
-    ready = database_ready and dispatch_ready
+    ready = database_ready and dispatch_ready and checks["evaluation_runner"] == "healthy"
 
     optional_degraded = any(
         checks.get(key) not in ("healthy", "not_configured")
@@ -132,10 +134,13 @@ async def _check_database(db: AsyncSession) -> str:
     try:
         from sqlalchemy import text
         await db.execute(text("SELECT 1"))
+        capacity = await db.scalar(text("SELECT id FROM evaluation_capacity WHERE id = 1"))
+        if capacity != 1:
+            return "unhealthy: evaluation capacity missing"
         return "healthy"
-    except Exception as e:
+    except Exception:
         await db.rollback()
-        return f"unhealthy: {str(e)[:120]}"
+        return "unhealthy: dependency check failed"
 
 
 async def _check_vector_db() -> str:
@@ -159,7 +164,7 @@ async def _check_vector_db() -> str:
         error_msg = str(e).lower()
         if "archived" in error_msg or "paused" in error_msg:
             return "archived (inactive >14 days)"
-        return f"unhealthy: {str(e)[:120]}"
+        return "unhealthy: dependency check failed"
 
 
 async def _check_models() -> str:
@@ -180,10 +185,10 @@ async def _check_dispatch() -> dict:
     try:
         from app.core.task_dispatch import get_dispatch_readiness_snapshot
         return await get_dispatch_readiness_snapshot()
-    except Exception as e:
-        logger.warning("Dispatch readiness check failed: %s", e)
+    except Exception:
+        logger.warning("Dispatch readiness check failed")
         return {
-            "task_dispatch": f"unhealthy: {str(e)[:120]}",
+            "task_dispatch": "unhealthy: dependency check failed",
             "upstash": "unknown",
             "rq_worker": "unknown",
         }

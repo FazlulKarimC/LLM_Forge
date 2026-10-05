@@ -32,6 +32,7 @@ from app.models.workspace import User, Organization, OrganizationMembership, Pro
 from app.models.prompt import Prompt, PromptLabel, ProjectAPIKey
 from app.models.evaluation import Dataset, DatasetRevision, EvaluationRun, EvaluationResult
 from app.models.evaluator import Evaluator, EvaluatorVersion, EvaluationScore
+from app.models.evaluation_execution import EvaluationExecution, EvaluationCheckpoint, EvaluationIdempotency, EvaluationCapacity
 
 # Alembic Config object
 config = context.config
@@ -96,7 +97,11 @@ async def run_async_migrations() -> None:
 
 def run_migrations_online() -> None:
     """Run migrations in 'online' mode."""
-    asyncio.run(run_async_migrations())
+    provided = config.attributes.get("connection")
+    if provided is not None:
+        do_run_migrations(provided)
+    else:
+        asyncio.run(run_async_migrations())
 
 
 if context.is_offline_mode():

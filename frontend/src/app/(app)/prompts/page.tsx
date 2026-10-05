@@ -8,7 +8,7 @@ import {
   ErrorMessage,
   errorText,
   inputClass,
-} from "@/components/prompts/prompt-ui";
+} from "@/features/prompts/components/prompt-ui";
 import { listPrompts } from "@/lib/prompt-api";
 export default function PromptsPage() {
   const [search, setSearch] = useState("");

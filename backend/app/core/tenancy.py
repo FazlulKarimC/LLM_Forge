@@ -58,10 +58,14 @@ def scope_project_queries(state):
     from app.models.prompt import Prompt, PromptLabel, ProjectAPIKey
     from app.models.evaluation import Dataset, DatasetRevision, EvaluationRun, EvaluationResult
     from app.models.evaluator import Evaluator, EvaluatorVersion, EvaluationScore
+    from app.models.evaluation_execution import EvaluationExecution, EvaluationCheckpoint, EvaluationIdempotency
 
     # Covers legacy aggregates, exports, comparisons and ORM UPDATE/DELETE too.
     experiment_ids = select(Experiment.id).where(Experiment.project_id == project_id, Experiment.deleted_at.is_(None))
     state.statement = state.statement.options(
+        with_loader_criteria(EvaluationExecution, EvaluationExecution.project_id == project_id, include_aliases=True),
+        with_loader_criteria(EvaluationCheckpoint, EvaluationCheckpoint.project_id == project_id, include_aliases=True),
+        with_loader_criteria(EvaluationIdempotency, EvaluationIdempotency.project_id == project_id, include_aliases=True),
         with_loader_criteria(Dataset, Dataset.project_id == project_id, include_aliases=True),
         with_loader_criteria(DatasetRevision, DatasetRevision.project_id == project_id, include_aliases=True),
         with_loader_criteria(EvaluationRun, EvaluationRun.project_id == project_id, include_aliases=True),
@@ -91,8 +95,9 @@ def scope_project_writes(session, _flush_context, _instances):
     from app.models.prompt import Prompt, PromptLabel, ProjectAPIKey
     from app.models.evaluation import Dataset, DatasetRevision, EvaluationRun, EvaluationResult
     from app.models.evaluator import Evaluator, EvaluatorVersion, EvaluationScore
+    from app.models.evaluation_execution import EvaluationExecution, EvaluationCheckpoint, EvaluationIdempotency
     for obj in session.new:
-        if isinstance(obj, (Experiment, PromptVersion, BackgroundJobRecord, Prompt, PromptLabel, ProjectAPIKey, Dataset, DatasetRevision, EvaluationRun, EvaluationResult, Evaluator, EvaluatorVersion, EvaluationScore)):
+        if isinstance(obj, (Experiment, PromptVersion, BackgroundJobRecord, Prompt, PromptLabel, ProjectAPIKey, Dataset, DatasetRevision, EvaluationRun, EvaluationResult, Evaluator, EvaluatorVersion, EvaluationScore, EvaluationExecution, EvaluationCheckpoint, EvaluationIdempotency)):
             if obj.project_id is not None and obj.project_id != project_id:
                 raise ValueError("Cannot write to a different project")
             obj.project_id = project_id

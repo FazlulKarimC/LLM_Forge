@@ -2,6 +2,8 @@
 type ApiContext = { getToken: () => Promise<string | null>; projectId?: string };
 let context: ApiContext | null = null;
 
+export function getProjectCacheScope() { return context?.projectId ?? "unselected"; }
+
 export function setApiContext(value: ApiContext | null) {
   context = value;
 }

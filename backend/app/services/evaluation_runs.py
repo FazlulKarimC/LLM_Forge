@@ -18,7 +18,6 @@ from app.models.workspace import Project
 from app.schemas.evaluation import EvaluationSubmission, run_response
 from app.services.evaluation_service import (
     ACTIVE,
-    execute_evaluation,
     expire_run,
     validate_assertions,
 )
@@ -31,7 +30,7 @@ async def find_run(db, run_id):
     )
     if run is None:
         raise HTTPException(404, "Evaluation not found")
-    await expire_run(run)
+    await expire_run(run, db)
     return run
 
 
@@ -51,11 +50,16 @@ async def load_inputs(db, prompt_version_id, dataset_revision_id, action):
     return version, revision, prompt, dataset
 
 
-async def dispatch_evaluation(data, tasks, project_id, db):
+async def dispatch_evaluation(data, tasks, project_id, db, token=None, request_id=None):
     from app.services.evaluator_service import prepare_evaluators, call_budget
 
     # Serialize admission within one project; two live runs is ample for a demo.
     await db.scalar(select(Project).where(Project.id == project_id).with_for_update())
+    from app.services.evaluation_idempotency import replay, remember
+
+    prior = await replay(db, token, data)
+    if prior:
+        return run_response(prior)
     active = (
         await db.scalars(
             select(EvaluationRun)
@@ -64,7 +68,7 @@ async def dispatch_evaluation(data, tasks, project_id, db):
         )
     ).all()
     for run in active:
-        await expire_run(run)
+        await expire_run(run, db)
     if sum(run.status in ACTIVE for run in active) >= 2:
         raise HTTPException(
             409, "Two evaluations are already active; wait or cancel one"
@@ -124,21 +128,15 @@ async def dispatch_evaluation(data, tasks, project_id, db):
         total=len(revision.cases),
     )
     db.add(run)
-    await db.commit()  # The worker must see a committed record.
-    tasks.add_task(
-        execute_evaluation,
-        run.id,
-        project_id,
-        data,
-        {
-            "template_text": version.template_text,
-            "template_format": version.template_format,
-            "prompt_type": version.prompt_type,
-            "messages": version.messages,
-        },
-        revision.cases,
-        snapshots,
-        evaluator_keys,
+    await db.flush()
+    from app.services.evaluation_runner import runner, new_execution
+
+    execution = new_execution(run, request_id=request_id)
+    db.add(execution)
+    remember(db, token, data, run)
+    await db.commit()
+    await runner.enqueue(
+        run.id, project_id, data, evaluator_keys, execution_id=execution.id
     )
     return run_response(run)
 
@@ -160,7 +158,7 @@ async def list_runs(
         )
     ).all()
     for run in active:
-        await expire_run(run)
+        await expire_run(run, db)
     await db.flush()
     query = select(EvaluationRun)
     if dataset_revision_id:
@@ -204,6 +202,9 @@ async def get_run(run_id: UUID, db: AsyncSession):
     }
     from app.services.evaluator_service import score_summary
 
+    from app.services.evaluation_recovery import recovery
+
+    response["recovery"] = await recovery(db, run)
     response["score_summary"] = score_summary(
         response["results"], run.total, run.config
     )
@@ -215,11 +216,31 @@ async def cancel_run(run_id: UUID, db: AsyncSession):
     run = await find_run(db, run_id)
     if run.status in ACTIVE:
         run.status, run.updated_at = "cancelled", now()
+        from app.models.evaluation_execution import EvaluationExecution
+
+        executions = (
+            await db.scalars(
+                select(EvaluationExecution).where(
+                    EvaluationExecution.run_id == run.id,
+                    EvaluationExecution.status.in_(ACTIVE),
+                )
+            )
+        ).all()
+        for execution in executions:
+            execution.status, execution.updated_at = "cancelled", now()
     await db.commit()
     return run_response(run)
 
 
-async def submit_results(data: EvaluationSubmission, db: AsyncSession):
+async def submit_results(data: EvaluationSubmission, db: AsyncSession, token=None):
+    from app.services.evaluation_idempotency import replay, remember
+
+    await db.scalar(
+        select(Project).where(Project.id == db.info["project_id"]).with_for_update()
+    )
+    prior = await replay(db, token, data)
+    if prior:
+        return run_response(prior)
     version, revision, prompt, dataset = await load_inputs(
         db, data.prompt_version_id, data.dataset_revision_id, "submitting results"
     )
@@ -290,16 +311,24 @@ async def submit_results(data: EvaluationSubmission, db: AsyncSession):
             result.case_index,
             [{**check, "source": "external"} for check in record["checks"]],
         )
+    remember(db, token, data, run)
     await db.commit()
     return run_response(run)
 
 
-async def dispatch_scoring(source_id, data, tasks, project_id, db):
+async def dispatch_scoring(
+    source_id, data, tasks, project_id, db, token=None, request_id=None
+):
     """A new run scores existing immutable outputs, never generates replacements."""
     from app.schemas.evaluation import EvaluationCreate
     from app.services.evaluator_service import prepare_evaluators, call_budget
 
     await db.scalar(select(Project).where(Project.id == project_id).with_for_update())
+    from app.services.evaluation_idempotency import replay, remember
+
+    prior = await replay(db, token, data)
+    if prior:
+        return run_response(prior)
     active = (
         await db.scalars(
             select(EvaluationRun)
@@ -308,7 +337,7 @@ async def dispatch_scoring(source_id, data, tasks, project_id, db):
         )
     ).all()
     for run in active:
-        await expire_run(run)
+        await expire_run(run, db)
     if sum(run.status in ACTIVE for run in active) >= 2:
         raise HTTPException(
             409, "Two evaluations are already active; wait or cancel one"
@@ -355,22 +384,18 @@ async def dispatch_scoring(source_id, data, tasks, project_id, db):
         total=source.total,
     )
     db.add(run)
-    await db.commit()
+    await db.flush()
     request = EvaluationCreate(
         prompt_version_id=source.prompt_version_id,
         dataset_revision_id=source.dataset_revision_id,
         assertions=[],
         evaluators=data.evaluators,
     )
-    tasks.add_task(
-        execute_evaluation,
-        run.id,
-        project_id,
-        request,
-        {},
-        cases,
-        snapshots,
-        keys,
-        saved,
-    )
+    from app.services.evaluation_runner import runner, new_execution
+
+    execution = new_execution(run, request_id=request_id)
+    db.add(execution)
+    remember(db, token, data, run)
+    await db.commit()
+    await runner.enqueue(run.id, project_id, request, keys, execution_id=execution.id)
     return run_response(run)

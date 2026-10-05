@@ -8,7 +8,7 @@ Phase 0 consistency fixes and the reusable-evaluator / saved-output portions of 
 
 The release retains PostgreSQL and the sequential FastAPI runner. It supports one generation variant, at most ten evaluator selections, two judges (including the inline judge) and 60 model calls per run. Judges use the existing 20-case limit. No additional hosted service is required. Existing result JSON remains readable; historical checks are adapted without inventing evaluator provenance. Development migration `n7o8p9q0r1s2` adds the evaluator/version/score tables and source-run link.
 
-Named experiment groups, variant matrices, stable dataset-item identities, manual reviews, SDK callbacks, per-metric CI gates, idempotent dispatch, durable restart recovery and online scheduling remain future milestones. This is the bounded learning-project scope agreed after the infrastructure review, rather than completion of every phase below.
+Named experiment groups, variant matrices, stable dataset-item identities, manual reviews, SDK callbacks, per-metric CI gates, online scheduling remain future milestones. This is the bounded learning-project scope agreed after the infrastructure review, rather than completion of every phase below.
 
 ## Basis and recommendation
 
@@ -164,3 +164,8 @@ Implementation should include additive migrations, project isolation for every n
 - [Langfuse LLM-as-a-Judge](https://langfuse.com/docs/evaluation/evaluation-methods/llm-as-a-judge): reusable judge configuration and testing.
 - [Langfuse code evaluators](https://langfuse.com/docs/evaluation/evaluation-methods/code-evaluators): common evaluator inputs and multiple score outputs.
 - LLMForge: `backend/app/models/evaluation.py`, `backend/app/schemas/evaluation.py`, `backend/app/services/evaluation_runs.py`, `backend/app/services/evaluation_service.py`, `backend/app/api/sdk_evaluations.py`, `frontend/src/components/evaluations-workbench.tsx`, `frontend/src/components/evaluations/evaluation-results.tsx`, `sdk/python/src/llmforge/client.py`, `sdk/python/src/llmforge/models.py`, `sdk/python/src/llmforge/cli.py`, `docs/PHASE_3_EVALUATIONS.md`.
+
+
+## Architecture foundation follow-up (October 5, 2026)
+
+Idempotent dispatch, durable stage checkpoints, fenced execution attempts, explicit live recovery and paginated analytical reads are now implemented. The earlier execution comparison records the starting point. See [ARCHITECTURE.md](ARCHITECTURE.md) for current semantics and delivery checks. Online rules, tracing, human review and matrices remain separate milestones.

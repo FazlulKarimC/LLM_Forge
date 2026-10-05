@@ -13,6 +13,8 @@ from app.core.auth import Identity, get_current_user
 from app.core.database import get_db
 from app.models.workspace import Organization, OrganizationMembership, Project, User
 
+from app.schemas.contracts import OrganizationCreated, ProjectResponse, WorkspaceResponse
+
 router = APIRouter(tags=["Workspaces"])
 
 
@@ -69,7 +71,7 @@ async def membership_for(db, organization_id, user_id):
     return membership
 
 
-@router.get("")
+@router.get("", response_model=WorkspaceResponse)
 async def list_workspaces(identity: Identity = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     user = await provision_user(db, identity)
     rows = (await db.execute(select(Organization, OrganizationMembership)
@@ -86,7 +88,7 @@ async def list_workspaces(identity: Identity = Depends(get_current_user), db: As
     }
 
 
-@router.post("/organizations", status_code=201)
+@router.post("/organizations", status_code=201, response_model=OrganizationCreated)
 async def create_organization(data: NamedWorkspace, identity: Identity = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     user = await provision_user(db, identity)
     org = Organization(name=data.name, slug=slug(data.name))
@@ -99,7 +101,7 @@ async def create_organization(data: NamedWorkspace, identity: Identity = Depends
     return {"id": org.id, "name": org.name, "project_id": project.id}
 
 
-@router.post("/organizations/{organization_id}/projects", status_code=201)
+@router.post("/organizations/{organization_id}/projects", status_code=201, response_model=ProjectResponse)
 async def create_project(organization_id: UUID, data: NamedWorkspace, identity: Identity = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     user = await provision_user(db, identity)
     membership = await membership_for(db, organization_id, user.id)

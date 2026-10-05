@@ -13,6 +13,8 @@ from app.models.prompt import ProjectAPIKey
 from app.models.workspace import Project
 from app.schemas.prompt import StrictModel
 
+from app.schemas.contracts import KeyCreated, KeyResponse
+
 router = APIRouter(tags=["Project API keys"])
 
 
@@ -39,14 +41,14 @@ def require_owner(context):
         raise HTTPException(403, "Only workspace owners can manage project API keys")
 
 
-@router.get("")
+@router.get("", response_model=list[KeyResponse])
 async def list_keys(context: ProjectContext = Depends(get_project_context), db: AsyncSession = Depends(get_db)):
     require_owner(context)
     keys = (await db.execute(select(ProjectAPIKey).order_by(ProjectAPIKey.created_at.desc()))).scalars().all()
     return [key_response(key) for key in keys]
 
 
-@router.post("", status_code=201)
+@router.post("", status_code=201, response_model=KeyCreated)
 async def create_key(data: KeyCreate, context: ProjectContext = Depends(get_project_context), db: AsyncSession = Depends(get_db)):
     require_owner(context)
     await db.execute(select(Project).where(Project.id == context.project_id).with_for_update())

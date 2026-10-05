@@ -4,8 +4,8 @@ import { useState, type FormEvent } from "react";
 import { UserButton } from "@clerk/nextjs";
 import { fetchAPI } from "@/lib/api-client";
 import { useWorkspace } from "@/components/workspace-provider";
-import { ProjectAPIKeys } from "@/components/prompts/project-api-keys";
-import { inputClass } from "@/components/prompts/prompt-ui";
+import { ProjectAPIKeys } from "@/features/prompts/components/project-api-keys";
+import { inputClass } from "@/features/prompts/components/prompt-ui";
 import { PageHeader } from "@/components/ui/primitives";
 
 export default function SettingsPage() {

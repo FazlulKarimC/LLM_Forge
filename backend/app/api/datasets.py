@@ -17,6 +17,8 @@ from app.schemas.evaluation import (
 )
 from app.services.evaluation_service import import_cases
 
+from app.schemas.contracts import CaseImport, DatasetDetail, DatasetPage, DatasetResponse, RevisionResponse
+
 router = APIRouter(tags=["Datasets"])
 
 
@@ -28,12 +30,12 @@ async def find_dataset(db, dataset_id, lock=False):
     return item
 
 
-@router.post("/import")
+@router.post("/import", response_model=CaseImport)
 async def parse_import(data: DatasetImport):
     return {"cases": import_cases(data)}
 
 
-@router.get("")
+@router.get("", response_model=DatasetPage)
 async def list_datasets(
     archived: bool = False,
     offset: int = Query(0, ge=0),
@@ -55,7 +57,7 @@ async def list_datasets(
     return {"items": [dataset_response(item) for item in items], "total": total}
 
 
-@router.post("", status_code=201)
+@router.post("", status_code=201, response_model=DatasetDetail)
 async def create_dataset(data: DatasetCreate, db: AsyncSession = Depends(get_db)):
     item = Dataset(name=data.name, description=data.description, latest_version=1)
     db.add(item)
@@ -74,7 +76,7 @@ async def create_dataset(data: DatasetCreate, db: AsyncSession = Depends(get_db)
     return {"dataset": dataset_response(item), "revision": revision_response(revision)}
 
 
-@router.get("/{dataset_id}")
+@router.get("/{dataset_id}", response_model=DatasetDetail)
 async def get_dataset(dataset_id: UUID, db: AsyncSession = Depends(get_db)):
     item = await find_dataset(db, dataset_id)
     revision = await db.scalar(
@@ -86,7 +88,7 @@ async def get_dataset(dataset_id: UUID, db: AsyncSession = Depends(get_db)):
     return {"dataset": dataset_response(item), "revision": revision_response(revision)}
 
 
-@router.patch("/{dataset_id}")
+@router.patch("/{dataset_id}", response_model=DatasetResponse)
 async def update_dataset(
     dataset_id: UUID, data: DatasetUpdate, db: AsyncSession = Depends(get_db)
 ):
@@ -111,7 +113,7 @@ async def archive_dataset(dataset_id: UUID, db: AsyncSession = Depends(get_db)):
     return Response(status_code=204)
 
 
-@router.get("/{dataset_id}/revisions")
+@router.get("/{dataset_id}/revisions", response_model=list[RevisionResponse])
 async def revisions(
     dataset_id: UUID,
     offset: int = Query(0, ge=0),
@@ -131,7 +133,7 @@ async def revisions(
     return [revision_response(item) for item in items]
 
 
-@router.post("/{dataset_id}/revisions", status_code=201)
+@router.post("/{dataset_id}/revisions", status_code=201, response_model=RevisionResponse)
 async def add_revision(
     dataset_id: UUID, data: RevisionCreate, db: AsyncSession = Depends(get_db)
 ):

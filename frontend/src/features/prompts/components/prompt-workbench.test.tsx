@@ -38,6 +38,8 @@ vi.mock("@/lib/prompt-api", async () => ({
 }));
 
 const first = {
+  created_by: "test-user",
+  prompt_type: "text" as const,
   id: "v1",
   prompt_id: "p1",
   name: "support",
@@ -52,6 +54,7 @@ const first = {
 };
 const detail: PromptDetail = {
   prompt: {
+    prompt_type: "text",
     id: "p1",
     name: "support",
     description: "Support answers",

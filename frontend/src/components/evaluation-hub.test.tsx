@@ -20,6 +20,9 @@ const mocks = vi.hoisted(() => ({
   importDataset: vi.fn(),
   listEvaluations: vi.fn(),
   getEvaluation: vi.fn(),
+  getEvaluationSummary: vi.fn(),
+  getEvaluationCases: vi.fn(),
+  getEvaluationCase: vi.fn(),
   startEvaluation: vi.fn(),
   cancelEvaluation: vi.fn(),
   listPrompts: vi.fn(),
@@ -121,6 +124,9 @@ beforeEach(() => {
   ]);
   mocks.listEvaluations.mockResolvedValue({ items: [run], total: 1 });
   mocks.getEvaluation.mockResolvedValue({ run, results: [result] });
+  mocks.getEvaluationSummary.mockImplementation(async (id) => ({ ...(await mocks.getEvaluation(id)), recovery: { available: false, attempts: [], remaining_calls: { generation: 0, judging: 0, total: 0 } } }));
+  mocks.getEvaluationCases.mockResolvedValue({ items: [{ ...result, output_preview: result.output }], total: 1, offset: 0, limit: 25 });
+  mocks.getEvaluationCase.mockImplementation(async (id, index) => (await mocks.getEvaluation(id)).results.find((item: typeof result) => item.case_index === index));
   mocks.startEvaluation.mockResolvedValue(run);
   mocks.listEvaluators.mockResolvedValue({ items: [], total: 0 });
   mocks.listEvaluatorVersions.mockResolvedValue([]);
@@ -346,7 +352,7 @@ describe("evaluation UI", () => {
     ).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Greeting" }));
     await waitFor(() => expect(window.location.search).toContain("case=0"));
-    expect(screen.getByLabelText("Selected case details")).toHaveFocus();
+    await waitFor(() => expect(screen.getByLabelText("Selected case details")).toHaveFocus());
     fireEvent.change(screen.getByLabelText("Cases"), {
       target: { value: "passed" },
     });
@@ -412,6 +418,7 @@ describe("evaluation UI", () => {
           max_tokens: 512,
           assertions: [{ kind: "exact_match", value: "", path: "" }],
         }),
+        expect.any(String),
       ),
     );
     await waitFor(() => expect(window.location.search).toContain("run=run"));

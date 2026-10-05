@@ -71,6 +71,24 @@ jobs:
         INFERENCE_ENGINE: mock
       run: python -m alembic upgrade head
 
+    - name: Verify deterministic API contracts
+      working-directory: ./backend
+      env:
+        INFERENCE_ENGINE: mock
+      run: |
+        python -m scripts.export_openapi
+        git diff --exit-code -- ../contracts/openapi.json
+
+    - name: Verify PostgreSQL claims and migration chain
+      working-directory: ./backend
+      env:
+        DATABASE_URL: postgresql+asyncpg://llmforge:llmforge_password@localhost:5432/llmforge_test
+        LLMFORGE_TEST_POSTGRES_URL: postgresql+asyncpg://llmforge:llmforge_password@localhost:5432/llmforge_test
+        INFERENCE_ENGINE: mock
+      run: |
+        python -m scripts.check_migrations
+        python -m scripts.check_postgres
+
     - name: Run Pytest Suite
       working-directory: ./backend
       env:
@@ -113,6 +131,12 @@ jobs:
     - name: Install dependencies
       working-directory: ./frontend
       run: npm ci
+
+    - name: Verify generated frontend contracts
+      working-directory: ./frontend
+      run: |
+        npm run contracts:generate
+        git diff --exit-code -- src/lib/generated/api-schema.ts
 
     - name: Lint
       working-directory: ./frontend

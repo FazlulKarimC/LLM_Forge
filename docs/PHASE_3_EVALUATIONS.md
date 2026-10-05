@@ -73,7 +73,7 @@ Choose Groq, OpenRouter, or OpenAI and supply your provider key. You may configu
 
 Limits: 100 cases / 1 MB per dataset revision; 50 cases per live generation run; 20 cases when judging; 10 inline assertions and 10 saved evaluator selections; at most two judges including the inline judge; at most 60 model calls (generation plus judging); two active runs per project; output limit 2,048 tokens and 32,000 characters. Built-in checks do not consume model calls. Setup shows expected call counts, and the backend enforces limits before dispatch. Each generation/judge call has a 30-second deadline and no automatic retries. Missing prompt inputs and invalid definitions are rejected before calling a provider. A case-level provider/judge error is recorded and subsequent cases continue. A completed run can contain errors; inspect case errors and per-score errors.
 
-The runner uses FastAPI background tasks, sequential calls, and short database transactions. Polling shows durable progress. Cancellation prevents subsequent calls and won't be overwritten by an in-flight call, which may still consume provider credits. Restarting the backend loses in-memory credentials; after 120 seconds without progress, polling marks that run failed. Runs are never automatically resumed or retried. This fits a small personal project with a persistent backend process; serverless request lifecycles aren't appropriate for this runner.
+The lifecycle-managed runner uses PostgreSQL claims, ownership leases and per-stage checkpoints, with sequential calls and short transactions. Cancellation and lease expiry fence later calls and writes; an in-flight call may still consume credits. Heartbeats run every 15 seconds and leases expire after 90 seconds. Interrupted provider-free work recovers automatically; live work offers **Resume unfinished work** with fresh keys and remaining-call estimates. Committed generation and evaluator stages are skipped. A lost, uncommitted response may require a charged repeat call. Legacy runs without execution records remain non-resumable. The backend cannot execute while its container is stopped. See [architecture and rollout](ARCHITECTURE.md).
 
 ## API and models
 
@@ -85,6 +85,10 @@ All endpoints require Clerk Bearer authentication and `X-Project-ID`. Read-only 
 - `GET/POST /api/v1/datasets/{id}/revisions` — POST includes `cases` and `base_version`
 - `GET/POST /api/v1/evaluations` — POST returns 202
 - `GET /api/v1/evaluations/{id}` — run plus ordered per-case results
+- `GET /api/v1/evaluations/{id}/summary` — compact progress, scores, usage and recovery
+- `GET /api/v1/evaluations/{id}/cases` — paginated previews and server filters/comparison totals
+- `GET /api/v1/evaluations/{id}/cases/{case_index}` — full individual result
+- `POST /api/v1/evaluations/{id}/resume` — interrupted work with fresh credentials
 - `POST /api/v1/evaluations/{id}/cancel`
 - `POST /api/v1/evaluations/{id}/score` — new run using saved outputs and pinned evaluator selections
 - `GET/POST /api/v1/evaluators` — project-scoped catalog and creation
@@ -95,7 +99,7 @@ All endpoints require Clerk Bearer authentication and `X-Project-ID`. Read-only 
 
 Run creation selects `prompt_version_id`, `dataset_revision_id`, provider/model/generation settings, `assertions`, and optional `judge`. Run history snapshots prompt/dataset names, version numbers, and non-secret settings. Comparisons align case indexes only when both runs use the same dataset revision. Existing benchmark experiments remain a separate workflow.
 
-Tables: `evaluation_datasets`, `dataset_revisions` (bounded cases JSON), `evaluation_runs`, `evaluation_case_results`, `evaluators`, `evaluator_versions`, `evaluation_scores`. Base migration: `k4l5m6n7o8p9`; evaluator migration: `n7o8p9q0r1s2`. All tables are project-scoped. New scores are committed with case results; legacy JSON results are adapted for summaries without a historical backfill or invented evaluator identity. No separate queue service is required. Apply migrations to the intended database before deploying this code.
+Tables: `evaluation_datasets`, `dataset_revisions` (bounded cases JSON), `evaluation_runs`, `evaluation_case_results`, `evaluators`, `evaluator_versions`, `evaluation_scores`. Base migration: `k4l5m6n7o8p9`; evaluator migration: `n7o8p9q0r1s2`. All tables are project-scoped. Durable migration `o8p9q0r1s2t3` adds attempts, checkpoints, dispatch identities and execution capacity. New scores commit atomically with evaluator-stage checkpoints; legacy JSON results are adapted for summaries without a historical backfill or invented evaluator identity. No separate queue service is required. Apply migrations to the intended database before deploying this code.
 
 ```powershell
 cd backend
@@ -106,3 +110,5 @@ cd backend
 Automated coverage includes import validation, revision conflicts, assertions, regex timeout, tenant isolation, provider failures, secret exclusion, cancellation races, abandoned runs, judge parsing, and UI save/run/comparison flows. Phase 4 remains the packaged Python SDK, CI developer workflow, and documentation/landing page polish.
 
 For a database-backed smoke test in a temporary workspace (removed afterwards), run `python -m scripts.smoke_evaluations` from `backend`. Add `--live-groq` to make one generation and one judge call with the configured `GROQ_API_KEY`. This explicit smoke-test flag is the only evaluation test that reads the server's provider key.
+
+Creation, saved-output scoring and resume accept an optional actor/project/operation-scoped `Idempotency-Key`, retained for 24 hours. Matching non-secret intent returns the existing run; changed intent returns 409. The SDK also supports it for external submissions. Authentication and scopes are rechecked on replays.

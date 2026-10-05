@@ -448,3 +448,11 @@ Do not add an application-wide filter that only filters one loaded page. Retain 
 - Versions places the saved history above an explicit Reference/Candidate comparison. Content and configuration changes have separate areas; color accompanies written added/removed labels. Comparison columns stack on narrow screens.
 - Releases shows automatic latest separately from mutable staging, production and custom labels. Assigning a custom label uses the same saved-version confirmation as other promotions.
 - Integration explains string versus chat compilation, version/config retrieval, and selector behavior. Additional API-key capabilities use explicit, unchecked-by-default controls in Settings.
+
+## Durable evaluation presentation
+
+An interrupted execution retains public status **Failed** and displays an **Execution interrupted** recovery panel beside the selected run's summary. Use the warning border and existing text/input/button tokens. Explain preserved progress, pinned versions, remaining generation/judge calls, and the possibility of charging again for a lost provider response. Use the precise action **Resume unfinished work**. Do not offer resume for completed, cancelled or ordinary failed runs.
+
+Credential inputs are password fields with autocomplete off and stay in local state. Request only the generation/inline-judge/pinned evaluator keys required by the run, and clear them on accepted resume. Retain the dispatch identity across an uncertain response. Show safe failure codes and attempt history in a compact disclosure; never show stored credentials or raw platform exceptions.
+
+Run summary polling stops at terminal states. Case tables use bounded output previews, explicit totals, filters and previous/next pagination. Full input/output/check reasons load in the focused case panel when selected. Comparison totals come from the server; preserve policy compatibility warnings. Loading/error states must keep navigation and summary stable. Shared selections belong in URL parameters; project switching clears server caches and discards mounted credentials according to existing guards.

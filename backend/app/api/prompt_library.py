@@ -11,10 +11,12 @@ from app.schemas.prompt import PromptCreate, PromptUpdate, VersionCreate, Promot
 from app.services.prompt_service import find_prompt, add_version, flush_unique, describe_prompt, assign_label, list_prompt_catalog
 from app.services.prompt_templates import compile_prompt, prompt_preview
 
+from app.schemas.contracts import CompiledPrompt, PlaygroundResponse, PromptDetail, PromptPage
+
 router = APIRouter(tags=["Prompt library"])
 
 
-@router.post("/compile")
+@router.post("/compile", response_model=CompiledPrompt)
 async def compile_draft(data: CompileRequest):
     try:
         compiled = compile_prompt(data.template_text, data.messages, data.prompt_type, data.variables, data.template_format)
@@ -23,7 +25,7 @@ async def compile_draft(data: CompileRequest):
     return {"compiled_prompt": prompt_preview(compiled), "compiled_messages": compiled if isinstance(compiled, list) else None}
 
 
-@router.post("/playground")
+@router.post("/playground", response_model=PlaygroundResponse)
 async def run_playground(data: PlaygroundRequest, db: AsyncSession = Depends(get_db)):
     from app.services.playground_service import generate_playground
     # Project membership was already verified by the router dependency. Release
@@ -32,7 +34,7 @@ async def run_playground(data: PlaygroundRequest, db: AsyncSession = Depends(get
     return await generate_playground(data)
 
 
-@router.get("")
+@router.get("", response_model=PromptPage)
 async def list_prompts(search: str = Query("", max_length=255), archived: bool = False,
                        offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=100),
                        tag: str = Query("", max_length=64), folder: str = Query("", max_length=255),
@@ -41,7 +43,7 @@ async def list_prompts(search: str = Query("", max_length=255), archived: bool =
     return await list_prompt_catalog(db, search=search, archived=archived, offset=offset, limit=limit, tag=tag, folder=folder, label=label)
 
 
-@router.post("", status_code=201)
+@router.post("", status_code=201, response_model=PromptDetail)
 async def create_prompt(data: PromptCreate, context: ProjectContext = Depends(get_project_context), db: AsyncSession = Depends(get_db)):
     prompt = Prompt(project_id=context.project_id, name=data.name, description=data.description, prompt_type=data.prompt_type, tags=data.tags)
     db.add(prompt)
@@ -52,7 +54,7 @@ async def create_prompt(data: PromptCreate, context: ProjectContext = Depends(ge
     return payload
 
 
-@router.get("/{prompt_id}")
+@router.get("/{prompt_id}", response_model=PromptDetail)
 async def get_prompt(prompt_id: UUID, db: AsyncSession = Depends(get_db)):
     prompt = await find_prompt(db, prompt_id, allow_archived=True)
     latest = (await db.execute(select(PromptVersion).where(PromptVersion.prompt_id == prompt.id,

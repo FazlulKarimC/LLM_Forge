@@ -5,9 +5,10 @@ import { useRouter } from "next/navigation";
 import { Providers } from "@/app/providers";
 import { fetchAPI } from "@/lib/api-client";
 import { setApiContext } from "@/lib/request-context";
-export type WorkspaceProject = { id: string; name: string; slug: string; organization_id: string };
-export type WorkspaceOrganization = { id: string; name: string; slug: string; role: "owner" | "member"; projects: WorkspaceProject[] };
-type Snapshot = { user: { id: string; display_name: string }; organizations: WorkspaceOrganization[] };
+import type { components } from "@/lib/generated/api-schema";
+export type WorkspaceProject = components["schemas"]["ProjectResponse"];
+export type WorkspaceOrganization = components["schemas"]["OrganizationResponse"];
+type Snapshot = components["schemas"]["WorkspaceResponse"];
 type Workspace = {
   organizations: WorkspaceOrganization[];
   organization: WorkspaceOrganization;

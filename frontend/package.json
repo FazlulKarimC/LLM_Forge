@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "vitest run"
+    "test": "vitest run",
+    "contracts:generate": "openapi-typescript ../contracts/openapi.json -o src/lib/generated/api-schema.ts"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.9.7",
@@ -32,6 +33,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.1",
     "jsdom": "^26.1.0",
+    "openapi-typescript": "^7.13.0",
     "tailwindcss": "^4",
     "typescript": "^5",
     "vitest": "^3.2.4"

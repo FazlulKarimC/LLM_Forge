@@ -12,6 +12,8 @@ from app.schemas.prompt import ReleaseLabel, PromptCreate, StrictModel, VersionR
 from pydantic import Field
 from app.services.prompt_service import add_version, assign_label, flush_unique, list_prompt_catalog
 
+from app.schemas.contracts import PromptPage
+
 router = APIRouter(tags=["SDK prompts"])
 
 
@@ -27,7 +29,7 @@ async def snapshot_response(db, prompt, version):
     return SDKSnapshot(**{**version_response(version).model_dump(), "name": prompt.name}, labels=sorted(labels), tags=prompt.tags)
 
 
-@router.post("", status_code=201)
+@router.post("", status_code=201, response_model=SDKSnapshot)
 async def create_prompt(data: PromptCreate, project_id: UUID = Depends(get_prompt_write_project), db: AsyncSession = Depends(get_db)):
     prompt = await db.scalar(select(Prompt).where(Prompt.name == data.name, Prompt.project_id == project_id).with_for_update())
     if prompt is None:
@@ -48,7 +50,7 @@ class LabelAssignment(StrictModel):
     version: int = Field(ge=1)
 
 
-@router.put("/{name:path}/labels/{label}")
+@router.put("/{name:path}/labels/{label}", response_model=SDKSnapshot)
 async def update_label(name: str, label: ReleaseLabel, data: LabelAssignment, project_id: UUID = Depends(get_prompt_write_project), db: AsyncSession = Depends(get_db)):
     prompt = await db.scalar(select(Prompt).where(Prompt.name == name, Prompt.project_id == project_id, Prompt.archived.is_(False)).with_for_update())
     if prompt is None:
@@ -62,14 +64,14 @@ async def update_label(name: str, label: ReleaseLabel, data: LabelAssignment, pr
     return result
 
 
-@router.get("")
+@router.get("", response_model=PromptPage)
 async def list_sdk_prompts(offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=100),
                            tag: str = Query("", max_length=64), label: ReleaseLabel | None = None,
                            project_id: UUID = Depends(get_sdk_project), db: AsyncSession = Depends(get_db)):
     return await list_prompt_catalog(db, offset=offset, limit=limit, tag=tag, label=label)
 
 
-@router.get("/{name:path}")
+@router.get("/{name:path}", response_model=SDKSnapshot)
 async def fetch_prompt(name: str, label: ReleaseLabel | None = None, version: int | None = Query(None, ge=1),
                        if_none_match: str | None = Header(None), project_id: UUID = Depends(get_sdk_project),
                        db: AsyncSession = Depends(get_db)):

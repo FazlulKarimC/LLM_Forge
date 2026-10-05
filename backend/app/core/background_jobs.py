@@ -21,7 +21,8 @@ def _now() -> datetime:
 async def _cleanup_expired_jobs(session) -> None:
     cutoff = _now() - _JOB_TTL
     await session.execute(
-        delete(BackgroundJobRecord).where(BackgroundJobRecord.updated_at < cutoff)
+        delete(BackgroundJobRecord).where(BackgroundJobRecord.updated_at < cutoff,
+            BackgroundJobRecord.status.in_(("completed", "failed", "cancelled")))
     )
 
 
