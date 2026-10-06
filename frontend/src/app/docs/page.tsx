@@ -1,5 +1,6 @@
-import Link from "next/link";
 import type { Metadata } from "next";
+import { PublicHeader } from "@/components/public-header";
+import { PublicFooter } from "@/components/public-footer";
 
 export const metadata: Metadata = {
   title: "SDK & demo guide",
@@ -36,23 +37,9 @@ function Code({ children }: { children: string }) {
 
 export default function DocsPage() {
   return (
-    <div className="page-width max-w-5xl px-4 py-10 sm:px-6">
-      <nav className="flex flex-wrap justify-between gap-3">
-        <Link href="/" className="font-semibold">
-          LLMForge
-        </Link>
-        <div className="flex gap-4">
-          <Link href="/prompts" className="underline">
-            Workspace
-          </Link>
-          <a
-            href="https://github.com/FazlulKarimC/LLM_Forge"
-            className="underline"
-          >
-            Repository
-          </a>
-        </div>
-      </nav>
+    <div className="public-shell">
+      <PublicHeader />
+      <main className="page-width max-w-5xl px-4 sm:px-6 docs-content">
       <header className="my-10">
         <p className="page-eyebrow">Developer guide</p>
         <h1 className="mt-4 text-4xl font-semibold tracking-tight">
@@ -205,8 +192,9 @@ assert result.meets_threshold(0.9)`}</Code>
           </li>
           <li>
             Provider/judge calls have a 30-second limit and no automatic retry.
-            Restarting the backend loses in-memory credentials; abandoned runs
-            fail after 120 seconds without progress.
+            Restarting the backend loses in-memory credentials. Interrupted
+            evaluations preserve committed checkpoints and offer explicit resume
+            with fresh keys; a provider response lost before saving may be charged again.
           </li>
           <li>
             LLM judge scores are model opinions. Prefer deterministic checks for
@@ -219,6 +207,8 @@ assert result.meets_threshold(0.9)`}</Code>
           Benchmarks area.
         </p>
       </section>
+      </main>
+      <PublicFooter />
     </div>
   );
 }

@@ -1,15 +1,16 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { Providers } from "./providers";
-import { Toaster } from "sonner";
+import { ThemedToaster } from "@/components/themed-toaster";
 import { ClerkProvider } from "@clerk/nextjs";
+import { themeBootstrap } from "@/lib/theme";
 
 export const metadata: Metadata = {
   title: {
     default: "LLMForge",
     template: "%s | LLMForge",
   },
-  description: "Version prompts, evaluate fixed test cases, and release tested prompts through a Python SDK and CI quality gates.",
+  description: "Compare model benchmarks, develop versioned prompts, and evaluate outputs in one workspace with LLMForge.",
 };
 
 export default function RootLayout({
@@ -19,23 +20,13 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning data-theme="dark">
+      <head><script dangerouslySetInnerHTML={{ __html: themeBootstrap }} /></head>
       <body className="antialiased">
         <Providers>
             {process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY && process.env.CLERK_SECRET_KEY ? (
               <ClerkProvider signInUrl="/sign-in" signUpUrl="/sign-up" signInFallbackRedirectUrl="/dashboard" signUpFallbackRedirectUrl="/dashboard">{children}</ClerkProvider>
             ) : children}
-          <Toaster
-            position="bottom-right"
-            richColors
-            theme="dark"
-            toastOptions={{
-              style: {
-                background: "var(--surface-1)",
-                border: "1px solid var(--border)",
-                color: "var(--foreground)",
-              },
-            }}
-          />
+          <ThemedToaster />
         </Providers>
       </body>
     </html>

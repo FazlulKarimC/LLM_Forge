@@ -19,9 +19,7 @@ import {
   Github,
   LayoutDashboard,
   Menu,
-  MoonStar,
   Search,
-  SunMedium,
   X,
 } from "lucide-react";
 import { Keycap } from "@/components/ui/primitives";
@@ -29,6 +27,8 @@ import { cn } from "@/lib/utils";
 import { UserButton } from "@clerk/nextjs";
 import { WorkspaceSwitcher } from "@/components/workspace-provider";
 import { FileText, Database, Settings } from "lucide-react";
+import { Brand } from "@/components/brand";
+import { ThemeToggle } from "@/components/theme-provider";
 type NavItem = {
   href: string;
   label: string;
@@ -287,13 +287,6 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const mobileDialog = useRef<HTMLDivElement>(null);
   useOverlayFocus(mobileNavOpen, mobileDialog);
-  const [isLightTheme, setIsLightTheme] = usePersistentState(
-    "llmforge.theme.light",
-    false,
-  );
-  useEffect(() => {
-    document.documentElement.dataset.theme = isLightTheme ? "light" : "dark";
-  }, [isLightTheme]);
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
@@ -336,19 +329,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             className="flex min-w-0 items-center gap-3"
             onClick={() => setMobileNavOpen(false)}
           >
-            <div className="flex size-8 items-center justify-center rounded-lg border border-(--border) bg-(--surface-2) text-(--primary)">
-              <FlaskConical className="size-5" />
-            </div>
-            {!isCollapsed ? (
-              <div className="min-w-0">
-                <div className="truncate text-sm font-semibold uppercase tracking-[0.18em] text-(--muted-foreground)">
-                  LLMForge
-                </div>
-                <div className="truncate text-sm font-medium">
-                  Prompt workspace
-                </div>
-              </div>
-            ) : null}
+            <Brand compact={isCollapsed} />
           </Link>
           <button
             type="button"
@@ -424,23 +405,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               </>
             )}
           </button>
-          <button
-            type="button"
-            className={cn(
-              "btn-ghost w-full justify-start",
-              isCollapsed ? "px-0! justify-center!" : "",
-            )}
-            onClick={() => setIsLightTheme((value) => !value)}
-          >
-            {isLightTheme ? (
-              <MoonStar className="size-4" />
-            ) : (
-              <SunMedium className="size-4" />
-            )}
-            {!isCollapsed ? (
-              <span>{isLightTheme ? "Dark mode" : "Light mode"}</span>
-            ) : null}
-          </button>
+          <ThemeToggle showLabel={!isCollapsed} className={cn("w-full justify-start", isCollapsed ? "px-0! justify-center!" : "")} />
           <a
             href="https://github.com/FazlulKarimC/LLM_Forge"
             target="_blank"

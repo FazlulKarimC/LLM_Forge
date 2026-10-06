@@ -3,6 +3,7 @@
 import { QueryClient, QueryClientProvider, QueryCache, MutationCache } from "@tanstack/react-query";
 import * as Sentry from "@sentry/nextjs";
 import { useState, type ReactNode } from "react";
+import { ThemeProvider } from "@/components/theme-provider";
 
 export function Providers({ children }: { children: ReactNode }) {
     const [queryClient] = useState(
@@ -30,7 +31,7 @@ export function Providers({ children }: { children: ReactNode }) {
 
     return (
         <QueryClientProvider client={queryClient}>
-            {children}
+            <ThemeProvider>{children}</ThemeProvider>
         </QueryClientProvider>
     );
 }

@@ -2,9 +2,9 @@
 
 > **Stack:** Next.js 16 · Tailwind CSS v4 · Framer Motion · Lucide Icons  
 > **Source of truth:** [`globals.css`](frontend/src/app/globals.css) · [`primitives.tsx`](frontend/src/components/ui/primitives.tsx)  
-> **Theme:** Dark-first tokens with a quieter workspace surface; marketing retains its own decorative treatment
+> **Theme:** Dark-first charcoal surfaces with warm gold actions and teal accents, shared by the workspace and public pages
 
-The application shell now prioritizes a compact workbench: Overview, Prompts, Datasets, and Evaluations form the main navigation; Benchmarks is separate; Settings and Docs are utilities. `.app-shell` scopes the wider content area, flatter panels, and smaller page headers so the landing page keeps its own typography.
+The application shell prioritizes a compact workbench: Overview, Prompts, Datasets, and Evaluations form the main navigation; Benchmarks is separate; Settings and Docs are utilities. Public pages share the same identity, controls, flat panels and theme. `.app-shell` retains wider content, compact controls and smaller headings; `.public-shell` uses more spacious narrative layouts and larger touch targets.
 
 ---
 
@@ -17,6 +17,18 @@ The application shell now prioritizes a compact workbench: Overview, Prompts, Da
 5. **Merge classes via `cn()`.** Import `cn` from `@/lib/utils` (clsx + tailwind-merge) for conditional class composition.
 6. **Prefer flex/grid `gap` over margin.** Spacing is managed with `gap-*`, never ad hoc `mb-*` between siblings.
 7. **Match layout to the task.** Use full-width sections for narrative content and two-column or table/detail layouts for editing and case inspection. Keep controls visible near the data they affect.
+8. **Keep one identity.** Use `Brand` / `BrandGlyph` from the shared brand component. The original sidebar flask, 32px bordered tile and wordmark are authoritative; do not substitute Activity icons, image logos or a different typeface.
+9. **Keep one theme.** The root `ThemeProvider` owns dark/light state and preserves `llmforge.theme.light`. Use `ThemeToggle`; never add page-specific theme state. Storage denial must not break rendering or toggling.
+
+## Public pages and product storytelling
+
+- Landing, docs and authentication use `.public-shell`, the shared public header/footer, and the same tokens as the workspace. Header/footer and the collapsed sidebar use the same flask mark; the favicon renders the same glyph. Static favicon raster colors are the exception to runtime CSS-variable colors.
+- The landing page gives equal emphasis to benchmarks, prompts and evaluations. Its sequence is promise → real product walkthrough → workflow → capabilities → verifiable evidence → FAQ → workspace entry.
+- Public content uses the existing 1180px maximum width, 24px desktop / 16px mobile gutters, 80px desktop / 48px mobile section spacing, and larger readable headings. Uniform styling does not require the workspace's compact text size on marketing pages.
+- Use screenshots of the real application with deliberately prepared public examples. Capture only product regions, excluding account information, provider credentials, private content and internal request identifiers. Keep dark/light versions and readable mobile crops together under `public/walkthrough`.
+- Seeded benchmark measurements and Echo demo checks must be labelled as illustrations, never model-performance evidence. Explain what the screen helps a visitor decide; do not invent customers, adoption numbers or a winning model.
+- The public walkthrough is static, read-only and makes no application API requests. Its tabs support arrows, Home/End, selected state and focus. Workspace entry retains sign-in; Create demo examples remains an explicit action on Overview.
+- Prefer static backgrounds and subtle hover feedback. Honor reduced motion; avoid canvas shaders, continuous motion and word-by-word hero reveals. Preview assets need useful alt text, dimensions and captions, and must remain readable in both themes.
 
 ---
 
@@ -59,11 +71,12 @@ Headings automatically apply `font-family: var(--font-display)` and `letter-spac
 | Element | Radius | Note |
 |---------|--------|------|
 | Page header | `24px` | Outermost container |
-| Panel / card | `22px` | Primary content wrapper |
+| Panel / card | `10px` | Shared flat content wrapper |
 | Empty state | `20px` | Dashed border variant |
 | Inner card / metric-card | `18px` | Nested inside panels |
 | Code panel | `16px` | Monospace content |
-| Button / input | `14px` | Interactive elements |
+| Button | `7px` | Shared control shape; public touch targets ≥44px, workspace ≥34px (40px on mobile) |
+| Input | `7px` in workspace | Interactive workspace fields |
 | Filmstrip cell | `12px` | Small clickable cells |
 | Chip / pill / badge | `999px` | Fully rounded |
 
@@ -103,19 +116,19 @@ Headings automatically apply `font-family: var(--font-display)` and `letter-spac
 
 | Class | Purpose |
 |-------|---------|
-| `.panel` | Primary content card: border, `22px` radius, glass background |
+| `.panel` | Primary content card: border, `10px` radius, flat surface background |
 | `.panel-muted` | Panel variant with darker surface background |
 | `.panel-header` | Flex row header inside panel (title + actions) |
 | `.panel-body` | Inner padding zone: `1.25rem` all sides |
 
 ### Buttons
 
-All buttons share: `min-height: 2.8rem`, `14px` radius, `160ms` spring transition, `gap: 0.6rem` for icon + text.
+All buttons share a `7px` radius, token-based colors, no glow or lifting motion, and a `160ms` color/border transition. Public buttons use `min-height: 2.8rem`; workspace density uses smaller controls.
 
 | Class | Appearance | Hover |
 |-------|-----------|-------|
-| `.btn-primary` | Gold fill, dark text, glow shadow | Lift + brighten |
-| `.btn-secondary` | Surface fill, border, white text | Lift + stronger border |
+| `.btn-primary` | Gold fill, dark text | Subtle brighten |
+| `.btn-secondary` | Surface fill, border, foreground text | Stronger border |
 | `.btn-ghost` | Transparent, muted text | Surface fill on hover |
 | `.btn-danger` | Destructive tint, red text | Darker tint |
 
@@ -409,7 +422,7 @@ The app shell (`app-shell.tsx`) provides:
 
 ## Workspace placement (October 2026)
 
-The workspace uses compact layout rules scoped to `.app-shell`. The earlier decorative sizes in this guide describe the public/marketing base; workspace controls and panels use the overrides below.
+The workspace uses compact density rules scoped to `.app-shell`. Public pages share its flat panels and control shapes, with larger narrative typography and touch targets. Workspace-specific layout and sizing overrides are listed below.
 
 | Pattern | Workspace rule |
 | --- | --- |
