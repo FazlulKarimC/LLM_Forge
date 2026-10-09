@@ -4,12 +4,114 @@ import asyncio
 from uuid import UUID
 import pytest
 from sqlalchemy import select
-from app.models.evaluation import EvaluationResult
+from app.models.evaluation import EvaluationResult, EvaluationRun
 from app.models.evaluation_execution import EvaluationExecution
 from app.repositories import evaluation_execution as repository
 from tests.factories import create_evaluation_scenario
 
 pytestmark = [pytest.mark.postgres, pytest.mark.asyncio]
+
+
+async def test_project_admission_lock_allows_checkpoint_foreign_keys(api, monkeypatch):
+    _, sessions, headers, _, run_id = await queued(api, monkeypatch)
+    from app.services.evaluation_runs import lock_project
+
+    async with sessions() as db:
+        execution_id = await repository.claim(db, run_id, "worker")
+
+    async def write():
+        async with sessions() as db:
+            return await repository.checkpoint(
+                db, execution_id, "worker", 0, "generation", {"output": "Hello"}
+            )
+
+    async with sessions() as admission:
+        await lock_project(admission, UUID(headers["X-Project-ID"]))
+        # Old FOR UPDATE blocks the checkpoint's FK check even though this
+        # admission has not touched any run row. This deadline catches the cycle.
+        assert await asyncio.wait_for(write(), timeout=3)
+
+
+async def test_polling_does_not_lock_live_run_rows(api, monkeypatch):
+    client, sessions, headers, _, run_id = await queued(api, monkeypatch)
+    async with sessions() as db:
+        await repository.claim(db, run_id, "worker")
+    async with sessions() as writer:
+        await writer.scalar(
+            select(EvaluationRun).where(EvaluationRun.id == run_id).with_for_update()
+        )
+        responses = await asyncio.wait_for(
+            asyncio.gather(
+                *[
+                    client.get(path, headers=headers)
+                    for path in (
+                        "/api/v1/evaluations",
+                        f"/api/v1/evaluations/{run_id}",
+                        f"/api/v1/evaluations/{run_id}/summary",
+                    )
+                ]
+            ),
+            timeout=3,
+        )
+        assert all(response.status_code == 200 for response in responses)
+
+
+async def test_two_mock_runs_complete_while_history_and_summaries_poll(
+    api, monkeypatch
+):
+    _, client, sessions, headers, _, data = await create_evaluation_scenario(api)
+    from app.services.evaluation_runner import runner, EvaluationRunner
+
+    # Use the real asynchronous enqueue path, not the fixture's synchronous run.
+    monkeypatch.setattr(runner, "enqueue", EvaluationRunner.enqueue.__get__(runner))
+    original_checkpoint = repository.checkpoint
+
+    async def delayed(*args, **kwargs):
+        await asyncio.sleep(0.02)
+        return await original_checkpoint(*args, **kwargs)
+
+    monkeypatch.setattr(repository, "checkpoint", delayed)
+    responses = await asyncio.gather(
+        *[
+            client.post(
+                "/api/v1/evaluations",
+                headers={**headers, "Idempotency-Key": f"overlapping-{index}"},
+                json=data,
+            )
+            for index in range(2)
+        ]
+    )
+    assert all(response.status_code == 202 for response in responses)
+    ids = [UUID(response.json()["id"]) for response in responses]
+    workers = [asyncio.create_task(runner.execute(run_id)) for run_id in ids]
+    try:
+        while not all(worker.done() for worker in workers):
+            replies = await asyncio.wait_for(
+                asyncio.gather(
+                    client.get("/api/v1/evaluations", headers=headers),
+                    *[
+                        client.get(
+                            f"/api/v1/evaluations/{run_id}/summary", headers=headers
+                        )
+                        for run_id in ids
+                    ],
+                ),
+                timeout=3,
+            )
+            assert all(reply.status_code == 200 for reply in replies)
+            await asyncio.sleep(0.01)
+        assert all(await asyncio.gather(*workers))
+    finally:
+        for worker in workers:
+            worker.cancel()
+        await asyncio.gather(*workers, return_exceptions=True)
+    async with sessions() as db:
+        runs = (await db.scalars(select(EvaluationRun))).all()
+        assert len(runs) == 2
+        assert all(
+            run.status == "completed" and run.completed == run.total == 2
+            for run in runs
+        )
 
 
 async def queued(api, monkeypatch):

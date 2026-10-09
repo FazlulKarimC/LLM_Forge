@@ -10,7 +10,7 @@ Provides statistical analysis for comparing experiments:
 
 import logging
 import math
-from typing import List, Dict, Tuple, Optional
+from typing import List, Dict
 from uuid import UUID
 
 import numpy as np

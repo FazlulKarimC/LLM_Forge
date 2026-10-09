@@ -95,11 +95,28 @@ async def fence(db, execution_id, owner):
     return (
         execution
         if run is not None
+        and execution is not None
         and run.status == "running"
         and execution.status == "running"
         and execution.owner == owner
         and not expired(execution.lease_until)
         else None
+    )
+
+
+async def authorized(db, execution_id, owner):
+    # Provider calls cannot hold a transaction open. Writes still lock and
+    # recheck ownership atomically, while this boundary needs only one read.
+    return await db.scalar(
+        select(EvaluationExecution.id)
+        .join(EvaluationRun, EvaluationRun.id == EvaluationExecution.run_id)
+        .where(
+            EvaluationExecution.id == execution_id,
+            EvaluationExecution.status == "running",
+            EvaluationExecution.owner == owner,
+            EvaluationExecution.lease_until > now(),
+            EvaluationRun.status == "running",
+        )
     )
 
 
@@ -193,10 +210,12 @@ async def finalize(db, execution_id, owner, case_index, data):
 async def reconcile(db):
     rows = (
         await db.scalars(
-            select(EvaluationExecution).where(
+            select(EvaluationExecution)
+            .where(
                 EvaluationExecution.status.in_(("queued", "running")),
                 EvaluationExecution.lease_until <= now(),
             )
+            .order_by(EvaluationExecution.run_id)
         )
     ).all()
     for execution in rows:

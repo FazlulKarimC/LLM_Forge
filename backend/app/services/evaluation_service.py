@@ -18,7 +18,8 @@ from app.schemas.evaluation import RevisionCreate
 from app.schemas.prompt import PlaygroundRequest
 from app.services.playground_service import generate_playground
 
-from app.core.diagnostics import logger, timed_stage
+from app.core.diagnostics import logger
+from app.core.database_transactions import transaction_call, sqlstate
 
 ACTIVE = ("queued", "running")
 
@@ -239,6 +240,8 @@ async def judge_output(config, case, output):
 
 
 async def expire_run(run, db=None):
+    if run.status not in ACTIVE:
+        return
     if db is not None:
         from app.models.evaluation_execution import EvaluationExecution
         from app.repositories.evaluation_execution import expired
@@ -248,6 +251,24 @@ async def expire_run(run, db=None):
             .where(EvaluationExecution.run_id == run.id)
             .order_by(EvaluationExecution.attempt.desc())
             .limit(1)
+        )
+        if execution and not expired(execution.lease_until):
+            return
+        # Lock only expired candidates; re-read after waiting so a concurrent
+        # heartbeat, resume or completion cannot be overwritten.
+        await db.scalar(
+            select(EvaluationRun)
+            .where(EvaluationRun.id == run.id)
+            .with_for_update(key_share=True)
+            .execution_options(populate_existing=True)
+        )
+        execution = await db.scalar(
+            select(EvaluationExecution)
+            .where(EvaluationExecution.run_id == run.id)
+            .order_by(EvaluationExecution.attempt.desc())
+            .limit(1)
+            .with_for_update(key_share=True)
+            .execution_options(populate_existing=True)
         )
         if execution:
             if run.status in ACTIVE and expired(execution.lease_until):
@@ -288,27 +309,38 @@ async def execute_evaluation(
     from app.services.evaluator_service import execute_evaluator, execution_errors
 
     async def session_call(callback, stage="fence"):
-        with timed_stage(stage, run_id=str(run_id), project_id=str(project_id)):
-            async with async_session_maker() as db:
-                db.info["project_id"] = project_id
-                return await callback(db)
+        return await transaction_call(
+            async_session_maker, project_id, callback, stage=stage
+        )
 
     async def allowed():
         return bool(
-            await session_call(lambda db: repository.fence(db, execution_id, owner))
+            await session_call(
+                lambda db: repository.authorized(db, execution_id, owner)
+            )
         )
 
     async def save(index, stage, data, checks=None, started=None):
         if started is not None:
-            logger.info("evaluation_timing", extra={"run_id": str(run_id),
-                        "project_id": str(project_id), "case_index": index,
-                        "stage": "generation" if stage == "generation" else "scoring",
-                        "duration_ms": round((time.perf_counter() - started) * 1000, 2),
-                        "outcome": "error" if data.get("error") or any(check.get("error") for check in checks or []) else "completed"})
+            logger.info(
+                "evaluation_timing",
+                extra={
+                    "run_id": str(run_id),
+                    "project_id": str(project_id),
+                    "case_index": index,
+                    "stage": "generation" if stage == "generation" else "scoring",
+                    "duration_ms": round((time.perf_counter() - started) * 1000, 2),
+                    "outcome": "error"
+                    if data.get("error")
+                    or any(check.get("error") for check in checks or [])
+                    else "completed",
+                },
+            )
         saved = await session_call(
             lambda db: repository.checkpoint(
                 db, execution_id, owner, index, stage, data, checks
-            ), "checkpoint"
+            ),
+            "checkpoint",
         )
         logger.info(
             "evaluation_stage_committed",
@@ -492,20 +524,33 @@ async def execute_evaluation(
                 "finalization",
             ):
                 return
-    except Exception:
+    except Exception as exc:
+        interrupted = sqlstate(exc) in ("40P01", "40001")
         logger.error(
             "evaluation_execution_failed",
-            extra={"run_id": str(run_id), "project_id": str(project_id)},
+            extra={
+                "run_id": str(run_id),
+                "project_id": str(project_id),
+                "exception_type": type(exc).__name__,
+                "sqlstate": sqlstate(exc),
+            },
         )
         async with async_session_maker() as db:
             db.info["project_id"] = project_id
             execution = await repository.fence(db, execution_id, owner)
             if execution:
-                execution.status, execution.failure_code = "failed", "runner_failed"
+                execution.updated_at = now()
+                execution.status, execution.failure_code = (
+                    ("interrupted", "database_interrupted")
+                    if interrupted
+                    else ("failed", "runner_failed")
+                )
                 run = await db.get(EvaluationRun, run_id)
                 run.status, run.error, run.updated_at = (
                     "failed",
-                    "Runner failed; start a new run",
+                    "Database transaction interrupted. Saved progress is preserved; resume unfinished work."
+                    if interrupted
+                    else "Runner failed; start a new run",
                     now(),
                 )
                 await db.commit()

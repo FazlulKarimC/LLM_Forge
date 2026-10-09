@@ -17,7 +17,6 @@ import os
 from typing import Optional, List
 
 from huggingface_hub import InferenceClient
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_not_exception_type
 
 from app.services.inference.base import (
     InferenceEngine,

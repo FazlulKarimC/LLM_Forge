@@ -18,7 +18,7 @@ Application-layer bugs (bad args, serialization errors) do NOT trip it.
 import logging
 import re
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 
 from app.core.config import settings

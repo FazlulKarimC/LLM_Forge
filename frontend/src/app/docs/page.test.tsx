@@ -13,4 +13,9 @@ it("provides a complete hosted consumer target and authoring journey", () => {
   expect(screen.getByText(/Applying an import does not save it/)).toBeInTheDocument();
   expect(screen.getByText(/numeric deltas are disabled even when submitted check names match/)).toBeInTheDocument();
   expect(screen.getByText(/Direct Gemini server generation is currently unavailable/)).toBeInTheDocument();
+  const saved = screen.getByText(/evaluator_version_id =/);
+  expect(saved).toHaveTextContent('evaluators=[{"version_id": evaluator_version_id}]');
+  expect(saved).toHaveTextContent('dataset["revision"]["id"]');
+  expect(saved).toHaveTextContent("assertions=[]");
+  expect(saved).toHaveTextContent("timeout=300");
 });

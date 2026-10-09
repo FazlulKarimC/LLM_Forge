@@ -31,6 +31,24 @@ const gateExample = `python -m llmforge evaluate \\
   --min-pass-rate 1 --output artifacts/evaluation.json
 
 python -m llmforge check artifacts/evaluation.json`;
+const savedEvaluatorExample = `from uuid import uuid4
+from llmforge import LLMForge
+
+with LLMForge() as forge:
+    prompt = forge.get_prompt("Echo demo", version=1)
+    dataset = forge.get_dataset("Greetings", version=1)
+    catalog = forge.list_evaluators()
+    # Inspect catalog["items"], then copy a saved builtin version ID.
+    evaluator_version_id = "<saved-builtin-version-UUID>"
+    run_id = forge.start_evaluation(
+        prompt.id, dataset["revision"]["id"],
+        provider="mock", assertions=[],
+        evaluators=[{"version_id": evaluator_version_id}],
+        idempotency_key=str(uuid4()),
+    )
+    result = forge.wait_for_evaluation(run_id, timeout=300, poll_interval=3)
+    print(result.status)
+    # A wait timeout does not cancel the run; inspect this run_id before retrying.`;
 
 function Code({ children }: { children: string }) {
   return (
@@ -183,6 +201,7 @@ assert result.meets_threshold(0.9)`}</Code>
           <li>Use an evaluation-enabled key with <code>get_dataset(name, version=...)</code> and <code>list_evaluators()</code>. Record the dataset revision ID and chosen evaluator version ID. SDK keys consume/select these resources; they do not author datasets or evaluators.</li>
           <li>Pass saved evaluator selections to <code>start_evaluation</code> with <code>assertions=[]</code> to omit the SDK&apos;s default exact-match check. Saved-output scoring reuses generation outputs; judge evaluators can still incur model calls.</li>
         </ol>
+        <Code>{savedEvaluatorExample}</Code>
       </section>
       <section id="limits" className="mt-8 panel p-6 scroll-mt-6">
         <h2 className="text-2xl font-semibold">Limits and troubleshooting</h2>

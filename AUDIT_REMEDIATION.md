@@ -128,3 +128,8 @@ Optional L-002 field-to-reference assertion; native Gemini server adapter; a new
 queue, hosted tracing, vector/database replacements and generalized callbacks.
 Current evidence supports neither broad architecture changes nor production
 configuration mutations as routine debugging.
+## Retest follow-up
+
+The subsequent hosted retest and supplied backend logs are addressed in
+[RETEST_REMEDIATION.md](RETEST_REMEDIATION.md). This record above retains the
+original batch's evidence and historical limitations.

@@ -7,7 +7,6 @@ Each experiment contains the full config needed for reproduction.
 
 import uuid
 from datetime import datetime, timezone
-from typing import Optional
 
 from sqlalchemy import Column, String, DateTime, JSON, Enum, Text, Integer, Boolean, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID

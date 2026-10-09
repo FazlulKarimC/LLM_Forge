@@ -26,10 +26,21 @@ from app.services.prompt_templates import compile_prompt
 from app.core.diagnostics import logger, timed_stage
 
 
-async def find_run(db, run_id):
-    run = await db.scalar(
-        select(EvaluationRun).where(EvaluationRun.id == run_id).with_for_update()
+async def lock_project(db, project_id):
+    # Serialize admissions without blocking FK KEY SHARE checks from progress
+    # inserts. FOR UPDATE creates a project -> run -> project deadlock cycle.
+    await db.scalar(
+        select(Project).where(Project.id == project_id).with_for_update(key_share=True)
     )
+
+
+async def find_run(db, run_id, *, lock=False):
+    query = select(EvaluationRun).where(EvaluationRun.id == run_id)
+    if lock:
+        query = query.with_for_update(key_share=True).execution_options(
+            populate_existing=True
+        )
+    run = await db.scalar(query)
     if run is None:
         raise HTTPException(404, "Evaluation not found")
     await expire_run(run, db)
@@ -57,7 +68,7 @@ async def dispatch_evaluation(data, tasks, project_id, db, token=None, request_i
     from app.services.evaluator_service import prepare_evaluators, call_budget
 
     # Serialize admission within one project; two live runs is ample for a demo.
-    await db.scalar(select(Project).where(Project.id == project_id).with_for_update())
+    await lock_project(db, project_id)
     from app.services.evaluation_idempotency import replay, remember
 
     prior = await replay(db, token, data)
@@ -67,7 +78,7 @@ async def dispatch_evaluation(data, tasks, project_id, db, token=None, request_i
         await db.scalars(
             select(EvaluationRun)
             .where(EvaluationRun.status.in_(ACTIVE))
-            .with_for_update()
+            .order_by(EvaluationRun.id)
         )
     ).all()
     for run in active:
@@ -138,9 +149,16 @@ async def dispatch_evaluation(data, tasks, project_id, db, token=None, request_i
     db.add(execution)
     remember(db, token, data, run)
     await db.commit()
-    logger.info("evaluation_timing", extra={"stage": "admission", "run_id": str(run.id),
-                "project_id": str(project_id), "duration_ms": round((time.perf_counter() - admitted_at) * 1000, 2),
-                "outcome": "accepted"})
+    logger.info(
+        "evaluation_timing",
+        extra={
+            "stage": "admission",
+            "run_id": str(run.id),
+            "project_id": str(project_id),
+            "duration_ms": round((time.perf_counter() - admitted_at) * 1000, 2),
+            "outcome": "accepted",
+        },
+    )
     with timed_stage("dispatch", run_id=str(run.id), project_id=str(project_id)):
         await runner.enqueue(
             run.id, project_id, data, evaluator_keys, execution_id=execution.id
@@ -161,7 +179,7 @@ async def list_runs(
         await db.scalars(
             select(EvaluationRun)
             .where(EvaluationRun.status.in_(ACTIVE))
-            .with_for_update()
+            .order_by(EvaluationRun.id)
         )
     ).all()
     for run in active:
@@ -220,7 +238,7 @@ async def get_run(run_id: UUID, db: AsyncSession):
 
 
 async def cancel_run(run_id: UUID, db: AsyncSession):
-    run = await find_run(db, run_id)
+    run = await find_run(db, run_id, lock=True)
     if run.status in ACTIVE:
         run.status, run.updated_at = "cancelled", now()
         from app.models.evaluation_execution import EvaluationExecution
@@ -242,9 +260,7 @@ async def cancel_run(run_id: UUID, db: AsyncSession):
 async def submit_results(data: EvaluationSubmission, db: AsyncSession, token=None):
     from app.services.evaluation_idempotency import replay, remember
 
-    await db.scalar(
-        select(Project).where(Project.id == db.info["project_id"]).with_for_update()
-    )
+    await lock_project(db, db.info["project_id"])
     prior = await replay(db, token, data)
     if prior:
         return run_response(prior)
@@ -330,7 +346,7 @@ async def dispatch_scoring(
     from app.schemas.evaluation import EvaluationCreate
     from app.services.evaluator_service import prepare_evaluators, call_budget
 
-    await db.scalar(select(Project).where(Project.id == project_id).with_for_update())
+    await lock_project(db, project_id)
     from app.services.evaluation_idempotency import replay, remember
 
     prior = await replay(db, token, data)
@@ -340,7 +356,7 @@ async def dispatch_scoring(
         await db.scalars(
             select(EvaluationRun)
             .where(EvaluationRun.status.in_(ACTIVE))
-            .with_for_update()
+            .order_by(EvaluationRun.id)
         )
     ).all()
     for run in active:

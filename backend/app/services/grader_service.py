@@ -18,10 +18,9 @@ Grader taxonomy:
 """
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Dict, List, Optional, Protocol, Union, runtime_checkable
-from uuid import UUID
 
 from app.schemas.experiment import GraderRule, GraderType, GradersConfig
 

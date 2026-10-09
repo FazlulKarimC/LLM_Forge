@@ -9,7 +9,6 @@ from app.core.database import async_session_maker
 from app.models.evaluation import EvaluationRun, DatasetRevision, EvaluationResult
 from app.models.prompt_version import PromptVersion
 from app.models.evaluation_execution import EvaluationExecution
-from app.models.workspace import Project
 from app.models.prompt import now
 from app.repositories import evaluation_execution as repository
 
@@ -144,9 +143,9 @@ class EvaluationRunner:
 
     async def recover_provider_free(self, db, run, execution):
         # Automatic recovery shares project admission with explicit dispatch.
-        await db.scalar(
-            select(Project).where(Project.id == run.project_id).with_for_update()
-        )
+        from app.services.evaluation_runs import lock_project
+
+        await lock_project(db, run.project_id)
         run = await db.scalar(
             select(EvaluationRun)
             .where(EvaluationRun.id == run.id)
@@ -229,9 +228,16 @@ class EvaluationRunner:
             created = execution.created_at
             if created.tzinfo is None:
                 created = created.replace(tzinfo=now().tzinfo)
-            logger.info("evaluation_timing", extra={"stage": "queue_wait",
-                        "duration_ms": round(max(0, (now() - created).total_seconds() * 1000), 2),
-                        "outcome": "claimed"})
+            logger.info(
+                "evaluation_timing",
+                extra={
+                    "stage": "queue_wait",
+                    "duration_ms": round(
+                        max(0, (now() - created).total_seconds() * 1000), 2
+                    ),
+                    "outcome": "claimed",
+                },
+            )
         beat = asyncio.create_task(self.beat(execution_id, project_id))
         try:
             async with async_session_maker() as db:
@@ -290,10 +296,26 @@ class EvaluationRunner:
     async def beat(self, execution_id, project_id):
         while True:
             await asyncio.sleep(repository.HEARTBEAT_SECONDS)
-            async with async_session_maker() as db:
-                db.info["project_id"] = project_id
-                if not await repository.heartbeat(db, execution_id, self.owner):
+            from app.core.database_transactions import transaction_call
+
+            try:
+                alive = await transaction_call(
+                    async_session_maker,
+                    project_id,
+                    lambda db: repository.heartbeat(db, execution_id, self.owner),
+                    stage="heartbeat",
+                )
+                if not alive:
                     return
+            except Exception as exc:
+                logger.error(
+                    "evaluation_heartbeat_failed",
+                    extra={
+                        "exception_type": type(exc).__name__,
+                        "project_id": str(project_id),
+                    },
+                )
+                return
 
 
 def needs_credentials(config):

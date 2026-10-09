@@ -19,6 +19,8 @@ FIELDS = {
     "status_code",
     "exception_type",
     "case_index",
+    "sqlstate",
+    "retry_attempt",
 }
 
 
@@ -54,15 +56,24 @@ def timed_stage(stage, **identifiers):
     """Measure an operational span, retaining only formatter-allowlisted fields."""
     started = time.perf_counter()
     outcome = "completed"
+    failure = {}
     try:
         yield
-    except BaseException:
+    except BaseException as exc:
         outcome = "interrupted"
+        failure = {"exception_type": type(exc).__name__}
         raise
     finally:
-        logger.info("evaluation_timing", extra={**identifiers, "stage": stage,
-                    "duration_ms": round((time.perf_counter() - started) * 1000, 2),
-                    "outcome": outcome})
+        logger.info(
+            "evaluation_timing",
+            extra={
+                **identifiers,
+                **failure,
+                "stage": stage,
+                "duration_ms": round((time.perf_counter() - started) * 1000, 2),
+                "outcome": outcome,
+            },
+        )
 
 
 def sanitize_sentry_event(event, hint):

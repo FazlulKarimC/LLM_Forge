@@ -71,7 +71,7 @@ with LLMForge() as forge:
         prompt.id, dataset["revision"]["id"],
         assertions=[{"kind": "exact_match"}],
     )
-    result = forge.wait_for_evaluation(run_id, timeout=180, cancel_on_timeout=True)
+    result = forge.wait_for_evaluation(run_id, timeout=300, poll_interval=3)
     assert result.meets_threshold(1.0)
 ```
 
@@ -86,6 +86,34 @@ generate with Gemini or LangGraph in your application, then `submit_evaluation`.
 Prompt fetching does not depend on server generation support.
 
 `wait_for_evaluation` returns completed, failed or cancelled runs. Its timeout raises `EvaluationTimeout` with `run_id`. Default timeout behavior leaves the run running; `cancel_on_timeout=True` attempts cancellation. An in-flight provider call may still finish. HTTP requests use a 10-second timeout by default (`LLMForge(timeout=...)`); there are no automatic retries, avoiding duplicate runs/submissions. A wait can exceed its deadline by an in-flight HTTP request timeout.
+
+For the hosted demo, use a bounded 240–300 second wait and inspect the same run ID
+after a timeout before starting another run. Retesting observed roughly 58–74
+seconds for four-case mock runs; mock execution still includes queue and database
+work. This is an observation, not a latency guarantee.
+
+Select a reusable builtin evaluator with its immutable version ID:
+
+```python
+from uuid import uuid4
+
+with LLMForge() as forge:
+    prompt = forge.get_prompt("Echo demo", version=1)
+    dataset = forge.get_dataset("Greetings", version=1)
+    catalog = forge.list_evaluators()  # Inspect catalog["items"] first.
+    evaluator_version_id = "<saved-builtin-version-UUID>"
+    run_id = forge.start_evaluation(
+        prompt.id, dataset["revision"]["id"],
+        provider="mock", assertions=[],
+        evaluators=[{"version_id": evaluator_version_id}],
+        idempotency_key=str(uuid4()),
+    )
+    result = forge.wait_for_evaluation(run_id, timeout=300, poll_interval=3)
+```
+
+`assertions=[]` disables the SDK's default exact-match policy. Reuse the same
+idempotency key for an unchanged dispatch after an uncertain response; do not
+rerun the whole example with a new key until you have checked Run history.
 
 ## Reuse evaluators and score saved outputs
 

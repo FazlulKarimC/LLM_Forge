@@ -34,6 +34,7 @@ import { useDispatchIntent } from "@/features/evaluations/hooks/use-dispatch-int
 
 import { useEvaluationEditor, defaults } from "../hooks/use-evaluation-editor";
 import { ServerCapabilities } from "@/components/server-capabilities";
+import { evaluationRequestError } from "../lib/request-error";
 
 const ruleNames: Record<Assertion["kind"], string> = {
   exact_match: "Exact match to reference",
@@ -60,13 +61,13 @@ export function EvaluationsWorkbench() {
   const casesCount = selectedRevision?.cases.length;
   const generationCalls = provider === "mock" ? 0 : casesCount;
   const judgeCalls = casesCount == null ? undefined : casesCount * judgeCount;
-  async function act(task: () => Promise<void>) {
+  async function act(task: () => Promise<void>, dispatch = false) {
     setBusy(true);
     setError("");
     try {
       await task();
     } catch (e) {
-      setError(errorText(e));
+      setError(evaluationRequestError(e, dispatch));
     } finally {
       setBusy(false);
     }
@@ -663,7 +664,7 @@ export function EvaluationsWorkbench() {
                   setCompareId("");
                   setFilter("all");
                   await cache.invalidateQueries({ queryKey: scopedKey(["evaluations"]) });
-                })
+                }, true)
               }
             >
               {busy ? "Starting…" : "Start evaluation"}

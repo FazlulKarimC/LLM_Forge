@@ -94,24 +94,3 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             raise
         finally:
             await session.close()
-
-
-async def init_db() -> None:
-    """
-    Initialize database tables.
-    
-    Called on application startup.
-    Note: We use Alembic migrations, so this is mainly for testing.
-    """
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-
-async def close_db() -> None:
-    """
-    Close database connections.
-    
-    Called on application shutdown.
-    Disposes of the connection pool.
-    """
-    await engine.dispose()

@@ -9,8 +9,7 @@ Does NOT use LLM-as-Judge — all scoring is deterministic and rule-based.
 """
 
 import logging
-import re
-from typing import List, Dict, Optional
+from typing import List, Dict
 
 logger = logging.getLogger(__name__)
 

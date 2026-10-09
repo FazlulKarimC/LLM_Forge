@@ -3,7 +3,6 @@ import time
 from typing import Optional, List
 
 from openai import OpenAI, AsyncOpenAI, APIConnectionError, APIError, NotFoundError, RateLimitError
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_not_exception_type
 
 from app.services.inference.base import (
     InferenceEngine,

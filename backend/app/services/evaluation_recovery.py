@@ -6,10 +6,9 @@ from sqlalchemy import select
 from app.models.evaluation import EvaluationRun, EvaluationResult
 from app.models.evaluator import EvaluationScore
 from app.models.evaluation_execution import EvaluationExecution, EvaluationCheckpoint
-from app.models.workspace import Project
 from app.schemas.evaluation import run_response
 from app.models.prompt import now
-from app.services.evaluation_runs import find_run
+from app.services.evaluation_runs import find_run, lock_project
 from app.services.evaluator_service import score_summary
 from app.services.evaluation_runner import runner, new_execution, request_from_config
 
@@ -72,11 +71,11 @@ async def recovery(db, run):
 async def resume(run_id, data, project_id, db, token=None, request_id=None):
     from app.services.evaluation_idempotency import replay, remember
 
-    await db.scalar(select(Project).where(Project.id == project_id).with_for_update())
+    await lock_project(db, project_id)
     prior = await replay(db, token, data)
     if prior:
         return run_response(prior)
-    run = await find_run(db, run_id)
+    run = await find_run(db, run_id, lock=True)
     info = await recovery(db, run)
     if not info["available"]:
         raise HTTPException(

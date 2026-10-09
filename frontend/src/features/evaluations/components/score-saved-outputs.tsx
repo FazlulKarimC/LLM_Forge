@@ -6,7 +6,8 @@ import { EvaluatorSelectionFields } from "./evaluator-selection";
 import type { EvaluatorSelection } from "@/lib/evaluator-api";
 import type { EvaluationRun } from "@/lib/evaluation-api";
 import { scoreSavedOutputs } from "@/lib/evaluation-api";
-import { errorText, panelClass } from "@/components/prompts/prompt-ui";
+import { panelClass } from "@/components/prompts/prompt-ui";
+import { evaluationRequestError } from "../lib/request-error";
 
 export function ScoreSavedOutputs({
   run,
@@ -62,7 +63,7 @@ export function ScoreSavedOutputs({
               setEvaluators([]);
               started(result);
             } catch (failure) {
-              setError(errorText(failure));
+              setError(evaluationRequestError(failure, true));
             } finally {
               setBusy(false);
             }

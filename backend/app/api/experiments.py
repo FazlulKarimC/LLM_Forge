@@ -10,7 +10,7 @@ CRUD operations for experiments:
 """
 
 import logging
-from typing import List, Optional
+from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Query, Request

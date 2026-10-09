@@ -9,6 +9,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DatasetsWorkbench } from "./datasets-workbench";
 import { EvaluationsWorkbench } from "./evaluations-workbench";
+import { ApiError } from "@/lib/api-client";
 
 const mocks = vi.hoisted(() => ({
   listDatasets: vi.fn(),
@@ -31,6 +32,10 @@ const mocks = vi.hoisted(() => ({
   listEvaluatorVersions: vi.fn(),
   scoreSavedOutputs: vi.fn(),
   push: vi.fn(),
+  capabilities: vi.fn(),
+}));
+vi.mock("@/lib/api-client", async (original) => ({
+  ...(await original<object>()), fetchAPI: mocks.capabilities,
 }));
 vi.mock("@/lib/evaluation-api", async (original) => ({
   ...(await original<object>()),
@@ -110,6 +115,7 @@ afterEach(cleanup);
 beforeEach(() => {
   window.history.replaceState(null, "", "/evaluations");
   vi.resetAllMocks();
+  mocks.capabilities.mockRejectedValue(new Error("Discovery unavailable"));
   mocks.listDatasets.mockResolvedValue({ items: [dataset], total: 1 });
   mocks.getDataset.mockResolvedValue({ dataset, revision });
   mocks.createDataset.mockResolvedValue({ dataset, revision });
@@ -305,9 +311,27 @@ describe("dataset editor", () => {
 });
 
 describe("evaluation UI", () => {
-  it("offers per-case JSON references without a global comparison value", () => {
+  it("starts despite unavailable discovery and retains an uncertain request's identity", async () => {
+    window.history.replaceState(null, "", "/evaluations?view=new&prompt=prompt&version=version&dataset=dataset&revision=revision");
+    mocks.startEvaluation.mockRejectedValueOnce(new ApiError("Server error", 500, "request-123"));
+    mocks.startEvaluation.mockResolvedValueOnce(run);
+    mount(<EvaluationsWorkbench />);
+    await screen.findByText(/Server capabilities are unavailable/);
+    const start = await screen.findByRole("button", { name: "Start evaluation" });
+    await waitFor(() => expect(start).not.toBeDisabled());
+    fireEvent.click(start);
+    await screen.findByText(/Request ID: request-123/);
+    expect(screen.getByText(/Check Run history before retrying/)).toBeInTheDocument();
+    const key = mocks.startEvaluation.mock.calls[0][1];
+    fireEvent.click(start);
+    await waitFor(() => expect(mocks.startEvaluation).toHaveBeenCalledTimes(2));
+    expect(mocks.startEvaluation.mock.calls[1][1]).toBe(key);
+    await screen.findByText("1/1");
+  });
+  it("offers per-case JSON references without a global comparison value", async () => {
     mount(<EvaluationsWorkbench />);
     fireEvent.click(screen.getByRole("button", { name: "New evaluation" }));
+    await screen.findByText(/Server capabilities are unavailable/);
     fireEvent.change(screen.getByLabelText("Rule 1"), {
       target: { value: "json_reference" },
     });

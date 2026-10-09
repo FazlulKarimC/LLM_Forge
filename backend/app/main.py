@@ -32,6 +32,7 @@ from app.core.exception_handlers import (
     http_exception_handler,
 )
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from sqlalchemy.exc import DBAPIError
 
 # ── Logging setup ──────────────────────────────────────────────────────────
 # Configure logging early so all modules (including uvicorn workers in
@@ -138,6 +139,9 @@ def create_application() -> FastAPI:
     app.add_exception_handler(RequestValidationError, validation_exception_handler)
     app.add_exception_handler(StarletteHTTPException, http_exception_handler)
     app.add_exception_handler(Exception, global_exception_handler)
+    # Handle DB errors inside ExceptionMiddleware so uvicorn does not re-log
+    # SQLAlchemy statements and bound parameters in an unhandled traceback.
+    app.add_exception_handler(DBAPIError, global_exception_handler)
     
     # Register routers
     app.include_router(sdk_evaluations.router, prefix=f"{settings.API_V1_PREFIX}/sdk/evaluations")

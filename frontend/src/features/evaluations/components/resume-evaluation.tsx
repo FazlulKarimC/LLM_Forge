@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { resumeEvaluation, type EvaluationSummary } from "@/lib/evaluation-api";
 import { useDispatchIntent } from "../hooks/use-dispatch-intent";
-import { errorText, inputClass } from "@/components/prompts/prompt-ui";
+import { inputClass } from "@/components/prompts/prompt-ui";
+import { evaluationRequestError } from "../lib/request-error";
 
 export function ResumeEvaluation({ summary, resumed }: { summary: EvaluationSummary; resumed: () => void }) {
   const [apiKey, setApiKey] = useState("");
@@ -29,7 +30,7 @@ export function ResumeEvaluation({ summary, resumed }: { summary: EvaluationSumm
       try {
         await resumeEvaluation(run.id, { api_key: apiKey || undefined, judge_key: judgeKey || undefined, evaluator_keys: keys }, intent.key({ run: run.id, attempt: summary.recovery.attempts.length }));
         intent.accepted(); setApiKey(""); setJudgeKey(""); setKeys({}); resumed();
-      } catch (failure) { setError(errorText(failure)); } finally { setBusy(false); }
+      } catch (failure) { setError(evaluationRequestError(failure, true)); } finally { setBusy(false); }
     }}>{busy ? "Resuming…" : "Resume unfinished work"}</button>
   </section>;
 }

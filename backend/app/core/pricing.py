@@ -8,7 +8,6 @@ Many free-tier providers (HF Inference API, Groq free tier) do not
 charge per-token, but we still track cost to demonstrate the pattern.
 """
 
-from typing import Optional
 from dataclasses import dataclass
 
 
