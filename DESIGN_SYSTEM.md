@@ -464,6 +464,27 @@ Do not add an application-wide filter that only filters one loaded page. Retain 
 
 ## Durable evaluation presentation
 
+### Session recovery and deployment discovery
+
+Workspace bootstrap 401s and missing tokens show **Refresh session** and **Sign in
+again** inside the shared `Panel`, with existing action tokens and visible busy
+states. Refresh bypasses the cached session token. Sign in again ends the rejected
+session and preserves the same-origin path/query/fragment. Transport and service
+failures retain **Try again**. Private workspace content stays gated throughout.
+
+The public guide distinguishes hosted HTTPS `/api/v1` consumption from local
+backend setup. New evaluation setup and the guide show server-advertised generation
+and judge provider choices, credential requirements, and the local Gemini/external
+submission path. Discovery failures remain visible and do not claim provider
+availability. Keep dashboard dataset/evaluator authoring steps separate from SDK
+consumption and preserve external-score comparison warnings.
+
+The guide's **Deployment identity** disclosure presents backend API/source/build
+and frontend source/build separately. Missing identity is `unknown`; unavailable
+endpoints are labeled unavailable. Show only designated release metadata, never
+environment values, credentials, account data or project contents. Use the shared
+theme and flask branding without adding a separate diagnostic visual style.
+
 An interrupted execution retains public status **Failed** and displays an **Execution interrupted** recovery panel beside the selected run's summary. Use the warning border and existing text/input/button tokens. Explain preserved progress, pinned versions, remaining generation/judge calls, and the possibility of charging again for a lost provider response. Use the precise action **Resume unfinished work**. Do not offer resume for completed, cancelled or ordinary failed runs.
 
 Credential inputs are password fields with autocomplete off and stay in local state. Request only the generation/inline-judge/pinned evaluator keys required by the run, and clear them on accepted resume. Retain the dispatch identity across an uncertain response. Show safe failure codes and attempt history in a compact disclosure; never show stored credentials or raw platform exceptions.

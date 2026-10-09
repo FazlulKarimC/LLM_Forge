@@ -7,6 +7,9 @@ from pydantic import Field, SecretStr, field_validator, model_validator
 
 from app.schemas.prompt import CompileRequest, PromptCreate, StrictModel
 
+EvaluationProvider = Literal["mock", "groq", "openrouter", "openai"]
+JudgeProvider = Literal["groq", "openrouter", "openai"]
+
 
 class DatasetCase(StrictModel):
     inputs: dict[str, str] = Field(max_length=100)
@@ -78,7 +81,7 @@ class Assertion(StrictModel):
 
 
 class JudgeConfig(StrictModel):
-    provider: Literal["groq", "openrouter", "openai"]
+    provider: JudgeProvider
     model: str = Field(min_length=1, max_length=255)
     api_key: SecretStr = Field(max_length=512)
     rubric: str = Field(min_length=1, max_length=4000)
@@ -94,7 +97,7 @@ class EvaluatorSelection(StrictModel):
 class EvaluationCreate(StrictModel):
     prompt_version_id: UUID
     dataset_revision_id: UUID
-    provider: Literal["mock", "groq", "openrouter", "openai"] = "mock"
+    provider: EvaluationProvider = "mock"
     model: str = Field(default="demo-model", min_length=1, max_length=255)
     api_key: SecretStr | None = Field(default=None, max_length=512)
     temperature: float = Field(default=0, ge=0, le=2, allow_inf_nan=False)

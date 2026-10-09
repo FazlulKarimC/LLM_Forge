@@ -18,7 +18,7 @@ from app.schemas.evaluation import RevisionCreate
 from app.schemas.prompt import PlaygroundRequest
 from app.services.playground_service import generate_playground
 
-from app.core.diagnostics import logger
+from app.core.diagnostics import logger, timed_stage
 
 ACTIVE = ("queued", "running")
 
@@ -287,10 +287,11 @@ async def execute_evaluation(
     from app.repositories import evaluation_execution as repository
     from app.services.evaluator_service import execute_evaluator, execution_errors
 
-    async def session_call(callback):
-        async with async_session_maker() as db:
-            db.info["project_id"] = project_id
-            return await callback(db)
+    async def session_call(callback, stage="fence"):
+        with timed_stage(stage, run_id=str(run_id), project_id=str(project_id)):
+            async with async_session_maker() as db:
+                db.info["project_id"] = project_id
+                return await callback(db)
 
     async def allowed():
         return bool(
@@ -298,10 +299,16 @@ async def execute_evaluation(
         )
 
     async def save(index, stage, data, checks=None, started=None):
+        if started is not None:
+            logger.info("evaluation_timing", extra={"run_id": str(run_id),
+                        "project_id": str(project_id), "case_index": index,
+                        "stage": "generation" if stage == "generation" else "scoring",
+                        "duration_ms": round((time.perf_counter() - started) * 1000, 2),
+                        "outcome": "error" if data.get("error") or any(check.get("error") for check in checks or []) else "completed"})
         saved = await session_call(
             lambda db: repository.checkpoint(
                 db, execution_id, owner, index, stage, data, checks
-            )
+            ), "checkpoint"
         )
         logger.info(
             "evaluation_stage_committed",
@@ -343,9 +350,9 @@ async def execute_evaluation(
             }
             generation = stages.get("generation")
             if generation is None:
-                started = time.perf_counter()
                 if not await allowed():
                     return
+                started = time.perf_counter()
                 try:
                     if saved_outputs is not None:
                         saved = saved_outputs[index]
@@ -402,7 +409,9 @@ async def execute_evaluation(
                     return
             record.update(generation)
             if record["error"] is None:
-                assignments = [("assertions", None)]
+                # An absent inline policy has no work or evidence to checkpoint.
+                # Saved evaluator/generation stages still commit independently.
+                assignments = [("assertions", None)] if request.assertions else []
                 if request.judge:
                     assignments.append(("inline_judge", None))
                 assignments.extend(
@@ -411,9 +420,9 @@ async def execute_evaluation(
                 for stage, snapshot in assignments:
                     outcome = stages.get(stage)
                     if outcome is None:
-                        started = time.perf_counter()
                         if not await allowed():
                             return
+                        started = time.perf_counter()
                         try:
                             if stage == "assertions":
                                 checks = [
@@ -479,7 +488,8 @@ async def execute_evaluation(
                     if check.get("required", True)
                 )
             if not await session_call(
-                lambda db: repository.finalize(db, execution_id, owner, index, record)
+                lambda db: repository.finalize(db, execution_id, owner, index, record),
+                "finalization",
             ):
                 return
     except Exception:

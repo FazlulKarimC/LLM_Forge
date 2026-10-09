@@ -2,15 +2,16 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { useQueryClient } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WorkspaceProvider, WorkspaceSwitcher, useWorkspace } from "./workspace-provider";
-import { getContextHeaders } from "@/lib/request-context";
+import { getContextHeaders, SessionExpiredError } from "@/lib/request-context";
+import { ApiError } from "@/lib/api-client";
 
 const mocks = vi.hoisted(() => ({
   auth: { isLoaded: true, isSignedIn: true, userId: "user_a", getToken: vi.fn() },
-  fetch: vi.fn(), push: vi.fn(),
+  fetch: vi.fn(), push: vi.fn(), signOut: vi.fn(),
 }));
-vi.mock("@clerk/nextjs", () => ({ useAuth: () => mocks.auth, RedirectToSignIn: () => <div>Sign in required</div> }));
+vi.mock("@clerk/nextjs", () => ({ useAuth: () => mocks.auth, useClerk: () => ({ signOut: mocks.signOut }), RedirectToSignIn: () => <div>Sign in required</div> }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: mocks.push }) }));
-vi.mock("@/lib/api-client", () => ({ fetchAPI: mocks.fetch }));
+vi.mock("@/lib/api-client", async (importOriginal) => ({ ...await importOriginal<typeof import("@/lib/api-client")>(), fetchAPI: mocks.fetch }));
 
 function Probe() {
   const { project } = useWorkspace();
@@ -34,6 +35,8 @@ beforeEach(() => {
   mocks.auth.isSignedIn = true; mocks.auth.userId = "user_a";
   mocks.auth.getToken.mockResolvedValue("token_a");
   mocks.fetch.mockResolvedValue(snapshot);
+  mocks.signOut.mockResolvedValue(undefined);
+  window.history.replaceState(null, "", "/dashboard");
 });
 afterEach(cleanup);
 
@@ -66,5 +69,38 @@ describe("workspace boundary", () => {
     expect(screen.queryByLabelText("Project")).not.toBeInTheDocument();
     fireEvent.click(screen.getByText("Try again"));
     await waitFor(() => expect(screen.getByText("Current: First")).toBeInTheDocument());
+  });
+  it.each([new ApiError("Invalid or expired session", 401), new SessionExpiredError()])("refreshes rejected or missing sessions with a fresh token", async (error) => {
+    mocks.fetch.mockRejectedValueOnce(error).mockImplementationOnce(async () => {
+      await getContextHeaders();
+      return snapshot;
+    });
+    render(<WorkspaceProvider><Probe /></WorkspaceProvider>);
+    await screen.findByRole("button", { name: "Refresh session" });
+    expect(screen.queryByText("Current: First")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Try again" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Refresh session" }));
+    await screen.findByText("Current: First");
+    expect(mocks.auth.getToken).toHaveBeenCalledWith({ skipCache: true });
+    expect(window.location.pathname).toBe("/dashboard");
+  });
+  it("ends a persistently rejected session and retains the exact workspace destination", async () => {
+    window.history.replaceState(null, "", "/evaluations?run=fixture&case=2#details");
+    mocks.fetch.mockRejectedValue(new ApiError("Invalid or expired session", 401));
+    render(<WorkspaceProvider><Probe /></WorkspaceProvider>);
+    fireEvent.click(await screen.findByRole("button", { name: "Refresh session" }));
+    await waitFor(() => expect(mocks.fetch).toHaveBeenCalledTimes(2));
+    fireEvent.click(await screen.findByRole("button", { name: "Sign in again" }));
+    await waitFor(() => expect(mocks.signOut).toHaveBeenCalledWith({
+      redirectUrl: "/sign-in?redirect_url=%2Fevaluations%3Frun%3Dfixture%26case%3D2%23details",
+    }));
+    expect(await getContextHeaders()).toEqual({});
+    expect(screen.queryByLabelText("Project")).not.toBeInTheDocument();
+  });
+  it("does not offer session reset for a service configuration failure", async () => {
+    mocks.fetch.mockRejectedValue(new ApiError("Authentication service unavailable", 503));
+    render(<WorkspaceProvider><Probe /></WorkspaceProvider>);
+    await screen.findByRole("button", { name: "Try again" });
+    expect(screen.queryByRole("button", { name: "Sign in again" })).not.toBeInTheDocument();
   });
 });

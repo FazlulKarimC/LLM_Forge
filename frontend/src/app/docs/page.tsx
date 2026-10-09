@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { PublicHeader } from "@/components/public-header";
 import { PublicFooter } from "@/components/public-footer";
+import { ServerCapabilities } from "@/components/server-capabilities";
+import { DeploymentInfo } from "@/components/deployment-info";
 
 export const metadata: Metadata = {
   title: "SDK & demo guide",
@@ -12,6 +14,9 @@ const install = `# From the LLMForge repository root (Python 3.10+)
 python -m pip install -e ./sdk/python
 
 # Set environment variables in your shell / CI secret store:
+# Hosted LLMForge (installing the SDK locally does not require a local server):
+# LLMFORGE_URL=https://faz-ai-llm-forge.hf.space/api/v1
+# Local backend, only if you are running it yourself:
 # LLMFORGE_URL=http://localhost:8000/api/v1
 # LLMFORGE_API_KEY=<project key from Settings>`;
 const fetchExample = `from llmforge import LLMForge
@@ -94,8 +99,10 @@ export default function DocsPage() {
         <p className="mt-4 text-sm text-(--muted-foreground)">
           Demo mode echoes the compiled prompt; it does not call a generation
           model or measure model quality. For a live use case, test a
-          support-ticket classifier using JSON labels, references, and JSON-path
-          checks.
+          support-ticket classifier using JSON labels and references. JSON-path
+          checks compare a field to a fixed literal; JSON-reference checks compare
+          the entire object. To compare selected fields to each case&apos;s reference,
+          compute checks in your application and submit external results.
         </p>
       </section>
       <section id="sdk" className="mt-8 panel p-6 scroll-mt-6">
@@ -107,6 +114,7 @@ export default function DocsPage() {
           creating the key.
         </p>
         <Code>{install}</Code>
+        <p className="mt-4 text-sm leading-7">Set the API root including <code>/api/v1</code>. Hosted consumption needs the SDK and a scoped project key; it does not require running FastAPI or PostgreSQL locally.</p>
         <Code>{fetchExample}</Code>
         <p className="mt-4 text-sm text-(--muted-foreground)">
           Default fetch selects production. Staging and explicit versions are
@@ -153,6 +161,8 @@ export default function DocsPage() {
           application-supplied checks. They are self-reported and do not trigger
           provider calls.
         </p>
+        <div className="mt-4"><ServerCapabilities /></div>
+        <p className="mt-4 text-sm leading-7">For Gemini or LangGraph, fetch and pin the prompt once per batch, compile it locally, run your own provider or graph, then submit exactly one result per case. Direct Gemini server generation is currently unavailable; this does not prevent prompt fetching or external submissions.</p>
         <Code>{`run_id = forge.submit_evaluation(
     prompt.id, dataset["revision"]["id"],
     model="your-application", results=results,
@@ -165,6 +175,14 @@ assert result.meets_threshold(0.9)`}</Code>
           {'{"name": "correctness", "passed": true}'}, or an error. See the
           complete example in sdk/python/examples/submit_results.py.
         </p>
+        <p className="mt-4 text-sm leading-7">Open Evaluations → Run history to find SDK-created runs. External comparisons show case changes, but numeric deltas are disabled even when submitted check names match: the checks have no independently pinned evaluator definition.</p>
+        <h3 className="mt-6 text-lg font-semibold">Author in the dashboard, pin in the SDK</h3>
+        <ol className="mt-4 list-decimal pl-5 space-y-3 text-sm leading-7">
+          <li>Select the intended project. In Datasets, create or open a dataset, import CSV/JSON, preview it, apply the cases to the draft, then explicitly save a revision. Applying an import does not save it.</li>
+          <li>In Evaluations → Evaluators, create a definition, save its immutable version, and test a passing and failing sample. Save changed definitions as new versions.</li>
+          <li>Use an evaluation-enabled key with <code>get_dataset(name, version=...)</code> and <code>list_evaluators()</code>. Record the dataset revision ID and chosen evaluator version ID. SDK keys consume/select these resources; they do not author datasets or evaluators.</li>
+          <li>Pass saved evaluator selections to <code>start_evaluation</code> with <code>assertions=[]</code> to omit the SDK&apos;s default exact-match check. Saved-output scoring reuses generation outputs; judge evaluators can still incur model calls.</li>
+        </ol>
       </section>
       <section id="limits" className="mt-8 panel p-6 scroll-mt-6">
         <h2 className="text-2xl font-semibold">Limits and troubleshooting</h2>
@@ -206,6 +224,7 @@ assert result.meets_threshold(0.9)`}</Code>
           workflow. Reasoning benchmarks remain available in the separate
           Benchmarks area.
         </p>
+        <div className="mt-4"><DeploymentInfo /></div>
       </section>
       </main>
       <PublicFooter />

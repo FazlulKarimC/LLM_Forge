@@ -1,6 +1,7 @@
 """Persisted evaluation lifecycle shared by dashboard and project-key APIs."""
 
 from uuid import UUID
+import time
 
 from fastapi import HTTPException
 from sqlalchemy import func, select
@@ -22,6 +23,7 @@ from app.services.evaluation_service import (
     validate_assertions,
 )
 from app.services.prompt_templates import compile_prompt
+from app.core.diagnostics import logger, timed_stage
 
 
 async def find_run(db, run_id):
@@ -51,6 +53,7 @@ async def load_inputs(db, prompt_version_id, dataset_revision_id, action):
 
 
 async def dispatch_evaluation(data, tasks, project_id, db, token=None, request_id=None):
+    admitted_at = time.perf_counter()
     from app.services.evaluator_service import prepare_evaluators, call_budget
 
     # Serialize admission within one project; two live runs is ample for a demo.
@@ -135,9 +138,13 @@ async def dispatch_evaluation(data, tasks, project_id, db, token=None, request_i
     db.add(execution)
     remember(db, token, data, run)
     await db.commit()
-    await runner.enqueue(
-        run.id, project_id, data, evaluator_keys, execution_id=execution.id
-    )
+    logger.info("evaluation_timing", extra={"stage": "admission", "run_id": str(run.id),
+                "project_id": str(project_id), "duration_ms": round((time.perf_counter() - admitted_at) * 1000, 2),
+                "outcome": "accepted"})
+    with timed_stage("dispatch", run_id=str(run.id), project_id=str(project_id)):
+        await runner.enqueue(
+            run.id, project_id, data, evaluator_keys, execution_id=execution.id
+        )
     return run_response(run)
 
 

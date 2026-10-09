@@ -56,6 +56,21 @@ def test_valid_session(signed_token):
     assert verify_session_token(signed_token()).subject == "user_alice"
 
 
+def test_authorized_party_requires_exact_hosted_origin(signed_token, monkeypatch):
+    from fastapi import HTTPException
+
+    origin = "https://llmforge.vercel.app"
+    token = signed_token(azp=origin)
+    monkeypatch.setattr(settings, "CLERK_AUTHORIZED_PARTIES", origin + "/")
+    with pytest.raises(HTTPException) as caught:
+        verify_session_token(token)
+    assert caught.value.status_code == 401
+    monkeypatch.setattr(settings, "CLERK_AUTHORIZED_PARTIES", origin)
+    assert verify_session_token(token).subject == "user_alice"
+    with pytest.raises(HTTPException):
+        verify_session_token(signed_token(azp="https://other.example"))
+
+
 def test_project_key_is_rejected_without_clerk_configuration(monkeypatch):
     from fastapi import HTTPException
 

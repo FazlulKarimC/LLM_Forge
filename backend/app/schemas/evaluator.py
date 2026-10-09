@@ -4,7 +4,7 @@ from typing import Literal
 
 from pydantic import Field, SecretStr, field_validator, model_validator
 
-from app.schemas.evaluation import Assertion, EvaluatorSelection
+from app.schemas.evaluation import Assertion, EvaluatorSelection, JudgeProvider
 from app.schemas.prompt import StrictModel
 
 
@@ -41,7 +41,7 @@ class ScoreDefinition(StrictModel):
 class EvaluatorDefinition(StrictModel):
     kind: Literal["builtin", "llm_judge"] = "builtin"
     assertion: Assertion | None = None
-    provider: Literal["groq", "openrouter", "openai"] = "groq"
+    provider: JudgeProvider = "groq"
     model: str = Field(default="", max_length=255)
     rubric: str = Field(default="", max_length=4000)
     outputs: list[ScoreDefinition] = Field(min_length=1, max_length=5)

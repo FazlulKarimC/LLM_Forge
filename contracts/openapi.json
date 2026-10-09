@@ -1005,6 +1005,46 @@
         "title": "DemoExamples",
         "type": "object"
       },
+      "EvaluationCapabilities": {
+        "properties": {
+          "external_submissions": {
+            "title": "External Submissions",
+            "type": "boolean"
+          },
+          "generation_providers": {
+            "items": {
+              "enum": [
+                "mock",
+                "groq",
+                "openrouter",
+                "openai"
+              ],
+              "type": "string"
+            },
+            "title": "Generation Providers",
+            "type": "array"
+          },
+          "judge_providers": {
+            "items": {
+              "enum": [
+                "groq",
+                "openrouter",
+                "openai"
+              ],
+              "type": "string"
+            },
+            "title": "Judge Providers",
+            "type": "array"
+          }
+        },
+        "required": [
+          "generation_providers",
+          "judge_providers",
+          "external_submissions"
+        ],
+        "title": "EvaluationCapabilities",
+        "type": "object"
+      },
       "EvaluationCreate": {
         "additionalProperties": false,
         "properties": {
@@ -5067,6 +5107,48 @@
         "title": "VersionCreate",
         "type": "object"
       },
+      "VersionMetadata": {
+        "properties": {
+          "api_version": {
+            "title": "Api Version",
+            "type": "string"
+          },
+          "build_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Build Id"
+          },
+          "commit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Commit"
+          },
+          "service": {
+            "title": "Service",
+            "type": "string"
+          }
+        },
+        "required": [
+          "service",
+          "api_version",
+          "commit",
+          "build_id"
+        ],
+        "title": "VersionMetadata",
+        "type": "object"
+      },
       "VersionResponse": {
         "properties": {
           "config": {
@@ -5252,6 +5334,27 @@
         "summary": "Root",
         "tags": [
           "Health"
+        ]
+      }
+    },
+    "/api/v1/capabilities": {
+      "get": {
+        "operationId": "capabilities_api_v1_capabilities_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationCapabilities"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Capabilities",
+        "tags": [
+          "Platform"
         ]
       }
     },
@@ -11231,6 +11334,27 @@
         "summary": "Update Label",
         "tags": [
           "SDK prompts"
+        ]
+      }
+    },
+    "/api/v1/version": {
+      "get": {
+        "operationId": "version_api_v1_version_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionMetadata"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Version",
+        "tags": [
+          "Platform"
         ]
       }
     },

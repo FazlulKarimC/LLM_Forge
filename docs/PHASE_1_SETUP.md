@@ -16,6 +16,14 @@ its projects; only owners can create projects. Invitations are deferred.
    add its exact origin, separated by commas, and also update `CORS_ORIGINS`.
 6. Configure allowed frontend URLs/domains in Clerk for the deployed app.
 
+For the hosted frontend, use the exact origin `https://llmforge.vercel.app`
+**without a trailing slash or path**. Session `azp` is checked by exact equality:
+`https://llmforge.vercel.app/` rejects a token from `https://llmforge.vercel.app`.
+CORS normalizes trailing slashes; Clerk authorized parties do not. Retain issuer,
+signature, expiry and authorized-party checks. A rejected browser session can
+use **Refresh session** or **Sign in again**; a freshly rejected session requires
+checking deployment configuration rather than repeatedly retrying transport.
+
 Use these values locally (replace placeholders with values from the same Clerk app):
 
 `frontend/.env.local`:

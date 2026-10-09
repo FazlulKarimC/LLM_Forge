@@ -12,24 +12,43 @@ The package is built and installed locally. It has not been published to PyPI, a
 
 ## Setup
 
-Run the schema migration before using SDK keys:
+Install the SDK from the repository. Hosted consumption does not require a
+local FastAPI/PostgreSQL instance or running migrations:
 
 ```powershell
-cd backend
-.\venv\Scripts\python.exe -m alembic upgrade head
-cd ..
 .\backend\venv\Scripts\python.exe -m pip install -e ./sdk/python
 ```
 
 Open Settings in your project. A normal key grants `prompts:read`. For CI or evaluation submissions, check **Allow evaluations for CI** when creating a new key. Copy it once into an environment variable or your CI secret store. Migration `l5m6n7o8p9q0` adds a scopes column and preserves all existing keys as read-only. Revocation applies to the next request, including conditional prompt fetches.
 
 ```powershell
-$env:LLMFORGE_URL = 'http://localhost:8000/api/v1'
+$env:LLMFORGE_URL = 'https://faz-ai-llm-forge.hf.space/api/v1'
 $env:LLMFORGE_API_KEY = '<key copied from Settings>'
 .\backend\venv\Scripts\python.exe -m llmforge --help
 ```
 
 These variables belong to the SDK process; the dashboard continues using Clerk. A hosted API root should use HTTPS. No project ID header is needed: the key determines its project. Keys cannot authorize Clerk-protected dashboard writes.
+
+For your own local backend, use `http://localhost:8000/api/v1` and apply
+migrations to that development database following the backend setup guide.
+Always include `/api/v1`; installing the SDK and choosing its target are separate.
+
+Author datasets through import → preview → apply to draft → save revision.
+Author reusable evaluators in Evaluations → Evaluators, save an immutable
+version, then preview passing/failing samples. SDK keys consume these resources;
+use `get_dataset(name, version=...)` for the revision ID and `list_evaluators()`
+for evaluator version IDs. Find SDK runs in Evaluations → Run history.
+
+`GET /api/v1/capabilities` reports deployed generation/judge support. Generation
+currently accepts mock/Groq/OpenRouter/OpenAI; judges accept the latter three.
+For Gemini/LangGraph, fetch/compile/pin prompts, generate in your application,
+then submit results. Unknown server providers remain rejected. External numeric
+deltas stay disabled even when check names match, since scores are self-reported.
+
+`json_reference` compares the entire JSON reference; `json_path` compares to a
+fixed literal. Selected per-case reference-field scoring remains deferred.
+Record SDK package/source, backend `/api/v1/version` and frontend `/api/version`
+separately. Unknown build identities do not establish parity.
 
 ## End-to-end demonstration
 
@@ -65,7 +84,12 @@ The useful problem is separating a prompt's mutable release label from an immuta
 
 Scoped high-entropy keys are stored only as hashes. Prompt reads default to a limited capability, and evaluation access must be explicitly selected. A conditional cache still authenticates with the server, so revocation is observed. HTTP mutations are not automatically retried, avoiding duplicate evaluation runs. Provider secrets are used in memory, never in run configuration.
 
-The runner intentionally uses sequential FastAPI background work with persisted progress for this personal project's scale. Restarted jobs fail visibly instead of silently resuming paid calls. This is a known operational boundary: use a persistent backend process, and discuss moving the runner to a durable queue if the project's requirements change.
+The lifecycle-managed evaluation runner uses PostgreSQL ownership leases and
+per-stage checkpoints with sequential calls. Interrupted provider-free work
+can recover automatically; live work requires explicit resume with fresh keys.
+Committed stages are reused, while an uncommitted provider response may require
+another charged call. Optional benchmark RQ dispatch is separate; its missing
+worker alone does not diagnose evaluation latency.
 
 Local verification covers package installation/build, compiler semantics, cache/promotion/revocation, key scopes and tenant isolation, external submissions, CLI exit codes, backend regression tests and frontend checks. Browser visual verification is separate from automated component tests.
 

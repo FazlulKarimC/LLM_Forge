@@ -69,6 +69,19 @@ Compare runs on the same dataset revision using the server-filtered, paginated r
 
 ## Live inference and limits
 
+`GET /api/v1/capabilities` is public, provider-free discovery of the deployed
+evaluation generation/judge contract. Native Gemini is currently absent; use
+local Gemini/LangGraph generation and SDK external submissions. Unknown providers
+remain rejected. `json_reference` includes all JSON fields, including explanations;
+`json_path` compares a field to a fixed literal. Per-case reference-field comparison
+remains a deferred extension, with self-reported application checks as a workaround.
+
+Evaluation timing logs separate admission, dispatch, queue wait, claim, fences,
+generation/scoring computation, checkpoint persistence and finalization. They use
+the existing allowlist and exclude inputs, outputs, credentials and exceptions.
+Saved-evaluator-only runs omit the empty inline-assertion stage; generation and
+each selected evaluator still retain independent durable checkpoints.
+
 Choose Groq, OpenRouter, or OpenAI and supply your provider key. You may configure a separate judge key. Keys remain only in the form/request/worker memory; they are excluded from run configuration, database rows, exports, and query caches. The form clears keys after a successful start, provider changes, and workspace switching. No provider keys are taken implicitly from the server environment for evaluations.
 
 Limits: 100 cases / 1 MB per dataset revision; 50 cases per live generation run; 20 cases when judging; 10 inline assertions and 10 saved evaluator selections; at most two judges including the inline judge; at most 60 model calls (generation plus judging); two active runs per project; output limit 2,048 tokens and 32,000 characters. Built-in checks do not consume model calls. Setup shows expected call counts, and the backend enforces limits before dispatch. Each generation/judge call has a 30-second deadline and no automatic retries. Missing prompt inputs and invalid definitions are rejected before calling a provider. A case-level provider/judge error is recorded and subsequent cases continue. A completed run can contain errors; inspect case errors and per-score errors.

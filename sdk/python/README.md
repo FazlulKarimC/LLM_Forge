@@ -6,7 +6,18 @@ A small synchronous client for prompt releases and evaluation gates. Requires Py
 python -m pip install -e ./sdk/python
 ```
 
-Configure `LLMFORGE_URL` with the API root, for example `http://localhost:8000/api/v1`, and `LLMFORGE_API_KEY` with a project key created in Settings. Use HTTPS for a hosted backend. Keep keys in environment variables or your CI secret store.
+Installing the SDK locally does not require running a local backend. For the
+hosted service, sign in at https://llmforge.vercel.app, select your project, and
+create a project key in Settings. Set the full HTTPS root including `/api/v1`:
+
+```powershell
+$env:LLMFORGE_URL = 'https://faz-ai-llm-forge.hf.space/api/v1'
+$env:LLMFORGE_API_KEY = '<project key from Settings>'
+```
+
+For a backend you run yourself, use `http://localhost:8000/api/v1` instead and
+follow the backend setup/migration guide. Keep keys in environment variables or
+your CI secret store, never in URLs or reports.
 
 For a local model-free walkthrough, sign in to the web app, select a project, and click **Create demo examples** on Overview. Create a project key with **Allow evaluations for CI** enabled in Settings, then use `Echo demo` and `Greetings` in the examples below. The backend must have its migrations applied; a project key grants access only to its project.
 
@@ -66,11 +77,27 @@ with LLMForge() as forge:
 
 Mock mode echoes the compiled prompt and does not measure model quality. For live generation pass `provider`, `model`, and the provider's `api_key`. `judge` accepts a dict with `provider`, `model`, `api_key`, `rubric`, and `threshold`. These request-only keys aren't persisted. Server limits and per-case error behavior are documented in [Phase 3](../../docs/PHASE_3_EVALUATIONS.md).
 
+The server currently accepts `mock`, `groq`, `openrouter`, and `openai` generation;
+judges accept the latter three. `GET /api/v1/capabilities` advertises the deployed
+choices (older deployments expose `/api/v1/openapi.json`). This describes API
+support, not credential availability. Native `gemini` server generation is
+unsupported and rejected before a model call. Fetch/compile your prompt,
+generate with Gemini or LangGraph in your application, then `submit_evaluation`.
+Prompt fetching does not depend on server generation support.
+
 `wait_for_evaluation` returns completed, failed or cancelled runs. Its timeout raises `EvaluationTimeout` with `run_id`. Default timeout behavior leaves the run running; `cancel_on_timeout=True` attempts cancellation. An in-flight provider call may still finish. HTTP requests use a 10-second timeout by default (`LLMForge(timeout=...)`); there are no automatic retries, avoiding duplicate runs/submissions. A wait can exceed its deadline by an in-flight HTTP request timeout.
 
 ## Reuse evaluators and score saved outputs
 
 Create evaluators in the dashboard, then use an evaluation-enabled project key to discover and pin their version IDs. The catalog is paginated (default 50). SDK keys select definitions; they do not author or archive evaluators.
+
+Author datasets in **Datasets**: import CSV/JSON, inspect the preview, apply it to
+the draft, and explicitly save a revision. Applying a preview does not save.
+Retrieve the pinned revision ID with `get_dataset(name, version=...)`.
+Author evaluators in **Evaluations → Evaluators**, save the immutable definition,
+and preview passing/failing samples. `list_evaluators()` returns each `latest.id`;
+record the chosen ID rather than reselecting latest on every CI run. SDK keys do
+not author dataset revisions or reusable evaluator definitions.
 
 ```python
 with LLMForge() as forge:
@@ -111,6 +138,19 @@ with LLMForge() as forge:
 ```
 
 Submit exactly one result per dataset case, with either an output plus at least one check or an error. Check scores (optional) are 0–1; metrics are named finite numbers. The backend derives pass/error counts from checks and labels the run **External evaluation**. Submitted checks/metrics are self-reported, not independently verified; no provider is called. Results appear in the normal grid and can be compared on the same dataset revision.
+
+Find SDK-created runs in **Evaluations → Run history** in the key's project.
+External comparisons show case changes but disable numeric deltas even when
+check names match: scores have no independently pinned evaluator definition.
+`json_reference` compares the whole parsed JSON object, including explanations;
+`json_path` compares a path to a fixed JSON literal. Neither compares selected
+fields to each case's own reference. Compute those deterministic checks in your
+application and submit them as self-reported checks.
+
+Record SDK package/source versions separately from deployed builds. Backend
+`/api/v1/version` publishes API version, source commit and build ID; frontend
+`/api/version` publishes its own commit/build, with both shown on the guide.
+Missing identities are explicitly unknown, not evidence of source parity.
 
 ## CI command
 

@@ -33,6 +33,7 @@ import { ResumeEvaluation } from "@/features/evaluations/components/resume-evalu
 import { useDispatchIntent } from "@/features/evaluations/hooks/use-dispatch-intent";
 
 import { useEvaluationEditor, defaults } from "../hooks/use-evaluation-editor";
+import { ServerCapabilities } from "@/components/server-capabilities";
 
 const ruleNames: Record<Assertion["kind"], string> = {
   exact_match: "Exact match to reference",
@@ -132,6 +133,7 @@ export function EvaluationsWorkbench() {
         <section className="evaluation-setup">
           <div className={`${panelClass} evaluation-fields`}>
             <h2 className="font-semibold">Start an evaluation</h2>
+            <ServerCapabilities />
             <div className="evaluation-fields">
               <div className="form-section">
                 <h3>1. Prompt &amp; dataset</h3>

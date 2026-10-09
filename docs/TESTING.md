@@ -49,3 +49,26 @@ Real locking tests are separate from the default SQLite suite. Configure `LLMFOR
 Recovery tests interrupt after generation and between evaluators, preserve error-stage checkpoints, fence late writes, check global/project admission, and enforce SDK scopes/tenant isolation. Structured-log tests discard secret/context fields. Frontend tests retain dispatch identity after an uncertain resume response and clear credentials after acceptance. A browser walkthrough should show the same run progressing from interrupted to completed with a new attempt and preserved case content. Fully checkpointed fixtures can exercise the UI without paid calls; provider crash semantics are covered by injected interruption tests.
 
 Regenerate contracts with `python -m scripts.export_openapi` followed by `npm run contracts:generate` from `frontend`. Repeating generation must produce identical files. CI checks the committed schema and generated frontend types before deployment sync; SDK contract tests use the same exported schema.
+
+## Provider-free feedback benchmark
+
+`python -m scripts.benchmark_evaluations --runs 10 --output artifacts/evaluation-benchmark.json`
+uses the actual SDK, HTTP routes and lifecycle-managed runner on four fixed cases.
+It requires **LLMFORGE_TEST_POSTGRES_URL pointing to localhost PostgreSQL**; it
+refuses hosted targets and never falls back to DATABASE_URL. It creates/removes
+only a uniquely named test schema and binds its temporary HTTP server to loopback.
+Dashboard setup uses a test identity; SDK authentication/scopes remain real.
+No generation model or judge provider is called.
+
+The report separates the first run and ten warm samples for inline assertions and
+a saved builtin, with SDK/lifecycle durations, p50/p95, SQL statement/commit counts
+and stage timings. Counts include polling and runner activity; they are not exact
+per-case transaction budgets. The isolated regression test enforces the durable
+write budget and retained checkpoints deterministically. Local timing is evidence
+for this fixture/environment, not a hosted SLA. Use repeated measurements on the
+same machine to establish a timing threshold; investigate hosted delay through
+deployment metrics before promising a production latency improvement.
+
+Once established, pass `--max-p95-ms` to fail a local regression run while
+retaining its measurements. The October 9 reference checks use a provisional
+1,000 ms local warm-p95 budget; this is not an agreed hosted service target.

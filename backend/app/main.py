@@ -20,6 +20,7 @@ from app.api import datasets, evaluations
 from app.api import evaluators
 from app.api import sdk_evaluations
 from app.api import demo
+from app.api import platform
 from app.core.tenancy import get_project_context
 from app.core.middleware import RequestContextMiddleware
 from app.core.custom_exceptions import AppException
@@ -147,6 +148,7 @@ def create_application() -> FastAPI:
     app.include_router(project_keys.router, prefix=f"{settings.API_V1_PREFIX}/project-keys", dependencies=[Depends(get_project_context)])
     app.include_router(sdk_prompts.router, prefix=f"{settings.API_V1_PREFIX}/sdk/prompts")
     app.include_router(health.router, tags=["Health"])
+    app.include_router(platform.router, prefix=settings.API_V1_PREFIX, tags=["Platform"])
     app.include_router(
         experiments.router,
         prefix=f"{settings.API_V1_PREFIX}/experiments",

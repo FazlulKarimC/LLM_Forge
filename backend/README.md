@@ -89,6 +89,14 @@ uvicorn app.main:app --reload --port 8000
 
 `GET /health` reports process liveness. `GET /ready` checks the database and task dispatch, with optional provider, vector-store, Redis, and worker status shown separately. The dashboard surfaces the readiness result. Sign in through the frontend and select a project before calling project-scoped API routes; they require a Clerk bearer token and `X-Project-ID`.
 
+Public `GET /api/v1/capabilities` advertises the evaluation generation/judge
+provider contract without database or provider calls. `GET /api/v1/version`
+reports API version, upstream source commit and build ID. HF sync embeds the
+GitHub source identity rather than its newly generated staging commit. Other
+builds may explicitly set non-secret `BUILD_COMMIT` (40-character SHA) and
+`BUILD_ID`; missing/invalid identity is null. Never put keys or environment dumps
+in release metadata. The frontend exposes its own identity at `/api/version`.
+
 Apply migrations to the intended deployment database before starting a new
 backend image. CI applies migrations only to its disposable PostgreSQL service;
 it does not migrate the hosted database. Review historical migrations before

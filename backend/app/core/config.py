@@ -39,6 +39,9 @@ class Settings(BaseSettings):
     API_V1_PREFIX: str = "/api/v1"
     ENVIRONMENT: str = "development"
     DEBUG: bool = False # Default to False for production readiness
+    # Non-secret release metadata only. Normally embedded by the build workflow.
+    BUILD_COMMIT: str = ""
+    BUILD_ID: str = ""
     
     # ----- CORS -----
     # Comma-separated string of allowed origins, parsed into a list.

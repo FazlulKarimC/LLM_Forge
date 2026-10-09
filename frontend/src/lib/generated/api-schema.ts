@@ -26,6 +26,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/capabilities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Capabilities */
+        get: operations["capabilities_api_v1_capabilities_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/datasets": {
         parameters: {
             query?: never;
@@ -1185,6 +1202,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/version": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Version */
+        get: operations["version_api_v1_version_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces": {
         parameters: {
             query?: never;
@@ -1670,6 +1704,15 @@ export interface components {
              * Format: uuid
              */
             prompt_version_id: string;
+        };
+        /** EvaluationCapabilities */
+        EvaluationCapabilities: {
+            /** External Submissions */
+            external_submissions: boolean;
+            /** Generation Providers */
+            generation_providers: ("mock" | "groq" | "openrouter" | "openai")[];
+            /** Judge Providers */
+            judge_providers: ("groq" | "openrouter" | "openai")[];
         };
         /** EvaluationCreate */
         EvaluationCreate: {
@@ -3309,6 +3352,17 @@ export interface components {
              */
             template_text: string;
         };
+        /** VersionMetadata */
+        VersionMetadata: {
+            /** Api Version */
+            api_version: string;
+            /** Build Id */
+            build_id: string | null;
+            /** Commit */
+            commit: string | null;
+            /** Service */
+            service: string;
+        };
         /** VersionResponse */
         VersionResponse: {
             /** Config */
@@ -3404,6 +3458,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+        };
+    };
+    capabilities_api_v1_capabilities_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvaluationCapabilities"];
                 };
             };
         };
@@ -6203,6 +6277,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    version_api_v1_version_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VersionMetadata"];
                 };
             };
         };

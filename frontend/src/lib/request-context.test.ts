@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getContextHeaders, setApiContext } from "@/lib/request-context";
+import { getContextHeaders, setApiContext, SessionExpiredError } from "@/lib/request-context";
 
 afterEach(() => setApiContext(null));
 describe("workspace request identity", () => {
@@ -20,7 +20,7 @@ describe("workspace request identity", () => {
   });
   it("clears identity on logout and rejects expired sessions", async () => {
     setApiContext({ getToken: async () => null, projectId: "project-a" });
-    await expect(getContextHeaders()).rejects.toThrow(/session has expired/);
+    await expect(getContextHeaders()).rejects.toBeInstanceOf(SessionExpiredError);
     setApiContext(null);
     expect(await getContextHeaders()).toEqual({});
   });

@@ -2,6 +2,8 @@
 
 import json
 import logging
+import time
+from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import datetime, timezone
 
@@ -16,6 +18,7 @@ FIELDS = {
     "outcome",
     "status_code",
     "exception_type",
+    "case_index",
 }
 
 
@@ -44,6 +47,22 @@ if not logger.handlers:
     logger.addHandler(handler)
     logger.propagate = False
 logger.setLevel(logging.INFO)
+
+
+@contextmanager
+def timed_stage(stage, **identifiers):
+    """Measure an operational span, retaining only formatter-allowlisted fields."""
+    started = time.perf_counter()
+    outcome = "completed"
+    try:
+        yield
+    except BaseException:
+        outcome = "interrupted"
+        raise
+    finally:
+        logger.info("evaluation_timing", extra={**identifiers, "stage": stage,
+                    "duration_ms": round((time.perf_counter() - started) * 1000, 2),
+                    "outcome": outcome})
 
 
 def sanitize_sentry_event(event, hint):

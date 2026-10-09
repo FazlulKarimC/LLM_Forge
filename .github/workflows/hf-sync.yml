@@ -32,6 +32,17 @@ jobs:
           # 3. Copy backend contents (everything inside backend/) to staging root
           cp -r backend/. /tmp/hf-staging/
 
+          # Preserve the upstream identity; the staging repository has its own commit.
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          Path("/tmp/hf-staging/app/_build_info.json").write_text(
+              json.dumps({"commit": os.environ["GITHUB_SHA"],
+                          "build_id": "github-" + os.environ["GITHUB_RUN_ID"]
+                                      + "-" + os.environ["GITHUB_RUN_ATTEMPT"]}) + "\n"
+          )
+          PY
+
           # 4. Copy the flat Dockerfile built for HF into staging root
           #    backend/Dockerfile.hf uses "COPY . ." style paths (no backend/ prefix)
           cp backend/Dockerfile.hf /tmp/hf-staging/Dockerfile

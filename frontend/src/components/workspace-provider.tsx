@@ -1,10 +1,11 @@
 "use client";
-import { useAuth, RedirectToSignIn } from "@clerk/nextjs";
+import { useAuth, useClerk, RedirectToSignIn } from "@clerk/nextjs";
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Providers } from "@/app/providers";
-import { fetchAPI } from "@/lib/api-client";
-import { setApiContext } from "@/lib/request-context";
+import { ApiError, fetchAPI } from "@/lib/api-client";
+import { SessionExpiredError, setApiContext } from "@/lib/request-context";
+import { Panel } from "@/components/ui/primitives";
 import type { components } from "@/lib/generated/api-schema";
 export type WorkspaceProject = components["schemas"]["ProjectResponse"];
 export type WorkspaceOrganization = components["schemas"]["OrganizationResponse"];
@@ -29,20 +30,24 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   // Changing accounts unmounts all workspace state and query caches.
   return <AuthenticatedWorkspace key={userId} userId={userId} getToken={getToken}>{children}</AuthenticatedWorkspace>;
 }
-function WorkspaceMessage({ title, error, retry }: { title: string; error?: string; retry?: () => void }) {
-  return <main className="page-width flex min-h-screen items-center justify-center px-6"><div className="max-w-lg rounded-3xl border border-(--border) bg-(--surface-1) p-8">
+function WorkspaceMessage({ title, error, children }: { title: string; error?: string; children?: ReactNode }) {
+  return <main className="page-width flex min-h-screen items-center justify-center px-6"><Panel className="w-full max-w-lg"><div className="panel-body flex flex-col gap-4">
     <h1 className="text-2xl font-semibold">{title}</h1>
-    {error ? <p role="alert" className="mt-3 text-(--muted-foreground)">{error}</p> : null}
-    {retry ? <button onClick={retry} className="btn-primary mt-5">Try again</button> : null}
-  </div></main>;
+    {error ? <p role="alert" className="text-(--muted-foreground)">{error}</p> : null}
+    {children}
+  </div></Panel></main>;
 }
-function AuthenticatedWorkspace({ children, userId, getToken }: { children: ReactNode; userId: string; getToken: () => Promise<string | null> }) {
+function AuthenticatedWorkspace({ children, userId, getToken }: { children: ReactNode; userId: string; getToken: (options?: { skipCache?: boolean }) => Promise<string | null> }) {
   const router = useRouter();
+  const { signOut } = useClerk();
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [projectId, setProjectId] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<Error | null>(null);
+  const [recovering, setRecovering] = useState(false);
+  const recordError = useCallback((err: unknown) => setError(err instanceof Error ? err : new Error("Could not load your workspace")), []);
   const storageKey = `llmforge.project.${userId}`;
-  const refresh = useCallback(async (selectedId?: string, signal?: AbortSignal) => {
+  const refresh = useCallback(async (selectedId?: string, signal?: AbortSignal, freshSession = false) => {
+    if (freshSession) setApiContext({ getToken: () => getToken({ skipCache: true }) });
     const result = await fetchAPI<Snapshot>("/workspaces", { signal });
     if (signal?.aborted) return;
     const projects = result.organizations.flatMap((org) => org.projects);
@@ -59,10 +64,10 @@ function AuthenticatedWorkspace({ children, userId, getToken }: { children: Reac
     const controller = new AbortController();
     setApiContext({ getToken });
     Promise.resolve().then(() => refresh(undefined, controller.signal)).catch((err: unknown) => {
-      if (!controller.signal.aborted) setError(err instanceof Error ? err.message : "Could not load your workspace");
+      if (!controller.signal.aborted) recordError(err);
     });
     return () => { controller.abort(); setApiContext(null); };
-  }, [getToken, refresh]);
+  }, [getToken, refresh, recordError]);
   function switchProject(id: string) {
     if (!snapshot?.organizations.some((org) => org.projects.some((p) => p.id === id))) return false;
     if (id === projectId) return true;
@@ -74,7 +79,37 @@ function AuthenticatedWorkspace({ children, userId, getToken }: { children: Reac
     router.push("/dashboard");
     return true;
   }
-  if (error) return <WorkspaceMessage title="Your workspace could not load" error={error} retry={() => { refresh().catch((err: unknown) => setError(err instanceof Error ? err.message : "Could not load your workspace")); }} />;
+  if (error) {
+    const authenticationError = error instanceof SessionExpiredError || (error instanceof ApiError && error.statusCode === 401);
+    const recover = async (signIn = false) => {
+      setRecovering(true);
+      try {
+        if (signIn) {
+          // End the rejected Clerk session so /sign-in cannot redirect it back.
+          // Construct the destination locally; never accept an external return URL.
+          const destination = window.location.pathname + window.location.search + window.location.hash;
+          const returnTo = destination.startsWith("/") && !destination.startsWith("//") ? destination : "/dashboard";
+          setApiContext(null);
+          await signOut({ redirectUrl: `/sign-in?redirect_url=${encodeURIComponent(returnTo)}` });
+        } else {
+          await refresh(undefined, undefined, authenticationError);
+        }
+      } catch (err) {
+        // A failed sign-out still offers both recovery actions.
+        if (signIn) setError(new SessionExpiredError());
+        else recordError(err);
+      } finally {
+        setRecovering(false);
+      }
+    };
+    return <WorkspaceMessage title="Your workspace could not load" error={error.message}>
+      <div className="flex flex-wrap gap-3">
+        <button disabled={recovering} onClick={() => void recover()} className="btn-primary">{recovering ? "Recovering…" : authenticationError ? "Refresh session" : "Try again"}</button>
+        {authenticationError ? <button disabled={recovering} onClick={() => void recover(true)} className="btn-secondary">Sign in again</button> : null}
+      </div>
+      {authenticationError ? <p className="field-help">Sign in again ends this session and returns you to this page. If a fresh session is also rejected, contact the deployment owner.</p> : null}
+    </WorkspaceMessage>;
+  }
   const organization = snapshot?.organizations.find((org) => org.projects.some((p) => p.id === projectId));
   const project = organization?.projects.find((p) => p.id === projectId);
   if (!snapshot || !organization || !project) return <WorkspaceMessage title="Preparing your workspace…" />;

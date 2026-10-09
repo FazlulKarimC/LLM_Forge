@@ -13,7 +13,7 @@ from app.models.workspace import Project
 from app.models.prompt import now
 from app.repositories import evaluation_execution as repository
 
-from app.core.diagnostics import logger
+from app.core.diagnostics import logger, timed_stage
 
 
 class EvaluationRunner:
@@ -206,10 +206,11 @@ class EvaluationRunner:
         expected_id = self.attempts.get(run_id)
         if accepted is None:
             return False
-        async with async_session_maker() as db:
-            execution_id = await repository.claim(
-                db, run_id, self.owner, expected_execution_id=expected_id
-            )
+        with timed_stage("claim", run_id=str(run_id)):
+            async with async_session_maker() as db:
+                execution_id = await repository.claim(
+                    db, run_id, self.owner, expected_execution_id=expected_id
+                )
         if execution_id is None:
             return self.credentials.get(run_id) is not accepted
         project_id, request, keys = accepted
@@ -225,6 +226,12 @@ class EvaluationRunner:
                     "request_id": execution.request_id,
                 }
             )
+            created = execution.created_at
+            if created.tzinfo is None:
+                created = created.replace(tzinfo=now().tzinfo)
+            logger.info("evaluation_timing", extra={"stage": "queue_wait",
+                        "duration_ms": round(max(0, (now() - created).total_seconds() * 1000), 2),
+                        "outcome": "claimed"})
         beat = asyncio.create_task(self.beat(execution_id, project_id))
         try:
             async with async_session_maker() as db:
