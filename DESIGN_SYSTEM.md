@@ -44,15 +44,15 @@ The application shell prioritizes a compact workbench: Overview, Prompts, Datase
 | `--surface-2` | `oklch(0.22 0.012 255)` | `oklch(0.94 0.006 255)` | Nested card / input fill |
 | `--surface-3` | `oklch(0.26 0.012 255)` | `oklch(0.91 0.008 255)` | Hover fill |
 | `--primary` | `oklch(0.79 0.09 84)` | *(same)* | Primary buttons, CTA accent (warm gold) |
-| `--accent` | `oklch(0.74 0.08 182)` | *(same)* | Links, focus rings, running-state accent (teal) |
+| `--accent` | `oklch(0.74 0.08 182)` | `oklch(0.45 0.08 182)` | Links, focus rings, running-state accent (teal) |
 | `--muted-foreground` | `oklch(0.71 0.01 255)` | `oklch(0.49 0.01 255)` | Descriptions, secondary text |
 | `--border` | `oklch(0.31 0.01 255 / 0.9)` | `oklch(0.86 0.007 255 / 0.95)` | Default border |
 | `--border-strong` | `oklch(0.44 0.012 255 / 0.95)` | `oklch(0.74 0.01 255 / 0.98)` | Hover / active border |
-| `--destructive` | `oklch(0.67 0.18 28)` | *(same)* | Error / danger |
-| `--success` | `oklch(0.75 0.11 156)` | *(same)* | Completed / pass |
-| `--warning` | `oklch(0.82 0.09 84)` | *(same)* | Queued / caution |
+| `--destructive` | `oklch(0.67 0.18 28)` | `oklch(0.5 0.18 28)` | Error / danger |
+| `--success` | `oklch(0.75 0.11 156)` | `oklch(0.45 0.11 156)` | Completed / pass |
+| `--warning` | `oklch(0.82 0.09 84)` | `oklch(0.48 0.09 84)` | Queued / caution |
 
-**Theme switching:** Controlled via `data-theme="light"` on `<html>`. Only surface, border, muted, and shadow values change — semantic colours persist.
+**Theme switching:** Controlled via `data-theme="light"` on `<html>`. Surface, border, muted and shadow values change along with darker semantic text shades in light mode.
 
 **`color-mix` pattern:** For soft tints, use `color-mix(in oklab, var(--accent) 16%, transparent)`. This is the standard approach for status backgrounds, hover states, and soft highlights.
 
@@ -70,12 +70,12 @@ Headings automatically apply `font-family: var(--font-display)` and `letter-spac
 
 | Element | Radius | Note |
 |---------|--------|------|
-| Page header | `24px` | Outermost container |
+| Page header | Flat | Context and title row |
 | Panel / card | `10px` | Shared flat content wrapper |
-| Empty state | `20px` | Dashed border variant |
-| Inner card / metric-card | `18px` | Nested inside panels |
+| Empty state | `10px` | Shared panel shape |
+| Inner card / metric-card | `10px` | Shared panel shape; prefer separators for nested groups |
 | Code panel | `16px` | Monospace content |
-| Button | `7px` | Shared control shape; public touch targets ≥44px, workspace ≥34px (40px on mobile) |
+| Button | `7px` | Shared control shape; public touch targets ≥44px, workspace ≥36px (40px on mobile) |
 | Input | `7px` in workspace | Interactive workspace fields |
 | Filmstrip cell | `12px` | Small clickable cells |
 | Chip / pill / badge | `999px` | Fully rounded |
@@ -147,13 +147,13 @@ All support `:disabled` state with `opacity: 0.55` and no transform.
 
 | Class | Element | Note |
 |-------|---------|------|
-| `.input-shell` | `<input>` | Full width, `14px` radius, `2.9rem` min-height |
+| `.input-shell` | `<input>` | Full width; workspace 36px minimum desktop/tablet, 40px below 640px; public ≥44px; 7px radius |
 | `.select-shell` | `<select>` | Same styling as input |
 | `.textarea-shell` | `<textarea>` | `7rem` min-height, resizable |
 | `.field-label` | `<label>` | Bold `0.88rem`, flex with space-between |
 | `.field-help` | `<span>` | Muted `0.8rem` helper text |
 
-**Focus ring:** All inputs show a double-ring focus: `1px accent border` + `6px accent glow`.
+**Focus ring:** Inputs use an accent border and a visible 2px ring. Reuse the shared input classes.
 
 ### Chips & Status Pills
 
@@ -389,7 +389,7 @@ For truncation to work, the parent must constrain width: `min-w-0 flex-1` on the
 
 The app shell (`app-shell.tsx`) provides:
 
-- **Collapsible sidebar** (`264px` wide) with persistent collapse state via `localStorage`
+- **Collapsible sidebar** (`232px` wide) with persistent collapse state via `localStorage`
 - **Independent scroll** — sidebar and main content scroll independently (`overflow-y-auto` on both, `position: sticky` on sidebar)
 - **Active state** — sidebar links match on exact path or path prefix, with priority to longer (more specific) matches
 - **Header bar** with search/command palette trigger and external links
@@ -412,13 +412,13 @@ The app shell (`app-shell.tsx`) provides:
 
 | Element | Animation | Easing |
 |---------|-----------|--------|
-| Buttons | `translateY(-1px)` on hover | `cubic-bezier(0.16, 1, 0.3, 1)` |
-| Metric values | Spring counter via `framer-motion` `animate()` | `[0.16, 1, 0.3, 1]` |
+| Buttons | Color and border only; no movement | 160ms |
+| Metric values | requestAnimationFrame ease-out, 700ms; immediate final value with reduced motion | Cubic ease-out |
 | Metric bars | Width grow from `0%` to target | Same spring curve, 0.7s |
 | Skeleton shimmer | Gradient slide left→right | Linear, 1.4s loop |
 | Data rows | Background-colour on hover | 160ms spring |
-| Page background | Radial gradients (top-left gold, top-right teal) | Static |
-| Grid overlay | 24px dot grid, fades radially | Static, `opacity: 0.1` |
+| Page background | Flat token-based canvas | Static |
+| Overlays | Short fade/movement; no entrance/exit movement with reduced motion | 160–180ms |
 
 ## Workspace placement (October 2026)
 
@@ -428,7 +428,7 @@ The workspace uses compact density rules scoped to `.app-shell`. Public pages sh
 | --- | --- |
 | Page identity | 25.6px desktop title, short context label, inline primary actions; no eyebrow card |
 | Navigation | 232px sidebar, compact 36px rows, utilities anchored below the main workflow |
-| Controls | 34px desktop minimum height, 40px on narrow screens, 7px radius; visible accent focus |
+| Controls | 36px desktop minimum height, 40px on narrow screens, 7px radius; visible accent focus |
 | Panels | 10px radius, flat surface, 16px internal padding |
 | Collection | `TableToolbar` above a table, `PageControls` below; no pagination controls for a single page |
 | Editor | `.prompt-workspace` pairs template and playground; comparison mode expands the playground |
@@ -490,3 +490,18 @@ An interrupted execution retains public status **Failed** and displays an **Exec
 Credential inputs are password fields with autocomplete off and stay in local state. Request only the generation/inline-judge/pinned evaluator keys required by the run, and clear them on accepted resume. Retain the dispatch identity across an uncertain response. Show safe failure codes and attempt history in a compact disclosure; never show stored credentials or raw platform exceptions.
 
 Run summary polling stops at terminal states. Case tables use bounded output previews, explicit totals, filters and previous/next pagination. Full input/output/check reasons load in the focused case panel when selected. Comparison totals come from the server; preserve policy compatibility warnings. Loading/error states must keep navigation and summary stable. Shared selections belong in URL parameters; project switching clears server caches and discards mounted credentials according to existing guards.
+
+
+## Audit implementation conventions (October 2026)
+
+The canonical workspace dimensions are a 232px sidebar, 36px desktop/tablet controls, 40px mobile controls, 7px control radius, 10px panel radius and 16px overlay radius. These are CSS tokens; public controls retain ≥44px touch targets. Light mode also changes semantic text shades (`--primary-text`, accent, success, warning and danger), not only surfaces.
+
+Evaluation setup keeps the 280px desktop summary and a compact sticky version/count/Start summary below 1100px. Settings/limits and provider help expand on request. Prompt editor/playground remain mounted behind jump links on narrow screens; template minima are 340px desktop, 280px tablet and 220px mobile with manual vertical resizing.
+
+Results keep compatibility/coverage full-width above a single table/detail pair at ≥1100px, stacked below that; a standalone detail fills the available width. Dataset selection has a border, tint and `aria-pressed`; the saved name precedes revision metadata and the mobile chooser collapses after selection.
+
+Semantic tables use labelled rows below 640px, primary identity and status/progress/production first, with secondary metadata in `TableMetadata` disclosures. Scroll containers are labelled and keyboard focusable. Numeric desktop columns are right-aligned with tabular digits. `PageControls` hides single-page navigation while counts remain visible.
+
+Loading, errors, first-use empty and filtered empty states are distinct. Filtered empty states offer Clear filters. Visible copy says Benchmark throughout; `/experiments` routes and API identifiers remain stable. Benchmark setup keeps required name/model/dataset/reasoning visible, tuning/routing/regression/lineage in disclosures, and a sticky summary distinguishing Save draft from Create and run.
+
+JavaScript counters and overlays honor reduced motion as well as CSS. Icon-only actions have accessible names; decorative SVGs are hidden from assistive technology. Already-assigned releases are passive while production changes retain confirmation. Validate changes at 1440×900, 768×1024 and 390×844 in both themes, including long labels, focus and empty/selected states. Clearly distinguish local fixture verification from authenticated hosted verification.

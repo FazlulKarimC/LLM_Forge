@@ -10,7 +10,7 @@ import {
 } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
   ChevronLeft,
   ChevronRight,
@@ -180,6 +180,7 @@ function CommandPalette({
   open: boolean;
   onClose: () => void;
 }) {
+  const reducedMotion = useReducedMotion();
   const router = useRouter();
   const dialog = useRef<HTMLDivElement>(null);
   useOverlayFocus(open, dialog);
@@ -222,9 +223,9 @@ function CommandPalette({
     <AnimatePresence>
       {open ? (
         <motion.div
-          initial={{ opacity: 0 }}
+          initial={reducedMotion ? false : { opacity: 0 }}
           animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
+          exit={reducedMotion ? { opacity: 1 } : { opacity: 0 }}
           className="fixed inset-0 z-70 flex items-start justify-center bg-black/55 px-4 pt-[12vh] backdrop-blur-sm"
           onClick={onClose}
         >
@@ -233,11 +234,11 @@ function CommandPalette({
             role="dialog"
             aria-modal="true"
             aria-label="Commands"
-            initial={{ opacity: 0, y: 12, scale: 0.98 }}
+            initial={reducedMotion ? false : { opacity: 0, y: 12, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 8, scale: 0.98 }}
-            transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] as const }}
-            className="w-full max-w-2xl overflow-hidden rounded-[26px] border border-(--border) bg-(--surface-1) shadow-(--shadow-overlay)"
+            exit={reducedMotion ? { opacity: 1 } : { opacity: 0, y: 8, scale: 0.98 }}
+            transition={{ duration: reducedMotion ? 0 : 0.16, ease: [0.16, 1, 0.3, 1] as const }}
+            className="w-full max-w-2xl overflow-hidden rounded-(--radius-overlay) border border-(--border) bg-(--surface-1) shadow-(--shadow-overlay)"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="flex items-center gap-3 border-b border-(--border) px-5 py-4">
@@ -259,13 +260,13 @@ function CommandPalette({
                     item.action();
                     onClose();
                   }}
-                  className="flex w-full items-center justify-between rounded-[16px] px-4 py-3 text-left transition-colors hover:bg-(--surface-2)"
+                  className="flex w-full items-center justify-between rounded-(--radius-control) px-4 py-3 text-left transition-colors hover:bg-(--surface-2)"
                 >
                   <span className="font-medium">{item.label}</span>
                 </button>
               ))}
               {!filtered.length ? (
-                <div className="rounded-[16px] border border-dashed border-(--border-strong) px-4 py-8 text-center text-sm text-(--muted-foreground)">
+                <div className="rounded-(--radius-control) border border-dashed border-(--border-strong) px-4 py-8 text-center text-sm text-(--muted-foreground)">
                   No matching routes.
                 </div>
               ) : null}
@@ -277,6 +278,7 @@ function CommandPalette({
   );
 }
 export function AppShell({ children }: { children: ReactNode }) {
+  const reducedMotion = useReducedMotion();
   const pathname = usePathname() ?? "/";
   const isAppRoute = true;
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -408,6 +410,8 @@ export function AppShell({ children }: { children: ReactNode }) {
           <ThemeToggle showLabel={!isCollapsed} className={cn("w-full justify-start", isCollapsed ? "px-0! justify-center!" : "")} />
           <a
             href="https://github.com/FazlulKarimC/LLM_Forge"
+            aria-label="Repository"
+            title="Repository"
             target="_blank"
             rel="noreferrer"
             className={cn(
@@ -415,7 +419,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               isCollapsed ? "px-0! justify-center!" : "",
             )}
           >
-            <Github className="size-4" />
+            <Github className="size-4" aria-hidden="true" />
             {!isCollapsed ? <span>Repository</span> : null}
           </a>
         </div>
@@ -463,9 +467,9 @@ export function AppShell({ children }: { children: ReactNode }) {
       <AnimatePresence>
         {mobileNavOpen ? (
           <motion.div
-            initial={{ opacity: 0 }}
+            initial={reducedMotion ? false : { opacity: 0 }}
             animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+            exit={reducedMotion ? { opacity: 1 } : { opacity: 0 }}
             className="fixed inset-0 z-60 bg-black/55 backdrop-blur-sm lg:hidden"
             onClick={() => setMobileNavOpen(false)}
           >
@@ -474,10 +478,10 @@ export function AppShell({ children }: { children: ReactNode }) {
               role="dialog"
               aria-modal="true"
               aria-label="Navigation"
-              initial={{ x: -28, opacity: 0 }}
+              initial={reducedMotion ? false : { x: -28, opacity: 0 }}
               animate={{ x: 0, opacity: 1 }}
-              exit={{ x: -28, opacity: 0 }}
-              transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] as const }}
+              exit={reducedMotion ? { x: 0, opacity: 1 } : { x: -28, opacity: 0 }}
+              transition={{ duration: reducedMotion ? 0 : 0.18, ease: [0.16, 1, 0.3, 1] as const }}
               className="app-shell h-full w-(--sidebar-width)"
               onClick={(event) => event.stopPropagation()}
             >

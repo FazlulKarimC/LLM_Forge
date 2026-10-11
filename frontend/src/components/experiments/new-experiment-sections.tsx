@@ -31,10 +31,10 @@ export function ExperimentBasicsPanel({
 }) {
   return (
     <Panel>
-      <PanelHeader label="Basics" title="Name the experiment" description="Choose a clear title that reads well in tables, exports, and comparisons." />
+      <PanelHeader label="Basics" title="Name the benchmark" description="Choose a clear title that reads well in tables, exports, and comparisons." />
       <div className="panel-body grid grid-cols-1 gap-4 lg:grid-cols-[1fr_1.1fr]">
         <div>
-          <label className="field-label" htmlFor="experiment-name">Experiment name</label>
+          <label className="field-label" htmlFor="experiment-name">Benchmark name</label>
           <input
             id="experiment-name"
             type="text"
@@ -156,7 +156,7 @@ export function ExperimentConfigurationPanel({
 
       {formData.provider === "auto" ? (
         <div className="panel-body pt-0">
-          <div className="rounded-[18px] border border-(--border) bg-(--surface-2) p-4">
+          <details className="advanced-section"><summary>Routing policy and limits</summary><div className="pt-3">
             <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
               <div>
                 <label className="field-label" htmlFor="routing-policy">Routing policy</label>
@@ -178,7 +178,7 @@ export function ExperimentConfigurationPanel({
                 <p className="field-help mt-2">Initial requests to round-robin before exploiting telemetry.</p>
               </div>
             </div>
-            <label className="mt-4 flex items-start gap-3 rounded-[14px] border border-(--border) bg-(--surface-1) p-3 text-sm">
+            <label className="mt-4 flex items-start gap-3 rounded-(--radius-control) border border-(--border) bg-(--surface-1) p-3 text-sm">
               <input
                 type="checkbox"
                 checked={formData.routing_strict_comparison}
@@ -192,13 +192,13 @@ export function ExperimentConfigurationPanel({
                 </span>
               </span>
             </label>
-          </div>
+          </div></details>
         </div>
       ) : null}
 
       {formData.model_name === "custom_hosted" ? (
         <div className="panel-body pt-0">
-          <div className="rounded-[18px] border border-(--border) bg-(--surface-2) p-4">
+          <div className="rounded-(--radius-panel) border border-(--border) bg-(--surface-2) p-4">
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div>
                 <label className="field-label" htmlFor="custom-base-url">Base URL</label>
@@ -294,7 +294,7 @@ export function ExperimentAgentPanel({
         </div>
         <div>
           <div className="field-label">Enabled tools</div>
-          <div className="space-y-2 rounded-[18px] border border-(--border) bg-(--surface-2) p-4 text-sm text-(--muted-foreground)">
+          <div className="space-y-2 rounded-(--radius-panel) border border-(--border) bg-(--surface-2) p-4 text-sm text-(--muted-foreground)">
             {[
               { value: "wikipedia_search", label: "Wikipedia search" },
               { value: "calculator", label: "Calculator" },
@@ -360,7 +360,7 @@ export function ExperimentOptimizationPanel({
     <Panel>
       <PanelHeader label="Optimization" title="Execution options" description="Enable batching and caching to optimize throughput and reduce costs." />
       <div className="panel-body grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-2">
-        <div className="rounded-[18px] border border-(--border) bg-(--surface-2) p-4">
+        <div className="rounded-(--radius-panel) border border-(--border) bg-(--surface-2) p-4">
           <label className="flex items-center gap-3 font-medium">
             <input type="checkbox" checked={formData.enable_batching} onChange={(event) => updateField("enable_batching", event.target.checked)} />
             Enable batching
@@ -373,7 +373,7 @@ export function ExperimentOptimizationPanel({
             </div>
           ) : null}
         </div>
-        <div className="rounded-[18px] border border-(--border) bg-(--surface-2) p-4">
+        <div className="rounded-(--radius-panel) border border-(--border) bg-(--surface-2) p-4">
           <label className="flex items-center gap-3 font-medium">
             <input type="checkbox" checked={formData.enable_caching} onChange={(event) => updateField("enable_caching", event.target.checked)} />
             Enable caching
@@ -402,12 +402,12 @@ export function ExperimentRegressionPanel({
     <Panel>
       <PanelHeader label="Regression" title="Regression gates" description="Attach thresholds so new attempts can be checked against a pinned baseline automatically." />
       <div className="panel-body space-y-4">
-        <div className="rounded-[18px] border border-(--border) bg-(--surface-2) p-4">
+        <div className="rounded-(--radius-panel) border border-(--border) bg-(--surface-2) p-4">
           <label className="flex items-center gap-3 font-medium">
             <input type="checkbox" checked={formData.enable_regression} onChange={(event) => updateField("enable_regression", event.target.checked)} />
             Enable regression gates
           </label>
-          <p className="field-help mt-3">Use these thresholds when comparing this experiment against a pinned baseline.</p>
+          <p className="field-help mt-3">Use these thresholds when comparing this benchmark against a pinned baseline.</p>
         </div>
 
         {formData.enable_regression ? (
@@ -432,7 +432,7 @@ export function ExperimentRegressionPanel({
               <label className="field-label" htmlFor="reg-overlap">Minimum overlap ratio</label>
               <input id="reg-overlap" type="number" step="0.05" min="0" max="1" value={formData.regression_min_overlap_ratio} onChange={(event) => updateField("regression_min_overlap_ratio", parseFloat(event.target.value) || 0)} className="input-shell" />
             </div>
-            <div className="rounded-[18px] border border-(--border) bg-(--surface-2) p-4">
+            <div className="rounded-(--radius-panel) border border-(--border) bg-(--surface-2) p-4">
               <label className="flex items-center gap-3 font-medium">
                 <input type="checkbox" checked={formData.regression_no_sample_regressions} onChange={(event) => updateField("regression_no_sample_regressions", event.target.checked)} />
                 Fail on any sample regression
@@ -493,7 +493,7 @@ export function ExperimentBuilderSidebar({
         <PanelHeader label="Quick starts" title="Preset configurations" description="Quick-start templates for common evaluation scenarios." />
         <div className="panel-body space-y-3">
           {presetConfigs.map((preset) => (
-            <button key={preset.title} type="button" className="w-full rounded-[18px] border border-(--border) bg-(--surface-2) p-4 text-left transition-all hover:border-(--border-strong) hover:bg-(--surface-3)" onClick={() => onApplyPreset(preset.apply)}>
+            <button key={preset.title} type="button" className="w-full rounded-(--radius-panel) border border-(--border) bg-(--surface-2) p-4 text-left transition-all hover:border-(--border-strong) hover:bg-(--surface-3)" onClick={() => onApplyPreset(preset.apply)}>
               <div className="font-semibold tracking-[-0.03em]">{preset.title}</div>
               <p className="mt-2 text-sm leading-7 text-(--muted-foreground)">{preset.description}</p>
             </button>
@@ -502,7 +502,7 @@ export function ExperimentBuilderSidebar({
       </Panel>
 
       <Panel>
-        <PanelHeader label="Summary" title={formData.name || "Untitled experiment"} description="Overview of the experiment configuration." />
+        <PanelHeader label="Summary" title={formData.name || "Untitled benchmark"} description="Overview of the benchmark configuration." />
         <div className="panel-body space-y-4">
           <div className="flex flex-wrap gap-2 text-xs text-(--muted-foreground)">
             <span className="chip">{formData.reasoning_method.toUpperCase()}</span>
@@ -528,15 +528,15 @@ export function ExperimentBuilderSidebar({
       <Panel>
         <PanelHeader label="Field notes" title="Execution trade-offs" description="Tips for understanding how settings affect run time and cost." />
         <div className="panel-body space-y-3 text-sm leading-7 text-(--muted-foreground)">
-          <div className="flex gap-3 rounded-[18px] border border-(--border) bg-(--surface-2) p-4">
+          <div className="flex gap-3 rounded-(--radius-panel) border border-(--border) bg-(--surface-2) p-4">
             <Database className="mt-1 size-4 shrink-0 text-(--accent)" />
             Retrieval adds context-fetch overhead, especially with hybrid or reranked modes.
           </div>
-          <div className="flex gap-3 rounded-[18px] border border-(--border) bg-(--surface-2) p-4">
+          <div className="flex gap-3 rounded-(--radius-panel) border border-(--border) bg-(--surface-2) p-4">
             <Layers3 className="mt-1 size-4 shrink-0 text-(--primary)" />
             More samples and larger max tokens increase result payload size and evaluation time.
           </div>
-          <div className="flex gap-3 rounded-[18px] border border-(--border) bg-(--surface-2) p-4">
+          <div className="flex gap-3 rounded-(--radius-panel) border border-(--border) bg-(--surface-2) p-4">
             <PlugZap className="mt-1 size-4 shrink-0 text-(--success)" />
             Batching and caching are safe to enable because the backend already profiles them in result exports.
           </div>

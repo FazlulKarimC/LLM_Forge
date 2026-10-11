@@ -81,7 +81,7 @@ export function ExperimentResultsDashboard({
       <EmptyState
         icon={<ScanSearch className="size-5" />}
         title="Metrics are unavailable"
-        description="This run has not stored aggregate metrics yet, so only the experiment metadata is currently available."
+        description="This run has not stored aggregate metrics yet, so only the benchmark metadata is currently available."
       />
     );
   }
@@ -157,7 +157,7 @@ export function ExperimentResultsDashboard({
         <div className="panel-body grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
           <div className="rounded-[18px] border border-(--border) bg-(--surface-2) p-4">
             <div className="section-label">Narrative summary</div>
-            <p className="mt-3 text-sm leading-8 text-(--muted-foreground)">{metrics.summary_text || "No generated summary was stored for this experiment. The core metrics below still reflect the latest saved run."}</p>
+            <p className="mt-3 text-sm leading-8 text-(--muted-foreground)">{metrics.summary_text || "No generated summary was stored for this benchmark. The core metrics below still reflect the latest saved run."}</p>
           </div>
           <div className="space-y-3 rounded-[18px] border border-(--border) bg-(--surface-2) p-4">
             <div>

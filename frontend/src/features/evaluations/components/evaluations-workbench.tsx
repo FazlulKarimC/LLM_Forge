@@ -1,4 +1,5 @@
 "use client";
+import { TableMetadata } from "@/components/ui/table-metadata";
 import { scopedKey } from "@/features/shared/query-keys";
 
 import { PageControls } from "@/components/ui/page-controls";
@@ -134,7 +135,7 @@ export function EvaluationsWorkbench() {
         <section className="evaluation-setup">
           <div className={`${panelClass} evaluation-fields`}>
             <h2 className="font-semibold">Start an evaluation</h2>
-            <ServerCapabilities />
+            <details className="advanced-section"><summary>Provider support and requirements</summary><ServerCapabilities /></details>
             <div className="evaluation-fields">
               <div className="form-section">
                 <h3>1. Prompt &amp; dataset</h3>
@@ -557,8 +558,14 @@ export function EvaluationsWorkbench() {
             className={`${panelClass} evaluation-summary`}
             aria-label="Evaluation configuration"
           >
-            <div className="rounded-lg border border-(--border) p-4 text-sm">
+            <div className="evaluation-summary-overview">
               <h3 className="font-medium">Run configuration</h3>
+              <p className="field-help">{selectedVersion ? `Prompt v${selectedVersion.version}` : "Choose prompt"} · {selectedRevision ? `Dataset v${selectedRevision.version}` : "Choose dataset"}</p>
+              <p className="field-help">{casesCount == null ? "Select a dataset" : `${casesCount} cases · up to ${(generationCalls ?? 0) + (judgeCalls ?? 0)} model calls`}</p>
+            </div>
+            <details className="advanced-section evaluation-summary-settings">
+              <summary>Settings and limits</summary>
+              <div className="space-y-2 pt-2">
               <button
                 type="button"
                 className="btn-secondary"
@@ -614,7 +621,8 @@ export function EvaluationsWorkbench() {
                 Sequential execution. At most two judges, 60 model calls and 20
                 cases when judging; two active runs per project.
               </p>
-            </div>
+              </div>
+            </details>
             <button
               className="btn-primary"
               disabled={
@@ -714,13 +722,14 @@ export function EvaluationsWorkbench() {
           </p>
           {runs.isLoading && <p className="mt-4">Loading runs…</p>}
           {runs.data?.items.length === 0 && (
-            <p className="mt-4 text-(--muted-foreground)">
-              No runs yet. Create a prompt and dataset, or use the demo examples
-              on Overview.
-            </p>
+            <div className="collection-empty" role="status">
+              <h3>{runSearch || runStatus ? "No runs match your filters" : "No runs yet"}</h3>
+              <p className="field-help">{runSearch || runStatus ? "Try another search or clear the filters." : "Create a prompt and dataset, or use the demo examples on Overview."}</p>
+              {(runSearch || runStatus) && <button className="btn-secondary" onClick={() => { setRunSearch(""); setRunStatus(""); setRunOffset(0); }}>Clear filters</button>}
+            </div>
           )}
           {!!runs.data?.items.length && (
-            <div className="mt-4 overflow-x-auto">
+            <div className="mt-4 overflow-x-auto responsive-table" role="region" aria-label="Evaluation history" tabIndex={0}>
               <table className="w-full min-w-[860px] text-left text-sm">
                 <thead className="border-b border-(--border) text-xs uppercase text-(--muted-foreground)">
                   <tr>
@@ -736,10 +745,10 @@ export function EvaluationsWorkbench() {
                 <tbody className="divide-y divide-(--border)">
                   {runs.data.items.map((run) => (
                     <tr key={run.id} className="hover:bg-(--surface-2)">
-                      <td className="p-3 text-(--muted-foreground)">
+                      <td data-label="Created" className="p-3 text-(--muted-foreground)"><TableMetadata label="Created">
                         {new Date(run.created_at).toLocaleString()}
-                      </td>
-                      <td className="p-3">
+                      </TableMetadata></td>
+                      <td data-label="Prompt" className="p-3">
                         <button
                           className="font-semibold text-(--primary) hover:underline"
                           onClick={() => {
@@ -752,10 +761,10 @@ export function EvaluationsWorkbench() {
                           {run.config.prompt_name} v{run.config.prompt_version}
                         </button>
                       </td>
-                      <td className="p-3">
+                      <td data-label="Dataset" className="p-3"><TableMetadata label="Dataset">
                         {run.config.dataset_name} v{run.config.dataset_version}
-                      </td>
-                      <td className="p-3">
+                      </TableMetadata></td>
+                      <td data-label="Source" className="p-3"><TableMetadata label="Source">
                         {run.config.source === "score_only"
                           ? "Saved-output scoring"
                           : run.config.source === "sdk_submission"
@@ -763,15 +772,15 @@ export function EvaluationsWorkbench() {
                             : run.config.is_mock
                               ? "Demo"
                               : "Live"}
-                      </td>
-                      <td className="p-3">
+                      </TableMetadata></td>
+                      <td data-label="Provider / model" className="p-3"><TableMetadata label="Provider / model">
                         {run.config.provider} / {run.config.model}
-                      </td>
-                      <td className="p-3 tabular-nums">
+                      </TableMetadata></td>
+                      <td data-label="Progress" className="p-3 numeric">
                         {run.completed}/{run.total} · {run.passed} passed ·{" "}
                         {run.errors} errors
                       </td>
-                      <td className="p-3">
+                      <td data-label="Status" className="p-3">
                         <StatusPill status={run.status} />
                       </td>
                     </tr>
@@ -792,7 +801,7 @@ export function EvaluationsWorkbench() {
       )}
       {view === "detail" && detail.data && (
         <section className={panelClass}>
-          <div className="grid gap-4 xl:grid-cols-2">
+          <div className={`grid gap-4 ${comparison.data ? "xl:grid-cols-2" : ""}`}>
             <div className="space-y-2">
               <p className="text-xs font-semibold text-(--muted-foreground)">
                 {comparison.data ? "Candidate run" : "Selected run"}

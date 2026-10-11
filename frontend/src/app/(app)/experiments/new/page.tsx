@@ -206,8 +206,8 @@ export default function NewExperimentPage() {
           await runExperiment(experiment.id, credentials.customBaseUrl, credentials.customApiKey);
         } catch (error) {
           const message = error instanceof Error
-            ? `Experiment created but failed to start: ${error.message}`
-            : "Experiment created but failed to start. Retry from the detail page.";
+            ? `Benchmark created but failed to start: ${error.message}`
+            : "Benchmark created but failed to start. Retry from the detail page.";
           setRunError(message);
           toast.error(message);
         }
@@ -239,7 +239,7 @@ export default function NewExperimentPage() {
     event.preventDefault();
 
     if (!formData.name.trim()) {
-      setValidationError("Experiment name is required.");
+      setValidationError("Benchmark name is required.");
       return;
     }
     if (formData.num_samples < 1 || formData.num_samples > 500) {
@@ -361,10 +361,10 @@ export default function NewExperimentPage() {
     <div className="page-stack">
       <PageHeader
         backHref="/experiments"
-        backLabel="Back to experiments"
-        eyebrow={<><WandSparkles className="size-3.5" /> Experiment builder</>}
-        title="Configure and launch a new experiment"
-        description="Set up the model, dataset, reasoning method, and parameters for your next evaluation run."
+        backLabel="Back to benchmarks"
+        eyebrow={<><WandSparkles className="size-3.5" /> Benchmark builder</>}
+        title="Configure a benchmark"
+        description="Set up the model, dataset, reasoning method, and parameters for your next benchmark run."
       />
 
       {validationError ? (
@@ -382,7 +382,7 @@ export default function NewExperimentPage() {
       {createMutation.error ? (
         <div className="alert alert-danger">
           <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-          <p className="text-sm leading-7">{createMutation.error instanceof Error ? createMutation.error.message : "Failed to create experiment"}</p>
+          <p className="text-sm leading-7">{createMutation.error instanceof Error ? createMutation.error.message : "Failed to create benchmark"}</p>
         </div>
       ) : null}
 
@@ -391,6 +391,19 @@ export default function NewExperimentPage() {
           onSubmit={(event) => handleSubmit(event, false)}
           className="space-y-6 route-enter"
         >
+          <div className="benchmark-actions panel">
+            <p className="field-help benchmark-action-summary">{selectedModel?.label ?? formData.model_name} · {selectedDataset?.label ?? formData.dataset_name}</p>
+            <Link href="/experiments" className="btn-secondary">Cancel</Link>
+            <button type="submit" className="btn-secondary" disabled={createMutation.isPending}>
+              {createMutation.isPending && !createMutation.variables?.shouldRun ? <LoaderCircle className="size-4 animate-spin" /> : null}
+              Save draft
+            </button>
+            <button type="button" className="btn-primary" disabled={createMutation.isPending} onClick={(event) => handleSubmit(event, true)}>
+              {createMutation.isPending && createMutation.variables?.shouldRun ? <LoaderCircle className="size-4 animate-spin" /> : null}
+              Create and run
+              <ArrowRight className="size-4" />
+            </button>
+          </div>
           <ExperimentBasicsPanel formData={formData} updateField={updateField} />
 
           <ExperimentConfigurationPanel
@@ -417,26 +430,15 @@ export default function NewExperimentPage() {
             updateField={updateField}
           />
 
-          <ExperimentGenerationPanel formData={formData} updateField={updateField} />
+          <details className="advanced-section panel p-4"><summary>Generation parameters</summary><div className="pt-3"><ExperimentGenerationPanel formData={formData} updateField={updateField} /></div></details>
 
           {formData.reasoning_method === "react" ? <ExperimentAgentPanel formData={formData} updateField={updateField} /> : null}
 
-          <ExperimentOptimizationPanel formData={formData} updateField={updateField} />
-          <ExperimentRegressionPanel formData={formData} updateField={updateField} />
-          <ExperimentAdvancedPanel formData={formData} updateField={updateField} />
+          <details className="advanced-section panel p-4"><summary>Batching and caching</summary><div className="pt-3"><ExperimentOptimizationPanel formData={formData} updateField={updateField} /></div></details>
+          <details className="advanced-section panel p-4"><summary>Regression rules</summary><div className="pt-3"><ExperimentRegressionPanel formData={formData} updateField={updateField} /></div></details>
+          <details className="advanced-section panel p-4"><summary>Lineage and deterministic graders</summary><div className="pt-3"><ExperimentAdvancedPanel formData={formData} updateField={updateField} /></div></details>
 
-          <div className="flex flex-wrap justify-end gap-3">
-            <Link href="/experiments" className="btn-secondary">Cancel</Link>
-            <button type="submit" className="btn-secondary" disabled={createMutation.isPending}>
-              {createMutation.isPending && !createMutation.variables?.shouldRun ? <LoaderCircle className="size-4 animate-spin" /> : null}
-              Create draft
-            </button>
-            <button type="button" className="btn-primary" disabled={createMutation.isPending} onClick={(event) => handleSubmit(event, true)}>
-              {createMutation.isPending && createMutation.variables?.shouldRun ? <LoaderCircle className="size-4 animate-spin" /> : null}
-              Create and run
-              <ArrowRight className="size-4" />
-            </button>
-          </div>
+
         </form>
 
         <ExperimentBuilderSidebar

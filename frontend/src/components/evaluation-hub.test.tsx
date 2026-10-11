@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DatasetsWorkbench } from "./datasets-workbench";
 import { EvaluationsWorkbench } from "./evaluations-workbench";
 import { ApiError } from "@/lib/api-client";
+import { PagedResults } from "@/features/evaluations/components/paged-results";
 
 const mocks = vi.hoisted(() => ({
   listDatasets: vi.fn(),
@@ -136,6 +137,34 @@ beforeEach(() => {
   mocks.startEvaluation.mockResolvedValue(run);
   mocks.listEvaluators.mockResolvedValue({ items: [], total: 0 });
   mocks.listEvaluatorVersions.mockResolvedValue([]);
+});
+
+describe("audit result navigation", () => {
+  it("pairs the paginated table with loaded detail, focuses selection and hides single-page navigation", async () => {
+    const selectCase = vi.fn();
+    const summary = await mocks.getEvaluationSummary("run");
+    const { container } = mount(<PagedResults detail={summary} filter="all" caseIndex={0} selectCase={selectCase} />);
+    const detail = await screen.findByRole("region", { name: "Selected case details" });
+    expect(detail.parentElement).toHaveClass("case-inspection");
+    expect(detail.parentElement).toContainElement(screen.getByRole("region", { name: "Evaluation case rows" }));
+    await waitFor(() => expect(detail).toHaveFocus());
+    expect(screen.queryByRole("button", { name: "Next" })).not.toBeInTheDocument();
+    expect(container).toHaveTextContent("1 matching cases");
+    fireEvent.click(screen.getByRole("button", { name: "Greeting" }));
+    expect(selectCase).toHaveBeenCalledWith(0);
+  });
+
+  it("uses 25-case pages and resets the offset when filters change", async () => {
+    mocks.getEvaluationCases.mockResolvedValue({ items: [{ ...result, output_preview: result.output }], total: 26 });
+    const summary = await mocks.getEvaluationSummary("run");
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const view = (filter: string) => <QueryClientProvider client={client}><PagedResults detail={summary} filter={filter} caseIndex={null} selectCase={vi.fn()} /></QueryClientProvider>;
+    const { rerender } = render(view("all"));
+    fireEvent.click(await screen.findByRole("button", { name: "Next" }));
+    await waitFor(() => expect(mocks.getEvaluationCases).toHaveBeenCalledWith("run", expect.objectContaining({ offset: 25, limit: 25 }), expect.anything()));
+    rerender(view("passed"));
+    await waitFor(() => expect(mocks.getEvaluationCases).toHaveBeenLastCalledWith("run", expect.objectContaining({ offset: 0, filter: "passed" }), expect.anything()));
+  });
 });
 
 describe("dataset editor", () => {

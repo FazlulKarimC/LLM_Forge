@@ -1,7 +1,7 @@
 "use client";
 
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import type { EvaluationDetail } from "@/lib/evaluation-api";
 import { canonicalJSON } from "@/lib/prompt-api";
 
@@ -123,6 +123,7 @@ export function ResultsGrid({
   onSelectCase,
   hideTable = false,
   comparisonTotals,
+  caseTable,
 }: {
   detail: EvaluationDetail;
   comparison?: EvaluationDetail;
@@ -131,6 +132,7 @@ export function ResultsGrid({
   onSelectCase?: (index: number) => void;
   hideTable?: boolean;
   comparisonTotals?: Record<string, number>;
+  caseTable?: ReactNode;
 }) {
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const priorCases = new Map(
@@ -275,8 +277,9 @@ export function ResultsGrid({
           </p>
         </section>
       ) : null}
-      <div className={selected ? "case-inspection" : "space-y-4"}>
-        {!hideTable && <div className="case-table">
+      <div className={selected && (caseTable || !hideTable) ? "case-inspection" : "space-y-4"}>
+        {caseTable}
+        {!caseTable && !hideTable && <div className="case-table" role="region" aria-label="Evaluation cases" tabIndex={0}>
           <table className="w-full min-w-[500px] text-left text-sm">
             <thead>
               <tr className="border-b border-(--border) bg-(--muted)/30">

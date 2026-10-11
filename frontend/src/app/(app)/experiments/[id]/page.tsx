@@ -93,10 +93,10 @@ export default function ExperimentDetailPage({ params }: Props) {
       queryClient.invalidateQueries({ queryKey: ["profile", id] });
       queryClient.invalidateQueries({ queryKey: ["routing", id] });
       queryClient.invalidateQueries({ queryKey: ["regression", id] });
-      toast.success("Experiment started");
+      toast.success("Benchmark started");
     },
     onError: (error: Error) => {
-      toast.error(`Failed to start experiment: ${error.message}`);
+      toast.error(`Failed to start benchmark: ${error.message}`);
     },
   });
 
@@ -107,9 +107,9 @@ export default function ExperimentDetailPage({ params }: Props) {
       queryClient.invalidateQueries({ queryKey: ["experiment", id] });
       queryClient.invalidateQueries({ queryKey: ["experiments"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
-      toast.success("Experiment interrupted; partial results were kept");
+      toast.success("Benchmark interrupted; partial results were kept");
     },
-    onError: (error: Error) => toast.error(`Could not interrupt experiment: ${error.message}`),
+    onError: (error: Error) => toast.error(`Could not interrupt benchmark: ${error.message}`),
   });
 
   if (experimentQuery.isLoading) {
@@ -131,21 +131,21 @@ export default function ExperimentDetailPage({ params }: Props) {
       <div className="page-stack">
         <PageHeader
           backHref="/experiments"
-          backLabel="Back to experiments"
-          eyebrow={<><ScanSearch className="size-3.5" /> Experiment detail</>}
-          title="Experiment not found"
+          backLabel="Back to benchmarks"
+          eyebrow={<><ScanSearch className="size-3.5" /> Benchmark detail</>}
+          title="Benchmark not found"
         />
         {isNotFound ? (
           <EmptyState
             icon={<SearchX className="size-5" />}
-            title="This experiment does not exist"
-            description="The experiment ID in the URL is invalid or has been deleted. Return to the catalog to find a valid experiment."
-            action={<Link href="/experiments" className="btn-primary">Browse experiments</Link>}
+            title="This benchmark does not exist"
+            description="The benchmark ID in the URL is invalid or has been deleted. Return to the catalog to find a valid benchmark."
+            action={<Link href="/experiments" className="btn-primary">Browse benchmarks</Link>}
           />
         ) : (
           <div className="alert alert-danger">
             <TriangleAlert className="mt-0.5 size-4 shrink-0" />
-            <p className="text-sm leading-7">{err instanceof Error ? err.message : "Failed to load experiment."}</p>
+            <p className="text-sm leading-7">{err instanceof Error ? err.message : "Failed to load benchmark."}</p>
           </div>
         )}
       </div>
@@ -160,10 +160,10 @@ export default function ExperimentDetailPage({ params }: Props) {
     <div className="page-stack">
       <PageHeader
         backHref="/experiments"
-        backLabel="Back to experiments"
-        eyebrow={<><ScanSearch className="size-3.5" /> Experiment detail</>}
+        backLabel="Back to benchmarks"
+        eyebrow={<><ScanSearch className="size-3.5" /> Benchmark detail</>}
         title={experiment.name}
-        description={experiment.description || "Inspect configuration, metrics, and execution details for this experiment."}
+        description={experiment.description || "Inspect configuration, metrics, and execution details for this benchmark."}
       >
         <div className="flex flex-wrap gap-2">
           <StatusPill status={experiment.status} />
@@ -216,7 +216,7 @@ export default function ExperimentDetailPage({ params }: Props) {
           {canRun ? (
             <button type="button" className="btn-primary" onClick={() => runMutation.mutate()} disabled={runMutation.isPending}>
               {runMutation.isPending ? <LoaderCircle className="size-4 animate-spin" /> : <Play className="size-4" />}
-              {experiment.status === "completed" ? "Run again" : "Run experiment"}
+              {experiment.status === "completed" ? "Run again" : "Run benchmark"}
             </button>
           ) : null}
           {isActive ? (
@@ -250,7 +250,7 @@ export default function ExperimentDetailPage({ params }: Props) {
 
       <section>
         <Panel>
-          <PanelHeader label="Lifecycle" title="Run metadata" description="Lifecycle timestamps for this experiment run." />
+          <PanelHeader label="Lifecycle" title="Run metadata" description="Lifecycle timestamps for this benchmark run." />
           <div className="panel-body grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <div className="metric-card">
               <div className="metric-label">Created</div>
@@ -274,7 +274,7 @@ export default function ExperimentDetailPage({ params }: Props) {
 
       <section>
         <Panel>
-          <PanelHeader label="Configuration" title="Experiment payload" description="The experiment configuration as submitted." />
+          <PanelHeader label="Configuration" title="Benchmark payload" description="The benchmark configuration as submitted." />
           <div className="panel-body">
             <pre className="code-panel">{JSON.stringify(experiment.config, null, 2)}</pre>
           </div>
@@ -310,8 +310,8 @@ export default function ExperimentDetailPage({ params }: Props) {
       ) : (
         <EmptyState
           icon={<LoaderCircle className={`size-5 ${isActive ? "animate-spin" : ""}`} />}
-          title={isActive ? "Experiment is still running" : "No results yet"}
-          description={isActive ? "This screen auto-refreshes while the backend is processing the run." : "Start the experiment to unlock metrics, per-run inspection, and optimization data."}
+          title={isActive ? "Benchmark is still running" : "No results yet"}
+          description={isActive ? "This screen auto-refreshes while the backend is processing the run." : "Start the benchmark to unlock metrics, per-run inspection, and optimization data."}
           action={canRun ? <button type="button" className="btn-primary" onClick={() => runMutation.mutate()} disabled={runMutation.isPending}>Run now</button> : undefined}
         />
       )}

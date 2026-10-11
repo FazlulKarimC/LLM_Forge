@@ -1,10 +1,11 @@
 "use client";
+import { TableMetadata } from "@/components/ui/table-metadata";
 import { useDatasetQueries } from "../hooks/use-dataset-queries";
 import { useDatasetEditor, sample, pretty } from "../hooks/use-dataset-editor";
 import { scopedKey } from "@/features/shared/query-keys";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useUnsavedChanges } from "@/lib/use-unsaved-changes";
 import {
@@ -44,6 +45,7 @@ const sameCases = (text: string, saved: DatasetCase[]) => {
 };
 
 export function DatasetsWorkbench() {
+  const [chooserOpen, setChooserOpen] = useState(true);
   const router = useRouter();
   const cache = useQueryClient();
   const { archived, setArchived, offset, setOffset, selected, setSelected, editing, setEditing, name, setName, description, setDescription, text, setText, format, setFormat, importText, setImportText, importPreview, setImportPreview, caseView, setCaseView, caseIndex, setCaseIndex, caseDraft, setCaseDraft, historyOffset, setHistoryOffset, busy, setBusy, error, setError, message, setMessage, casePanel } = useDatasetEditor();
@@ -260,7 +262,11 @@ export function DatasetsWorkbench() {
         </p>
       )}
       <div className="grid lg:grid-cols-[220px_minmax(0,1fr)] gap-4">
-        <aside className="space-y-3">
+        <aside className="dataset-chooser space-y-3" data-open={chooserOpen}>
+          <button type="button" className="btn-secondary dataset-chooser-toggle" aria-expanded={chooserOpen} aria-controls="dataset-choices" onClick={() => setChooserOpen(!chooserOpen)}>
+            {selected?.dataset.name ?? "Choose a dataset"} · {chooserOpen ? "Hide list" : "Change dataset"}
+          </button>
+          <div id="dataset-choices" className="dataset-choices space-y-3">
           <label className="text-sm flex gap-2">
             <input
               type="checkbox"
@@ -288,10 +294,11 @@ export function DatasetsWorkbench() {
           )}
           {list.data?.items.map((item) => (
             <button
-              className="w-full rounded-md border border-(--border) p-2.5 text-left disabled:opacity-40"
+              className="dataset-choice w-full rounded-md border border-(--border) p-2.5 text-left disabled:opacity-40"
+              aria-pressed={selected?.dataset.id === item.id}
               key={item.id}
               disabled={busy || dirty}
-              onClick={() => act(async () => load(await getDataset(item.id)))}
+              onClick={() => act(async () => { load(await getDataset(item.id)); setChooserOpen(false); })}
             >
               <span className="block font-medium break-words">{item.name}</span>
               <span className="text-xs text-(--muted-foreground)">
@@ -318,15 +325,17 @@ export function DatasetsWorkbench() {
               </button>
             </div>
           )}
+          </div>
         </aside>
         {editing ? (
           <section className="panel workbench-panel min-w-0 space-y-4">
             <div className="flex flex-wrap gap-3 items-center">
               <h2 className="font-semibold">
                 {selected
-                  ? `Revision ${selected.revision.version} · ${selected.revision.cases.length} cases`
+                  ? selected.dataset.name
                   : "New dataset"}
               </h2>
+              {selected && <p className="field-help">Revision {selected.revision.version} · {selected.revision.cases.length} cases</p>}
               {selected && (
                 <button
                   disabled={busy}
@@ -551,7 +560,7 @@ export function DatasetsWorkbench() {
                     </p>
                   )}
                   {cases && (
-                    <div className="case-table">
+                    <div className="case-table responsive-table" role="region" aria-label="Dataset cases" tabIndex={0}>
                       <table className="w-full min-w-[560px] text-left text-sm">
                         <thead>
                           <tr className="border-b border-(--border)">
@@ -568,7 +577,7 @@ export function DatasetsWorkbench() {
                               aria-selected={caseIndex === index}
                               className="border-b border-(--border) last:border-0"
                             >
-                              <td className="p-3">
+                              <td data-label="Case" className="p-3">
                                 <button
                                   type="button"
                                   className="font-medium text-(--primary) hover:underline"
@@ -580,17 +589,17 @@ export function DatasetsWorkbench() {
                                   {row.name || `Case ${index + 1}`}
                                 </button>
                               </td>
-                              <td className="max-w-64 truncate p-3 font-mono text-xs">
+                              <td data-label="Inputs" className="max-w-64 truncate p-3 font-mono text-xs"><TableMetadata label="Inputs">
                                 {JSON.stringify(row.inputs)}
-                              </td>
-                              <td className="max-w-64 truncate p-3">
+                              </TableMetadata></td>
+                              <td data-label="Reference" className="max-w-64 truncate p-3"><TableMetadata label="Reference">
                                 {row.expected_output ?? "No reference"}
-                              </td>
-                              <td className="p-3">
+                              </TableMetadata></td>
+                              <td data-label="Actions" className="p-3">
                                 <div className="flex gap-2">
                                   <button
                                     type="button"
-                                    className="btn-ghost min-h-8! px-2! text-xs!"
+                                    className="btn-ghost px-2! text-xs!"
                                     disabled={
                                       !!selected?.dataset.archived ||
                                       busy ||
@@ -608,7 +617,7 @@ export function DatasetsWorkbench() {
                                   </button>
                                   <button
                                     type="button"
-                                    className="btn-ghost min-h-8! px-2! text-xs!"
+                                    className="btn-ghost px-2! text-xs!"
                                     disabled={
                                       !!selected?.dataset.archived ||
                                       busy ||

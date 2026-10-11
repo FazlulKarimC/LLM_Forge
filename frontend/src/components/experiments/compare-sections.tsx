@@ -78,7 +78,7 @@ export function AgreementSummary({ summary }: { summary: StatisticalComparison["
 
   return (
     <Panel>
-      <PanelHeader label="Agreement" title="Outcome distribution" description="How often the two experiments agree, disagree, or both fail on the same examples." />
+      <PanelHeader label="Agreement" title="Outcome distribution" description="How often the two benchmarks agree, disagree, or both fail on the same examples." />
       <div className="panel-body space-y-4">
         <div className="flex h-3 overflow-hidden rounded-full bg-(--muted)">
           {segments.map((segment) => (
@@ -193,7 +193,7 @@ export function DifferencesTable({
       <EmptyState
         icon={<ScanSearch className="size-5" />}
         title="No disagreements found"
-        description="Both experiments produced identical correctness outcomes across the common example set."
+        description="Both benchmarks produced identical correctness outcomes across the common example set."
       />
     );
   }

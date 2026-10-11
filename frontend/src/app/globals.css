@@ -991,7 +991,8 @@ select.workbench-input {
   align-items: start;
 }
 .prompt-template {
-  min-height: 340px !important;
+  min-height: 280px !important;
+  resize: vertical;
 }
 .playground-models {
   display: grid;
@@ -1155,25 +1156,17 @@ select.workbench-input {
     position: sticky;
     top: 56px;
     z-index: 20;
-    flex-direction: row;
-    align-items: center;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.35rem 0.75rem;
     padding: 0.75rem;
   }
-  .evaluation-summary > div {
-    flex: 1;
-    min-width: 0;
-    border: 0;
-    padding: 0;
-  }
-  .evaluation-summary h3 {
-    font-size: 0.8rem;
-  }
-  .evaluation-summary p {
-    font-size: 0.72rem;
-  }
-  .evaluation-summary > button {
-    flex: 0 0 auto;
-  }
+  .evaluation-summary h3 { font-size: 0.8rem; }
+  .evaluation-summary p { font-size: 0.72rem; }
+  .evaluation-summary > button { grid-column: 2; grid-row: 1; align-self: center; }
+  .evaluation-summary-settings { grid-column: 1 / -1; }
+  .evaluation-summary-settings[open] { max-height: 35vh; overflow: auto; }
+  .prompt-page .page-header { position: static; }
 }
 
 :root {
@@ -1188,4 +1181,67 @@ select.workbench-input {
 }
 .app-shell [class~="text-(--primary)"] {
   color: var(--primary-text);
+}
+
+/* Shared workspace density; public controls keep their larger touch targets. */
+:root {
+  --radius-control: 7px;
+  --radius-panel: 10px;
+  --radius-overlay: 16px;
+  --workspace-control-height: 36px;
+}
+.app-shell .input-shell, .app-shell .select-shell,
+.app-shell input.workbench-input, .app-shell select.workbench-input {
+  min-height: var(--workspace-control-height);
+  padding: 0.4rem 0.65rem;
+  border-radius: var(--radius-control);
+  line-height: 1.25rem;
+}
+.app-shell .btn-primary, .app-shell .btn-secondary,
+.app-shell .btn-ghost, .app-shell .btn-danger {
+  min-height: var(--workspace-control-height);
+  border-radius: var(--radius-control);
+}
+.app-shell .panel { border-radius: var(--radius-panel); }
+.advanced-section.panel > .pt-3 > .panel { border: 0; background: transparent; box-shadow: none; }
+.advanced-section > summary { cursor: pointer; font-size: 0.8rem; font-weight: 500; }
+.advanced-section > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.prompt-jump { display: flex; gap: 0.5rem; }
+#prompt-editor, #prompt-playground { scroll-margin-top: 76px; }
+.dataset-chooser-toggle { display: none; }
+.dataset-choice[aria-pressed="true"] {
+  border-color: var(--primary-text);
+  background: color-mix(in oklab, var(--primary) 10%, var(--surface-1));
+}
+.collection-empty { display: grid; justify-items: start; gap: 0.75rem; padding: 1.5rem 0; }
+.numeric { text-align: right; font-variant-numeric: tabular-nums; }
+.table-metadata-mobile { display: none; }
+.benchmark-actions { position: sticky; top: 64px; z-index: 20; background: var(--background); display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0.5rem; padding: 0.75rem; }
+.benchmark-action-summary { flex: 1 1 100%; overflow-wrap: anywhere; }
+@media (min-width: 1100px) {
+  .prompt-jump { display: none; }
+  .prompt-template { min-height: 340px !important; }
+}
+@media (max-width: 639px) {
+  .app-shell { --workspace-control-height: 40px; }
+  .prompt-template { min-height: 220px !important; }
+  .dataset-chooser-toggle { display: flex; width: 100%; }
+  .dataset-chooser[data-open="false"] .dataset-choices { display: none; }
+  .responsive-table table { display: block; min-width: 0; width: 100%; }
+  .responsive-table thead { display: none; }
+  .responsive-table tbody { display: grid; width: 100%; }
+  .responsive-table tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.5rem; padding: 0.75rem; }
+  .app-shell .responsive-table td { display: block; min-width: 0; max-width: none; padding: 0; overflow-wrap: anywhere; white-space: normal; }
+  .responsive-table td[data-label="Prompt"], .responsive-table td[data-label="Case"], .responsive-table td:first-child, .responsive-table td:has(.table-metadata-mobile), .responsive-table td[data-label="Output preview"], .responsive-table td[data-label="Actions"] { grid-column: 1 / -1; }
+  .responsive-table td { order: 1; }
+  .responsive-table td[data-label="Prompt"], .responsive-table td[data-label="Case"] { order: 0; }
+  .responsive-table td:has(.table-metadata-mobile) { order: 2; }
+  .responsive-table td[data-label="Case"] button, .responsive-table td[data-label="Prompt"] button, .responsive-table td[data-label="Prompt"] > a { display: inline-flex; align-items: center; min-height: var(--workspace-control-height); text-align: left; }
+  .responsive-table td::before { content: attr(data-label); display: block; font-size: 0.7rem; color: var(--muted-foreground); margin-bottom: 0.2rem; }
+  .responsive-table td:has(.table-metadata-mobile)::before { display: none; }
+  .table-metadata-mobile { display: block; font-size: 0.8rem; }
+  .table-metadata-mobile summary { cursor: pointer; color: var(--muted-foreground); }
+  .table-metadata-desktop { display: none; }
+  .responsive-table .numeric { text-align: left; }
+  .benchmark-actions { top: 56px; }
 }

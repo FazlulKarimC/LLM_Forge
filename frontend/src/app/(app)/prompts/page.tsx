@@ -1,4 +1,5 @@
 "use client";
+import { TableMetadata } from "@/components/ui/table-metadata";
 import Link from "next/link";
 import { useDeferredValue, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -119,7 +120,7 @@ export default function PromptsPage() {
           Loading prompts…
         </p>
       ) : query.data?.items.length ? (
-        <div className="panel overflow-x-auto">
+        <div className="panel overflow-x-auto responsive-table" role="region" aria-label="Prompt catalog" tabIndex={0}>
           <table className="w-full min-w-[680px] text-left text-sm">
             <thead className="border-b border-(--border) text-xs uppercase tracking-wide text-(--muted-foreground)">
               <tr>
@@ -133,7 +134,7 @@ export default function PromptsPage() {
             <tbody className="divide-y divide-(--border)">
               {query.data.items.map((prompt) => (
                 <tr key={prompt.id} className="hover:bg-(--surface-2)">
-                  <td className="p-4">
+                  <td data-label="Prompt" className="p-4">
                     <Link
                       href={`/prompts/${prompt.id}`}
                       className="font-semibold hover:text-(--primary) hover:underline"
@@ -173,22 +174,22 @@ export default function PromptsPage() {
                         ))}
                     </div>
                   </td>
-                  <td className="p-4">v{prompt.latest_version}</td>
-                  <td className="p-4">
+                  <td data-label="Latest" className="p-4 numeric">v{prompt.latest_version}</td>
+                  <td data-label="Staging" className="p-4"><TableMetadata label="Staging">
                     {prompt.labels.find((label) => label.label === "staging")
                       ?.version
                       ? `v${prompt.labels.find((label) => label.label === "staging")?.version}`
                       : "—"}
-                  </td>
-                  <td className="p-4">
+                  </TableMetadata></td>
+                  <td data-label="Production" className="p-4">
                     {prompt.labels.find((label) => label.label === "production")
                       ?.version
                       ? `v${prompt.labels.find((label) => label.label === "production")?.version}`
                       : "—"}
                   </td>
-                  <td className="p-4 text-(--muted-foreground)">
+                  <td data-label="Updated" className="p-4 text-(--muted-foreground)"><TableMetadata label="Updated">
                     {new Date(prompt.updated_at).toLocaleDateString()}
-                  </td>
+                  </TableMetadata></td>
                 </tr>
               ))}
             </tbody>

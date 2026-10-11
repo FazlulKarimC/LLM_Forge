@@ -114,6 +114,18 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("prompt workbench", () => {
+  it("disables promotion to a release already assigned to the selected snapshot", async () => {
+    wrap(<PromptWorkbench initial={{ ...detail, prompt: { ...detail.prompt, labels: [
+      { label: "staging", version_id: first.id, version: first.version, updated_at: first.created_at },
+    ] } }} />);
+    fireEvent.click(screen.getByRole("button", { name: "Releases" }));
+    const assigned = screen.getByRole("button", { name: "Assigned v1" });
+    expect(assigned).toBeDisabled();
+    fireEvent.click(assigned);
+    expect(mocks.promoteVersion).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Promote v1" })).toBeEnabled();
+  });
+
   it("creates a role-preserving chat version with configuration", async () => {
     mocks.createPrompt.mockResolvedValue(detail);
     wrap(<PromptWorkbench />);

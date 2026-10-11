@@ -255,6 +255,10 @@ export function PromptWorkbench({ initial }: { initial?: PromptDetail }) {
           ))}
         </nav>
       )}
+      {tab === "editor" && <nav className="prompt-jump" aria-label="Prompt workspace sections">
+        <a className="btn-secondary" href="#prompt-editor">Editor</a>
+        <a className="btn-secondary" href="#prompt-playground">Playground</a>
+      </nav>}
       <div
         className={
           tab === "editor"
@@ -266,7 +270,7 @@ export function PromptWorkbench({ initial }: { initial?: PromptDetail }) {
       >
         <div className="min-w-0 space-y-4">
           {tab === "editor" && (
-            <section className={`${panelClass} space-y-4`}>
+            <section id="prompt-editor" tabIndex={-1} className={`${panelClass} space-y-4`}>
               <h2 className="text-xl font-semibold">
                 {selected
                   ? `Editor · v${selected.version}${dirty ? " · unsaved changes" : ""}`
@@ -401,8 +405,9 @@ export function PromptWorkbench({ initial }: { initial?: PromptDetail }) {
                 <ErrorMessage message={configError} />
               </details>
               {prompt ? (
-                <label className="block text-sm">
-                  Version notes
+                <details className="advanced-section"><summary>Version notes</summary>
+                <label className="block text-sm pt-2">
+                  Notes for this version
                   <textarea
                     className={inputClass}
                     value={notes}
@@ -413,6 +418,7 @@ export function PromptWorkbench({ initial }: { initial?: PromptDetail }) {
                     placeholder="What changed in this version?"
                   />
                 </label>
+                </details>
               ) : null}
               {selected ? (
                 <details className="text-xs text-(--muted-foreground)">
@@ -500,7 +506,7 @@ export function PromptWorkbench({ initial }: { initial?: PromptDetail }) {
             </section>
           ) : null}
         </div>
-        <div className="min-w-0 space-y-4">
+        <div id="prompt-playground" tabIndex={-1} className="min-w-0 space-y-4">
           {tab === "editor" && (
             <PromptPlayground
               draft={draft}
@@ -579,10 +585,10 @@ export function PromptWorkbench({ initial }: { initial?: PromptDetail }) {
                   <div className="flex gap-2">
                     <button
                       className="btn-secondary"
-                      disabled={!!pending || prompt.archived || dirty}
+                      disabled={!!pending || prompt.archived || dirty || prompt.labels.some((release) => release.label === label && release.version === selected.version)}
                       onClick={() => setReleaseRequested(label)}
                     >
-                      Promote v{selected.version}
+                      {prompt.labels.some((release) => release.label === label && release.version === selected.version) ? `Assigned v${selected.version}` : `Promote v${selected.version}`}
                     </button>
                     {prompt.labels.some(
                       (release) => release.label === label,

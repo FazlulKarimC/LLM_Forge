@@ -78,9 +78,9 @@ function ComparePageInner() {
     <div className="page-stack">
       <PageHeader
         backHref="/experiments"
-        backLabel="Back to experiments"
+        backLabel="Back to benchmarks"
         eyebrow={<><GitCompareArrows className="size-3.5" /> Comparison workspace</>}
-        title="Compare experiments side by side"
+        title="Compare benchmarks side by side"
         description="Select two completed runs to compare accuracy, latency, cost, and statistical significance."
       />
 
@@ -89,7 +89,7 @@ function ComparePageInner() {
           <PanelHeader
             label="Selection"
             title="Choose two completed runs"
-            description="Pick one experiment for each slot to begin the comparison."
+            description="Pick one benchmark for each slot to begin the comparison."
             actions={effectiveSelectedIds.length ? <button type="button" className="btn-secondary" onClick={() => setSelectedIds([])}>Clear</button> : null}
           />
           <div className="panel-body">
@@ -101,21 +101,21 @@ function ComparePageInner() {
             ) : experiments.length === 0 ? (
               <EmptyState
                 icon={<FlaskConical className="size-5" />}
-                title="No completed experiments"
+                title="No completed benchmarks"
                 description="Finish at least two runs before opening the comparison workspace."
-                action={<Link href="/experiments/new" className="btn-primary">Create experiment</Link>}
+                action={<Link href="/experiments/new" className="btn-primary">Create benchmark</Link>}
               />
             ) : (
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
-                  <label className="field-label" htmlFor="slot-a">Experiment A</label>
+                  <label className="field-label" htmlFor="slot-a">Benchmark A</label>
                   <select
                     id="slot-a"
                     className="select-shell"
                     value={effectiveSelectedIds[0] ?? ""}
                     onChange={(e) => setSlotA(e.target.value)}
                   >
-                    <option value="">Select experiment…</option>
+                    <option value="">Select benchmark…</option>
                     {experiments.map((exp: ExperimentListItem) => (
                       <option key={exp.id} value={exp.id} disabled={exp.id === effectiveSelectedIds[1]}>
                         {exp.name} — {exp.reasoning_method.toUpperCase()} · {exp.model_name.split("/").pop()}
@@ -124,14 +124,14 @@ function ComparePageInner() {
                   </select>
                 </div>
                 <div className="space-y-2">
-                  <label className="field-label" htmlFor="slot-b">Experiment B</label>
+                  <label className="field-label" htmlFor="slot-b">Benchmark B</label>
                   <select
                     id="slot-b"
                     className="select-shell"
                     value={effectiveSelectedIds[1] ?? ""}
                     onChange={(e) => setSlotB(e.target.value)}
                   >
-                    <option value="">Select experiment…</option>
+                    <option value="">Select benchmark…</option>
                     {experiments.map((exp: ExperimentListItem) => (
                       <option key={exp.id} value={exp.id} disabled={exp.id === effectiveSelectedIds[0]}>
                         {exp.name} — {exp.reasoning_method.toUpperCase()} · {exp.model_name.split("/").pop()}
@@ -148,7 +148,7 @@ function ComparePageInner() {
       {effectiveSelectedIds.length < 2 || !effectiveSelectedIds[0] || !effectiveSelectedIds[1] ? (
         <EmptyState
           icon={<GitCompareArrows className="size-5" />}
-          title={effectiveSelectedIds.filter(Boolean).length === 1 ? "Select one more experiment" : "Select two experiments to compare"}
+          title={effectiveSelectedIds.filter(Boolean).length === 1 ? "Select one more benchmark" : "Select two benchmarks to compare"}
           description="Once two completed runs are selected, the metrics, significance, and disagreement analysis will render here."
         />
       ) : comparisonQuery.isLoading || statsQuery.isLoading ? (
@@ -190,7 +190,7 @@ function ComparePageInner() {
                       : "border-[color-mix(in_oklab,var(--accent)_34%,transparent)] bg-[color-mix(in_oklab,var(--accent)_10%,transparent)]"
                   )}
                 >
-                  <div className="section-label">Experiment {index === 0 ? "A" : "B"}</div>
+                  <div className="section-label">Benchmark {index === 0 ? "A" : "B"}</div>
                   <div className="mt-2 text-xl font-semibold tracking-[-0.04em]">{experiment?.name}</div>
                   <div className="mt-3 flex flex-wrap gap-2 text-xs text-(--muted-foreground)">
                     <span className="chip">{experiment?.reasoning_method.toUpperCase()}</span>

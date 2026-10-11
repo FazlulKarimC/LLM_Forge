@@ -2,10 +2,12 @@ export function PageControls({
   offset,
   next,
   change,
+  pageSize = 50,
 }: {
   offset: number;
   next: boolean;
   change: (value: number) => void;
+  pageSize?: number;
 }) {
   if (!offset && !next) return null;
   return (
@@ -14,7 +16,7 @@ export function PageControls({
         type="button"
         className="btn-secondary"
         disabled={!offset}
-        onClick={() => change(Math.max(0, offset - 50))}
+        onClick={() => change(Math.max(0, offset - pageSize))}
       >
         Previous
       </button>
@@ -22,7 +24,7 @@ export function PageControls({
         type="button"
         className="btn-secondary"
         disabled={!next}
-        onClick={() => change(offset + 50)}
+        onClick={() => change(offset + pageSize)}
       >
         Next
       </button>

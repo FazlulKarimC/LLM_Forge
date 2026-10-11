@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import Link from "next/link";
+import { useReducedMotion } from "framer-motion";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -215,8 +216,10 @@ export function AnimatedNumber({
     `${prefix}${value.toFixed(decimals)}${suffix}`,
   );
   const rafRef = useRef<number>(0);
+  const reducedMotion = useReducedMotion();
 
   useEffect(() => {
+    if (reducedMotion) return;
     const duration = 700;
     const startTime = performance.now();
     const from = 0;
@@ -240,9 +243,9 @@ export function AnimatedNumber({
 
     rafRef.current = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafRef.current);
-  }, [value, decimals, prefix, suffix]);
+  }, [value, decimals, prefix, suffix, reducedMotion]);
 
-  return <span className={cn("metric-value", className)}>{display}</span>;
+  return <span className={cn("metric-value", className)}>{reducedMotion ? `${prefix}${value.toFixed(decimals)}${suffix}` : display}</span>;
 }
 
 export function EmptyState({
@@ -291,22 +294,24 @@ export function MetricBar({
   className?: string;
 }) {
   const [width, setWidth] = useState(0);
+  const reducedMotion = useReducedMotion();
 
   useEffect(() => {
+    if (reducedMotion) return;
     // Trigger the CSS transition by setting width on next frame
     const raf = requestAnimationFrame(() => {
       setWidth(Math.max(0, Math.min(100, value)));
     });
     return () => cancelAnimationFrame(raf);
-  }, [value]);
+  }, [value, reducedMotion]);
 
   return (
     <div className={cn("h-2 rounded-full bg-(--muted)", className)}>
       <div
         className="h-full rounded-full bg-(--accent)"
         style={{
-          width: `${width}%`,
-          transition: "width 700ms cubic-bezier(0.16, 1, 0.3, 1)",
+          width: `${reducedMotion ? Math.max(0, Math.min(100, value)) : width}%`,
+          transition: reducedMotion ? "none" : "width 700ms cubic-bezier(0.16, 1, 0.3, 1)",
         }}
       />
     </div>

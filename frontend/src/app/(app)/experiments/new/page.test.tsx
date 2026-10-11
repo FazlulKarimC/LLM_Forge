@@ -70,14 +70,14 @@ describe("NewExperimentPage", () => {
 
     fireEvent.submit(container.querySelector("form")!);
 
-    expect(await screen.findByText("Experiment name is required.")).toBeInTheDocument();
+    expect(await screen.findByText("Benchmark name is required.")).toBeInTheDocument();
     expect(apiMocks.createExperiment).not.toHaveBeenCalled();
   });
 
   it("enforces backend-aligned cache bounds", async () => {
     const { container } = renderPage();
 
-    fireEvent.change(screen.getByLabelText(/experiment name/i), { target: { value: "Cache bounds" } });
+    fireEvent.change(screen.getByLabelText(/benchmark name/i), { target: { value: "Cache bounds" } });
     fireEvent.click(screen.getByLabelText(/enable caching/i));
     fireEvent.change(screen.getByLabelText(/cache size/i), { target: { value: "10" } });
     fireEvent.submit(container.querySelector("form")!);
@@ -103,7 +103,7 @@ describe("NewExperimentPage", () => {
 
     expect(screen.getByLabelText(/strict comparison mode/i)).toBeChecked();
 
-    fireEvent.change(screen.getByLabelText(/experiment name/i), {
+    fireEvent.change(screen.getByLabelText(/benchmark name/i), {
       target: { value: "Strict routing" },
     });
     fireEvent.submit(container.querySelector("form")!);

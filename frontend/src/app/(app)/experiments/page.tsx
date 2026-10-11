@@ -274,13 +274,13 @@ export default function ExperimentsPage() {
             ) : experiments.length === 0 ? (
               <EmptyState
                 icon={<Filter className="size-5" />}
-                title="No benchmarks match this slice"
-                description="Clear the filters or create a new benchmark to seed the workspace."
-                action={
+                title={statusFilter || methodFilter ? "No benchmarks match your filters" : "No benchmarks yet"}
+                description={statusFilter || methodFilter ? "Try different filters or clear them to view all benchmarks." : "Choose a model and dataset to create your first benchmark."}
+                action={statusFilter || methodFilter ? <button className="btn-secondary" onClick={() => { setStatusFilter(""); setMethodFilter(""); }}>Clear filters</button> : (
                   <Link href="/experiments/new" className="btn-primary">
                     Create benchmark
                   </Link>
-                }
+                )}
               />
             ) : (
               <div className="space-y-3">
