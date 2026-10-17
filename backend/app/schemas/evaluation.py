@@ -208,3 +208,31 @@ def revision_response(item):
         key: getattr(item, key)
         for key in ("id", "dataset_id", "version", "cases", "created_at")
     }
+
+
+class LocalEvaluationSubmission(StrictModel):
+    """Bounded content-free report; no dataset rows or provider execution."""
+    prompt_version_id: UUID
+    dataset_name: str = Field(min_length=1, max_length=200)
+    dataset_fingerprint: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
+    scoring_fingerprint: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
+    model: str = Field(min_length=1, max_length=255)
+    total: int = Field(ge=1, le=1_000_000, strict=True)
+    completed: int = Field(ge=0, strict=True)
+    passed: int = Field(ge=0, strict=True)
+    errors: int = Field(ge=0, strict=True)
+    status: Literal["completed", "failed", "cancelled"] = "completed"
+    metrics: dict[str, float] = Field(default_factory=dict, max_length=20)
+
+    @model_validator(mode="after")
+    def valid_report(self):
+        if not self.passed + self.errors <= self.completed <= self.total:
+            raise ValueError("Invalid evaluation counts")
+        if self.status == "completed" and self.completed != self.total:
+            raise ValueError("Completed reports must cover every case")
+        if any(not name.strip() or len(name) > 100 or not math.isfinite(value)
+               for name, value in self.metrics.items()):
+            raise ValueError("Metrics require bounded names and finite values")
+        if len(self.model_dump_json().encode()) > 64_000:
+            raise ValueError("Local reports are limited to 64 KB")
+        return self

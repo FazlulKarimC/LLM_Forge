@@ -80,7 +80,7 @@ class EvaluationRun(Base):
         UUID(as_uuid=True), ForeignKey("prompt_versions.id"), nullable=False
     )
     dataset_revision_id = Column(
-        UUID(as_uuid=True), ForeignKey("dataset_revisions.id"), nullable=False
+        UUID(as_uuid=True), ForeignKey("dataset_revisions.id"), nullable=True
     )
     source_run_id = Column(
         UUID(as_uuid=True), ForeignKey("evaluation_runs.id"), nullable=True, index=True

@@ -1214,9 +1214,16 @@
             "type": "string"
           },
           "dataset_revision_id": {
-            "format": "uuid",
-            "title": "Dataset Revision Id",
-            "type": "string"
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dataset Revision Id"
           },
           "error": {
             "anyOf": [
@@ -2810,6 +2817,91 @@
           "updated_at"
         ],
         "title": "LabelResponse",
+        "type": "object"
+      },
+      "LocalEvaluationSubmission": {
+        "additionalProperties": false,
+        "description": "Bounded content-free report; no dataset rows or provider execution.",
+        "properties": {
+          "completed": {
+            "minimum": 0.0,
+            "title": "Completed",
+            "type": "integer"
+          },
+          "dataset_fingerprint": {
+            "pattern": "^sha256:[a-f0-9]{64}$",
+            "title": "Dataset Fingerprint",
+            "type": "string"
+          },
+          "dataset_name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Dataset Name",
+            "type": "string"
+          },
+          "errors": {
+            "minimum": 0.0,
+            "title": "Errors",
+            "type": "integer"
+          },
+          "metrics": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "maxProperties": 20,
+            "title": "Metrics",
+            "type": "object"
+          },
+          "model": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Model",
+            "type": "string"
+          },
+          "passed": {
+            "minimum": 0.0,
+            "title": "Passed",
+            "type": "integer"
+          },
+          "prompt_version_id": {
+            "format": "uuid",
+            "title": "Prompt Version Id",
+            "type": "string"
+          },
+          "scoring_fingerprint": {
+            "pattern": "^sha256:[a-f0-9]{64}$",
+            "title": "Scoring Fingerprint",
+            "type": "string"
+          },
+          "status": {
+            "default": "completed",
+            "enum": [
+              "completed",
+              "failed",
+              "cancelled"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "total": {
+            "maximum": 1000000.0,
+            "minimum": 1.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "prompt_version_id",
+          "dataset_name",
+          "dataset_fingerprint",
+          "scoring_fingerprint",
+          "model",
+          "total",
+          "completed",
+          "passed",
+          "errors"
+        ],
+        "title": "LocalEvaluationSubmission",
         "type": "object"
       },
       "MetricsResponse": {
@@ -5360,6 +5452,7 @@
     },
     "/api/v1/datasets": {
       "get": {
+        "deprecated": true,
         "operationId": "list_datasets_api_v1_datasets_get",
         "parameters": [
           {
@@ -5446,6 +5539,7 @@
         ]
       },
       "post": {
+        "deprecated": true,
         "operationId": "create_dataset_api_v1_datasets_post",
         "parameters": [
           {
@@ -5511,6 +5605,7 @@
     },
     "/api/v1/datasets/import": {
       "post": {
+        "deprecated": true,
         "operationId": "parse_import_api_v1_datasets_import_post",
         "parameters": [
           {
@@ -5576,6 +5671,7 @@
     },
     "/api/v1/datasets/{dataset_id}": {
       "delete": {
+        "deprecated": true,
         "operationId": "archive_dataset_api_v1_datasets__dataset_id__delete",
         "parameters": [
           {
@@ -5632,6 +5728,7 @@
         ]
       },
       "get": {
+        "deprecated": true,
         "operationId": "get_dataset_api_v1_datasets__dataset_id__get",
         "parameters": [
           {
@@ -5695,6 +5792,7 @@
         ]
       },
       "patch": {
+        "deprecated": true,
         "operationId": "update_dataset_api_v1_datasets__dataset_id__patch",
         "parameters": [
           {
@@ -5770,6 +5868,7 @@
     },
     "/api/v1/datasets/{dataset_id}/revisions": {
       "get": {
+        "deprecated": true,
         "operationId": "revisions_api_v1_datasets__dataset_id__revisions_get",
         "parameters": [
           {
@@ -5860,6 +5959,7 @@
         ]
       },
       "post": {
+        "deprecated": true,
         "operationId": "add_revision_api_v1_datasets__dataset_id__revisions_post",
         "parameters": [
           {
@@ -5935,6 +6035,7 @@
     },
     "/api/v1/demo/setup": {
       "post": {
+        "deprecated": true,
         "operationId": "setup_demo_api_v1_demo_setup_post",
         "parameters": [
           {
@@ -6030,6 +6131,23 @@
                 }
               ],
               "title": "Dataset Revision Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "reference_run_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reference Run Id"
             }
           },
           {
@@ -10453,6 +10571,70 @@
           }
         ],
         "summary": "Evaluator Catalog",
+        "tags": [
+          "SDK evaluations"
+        ]
+      }
+    },
+    "/api/v1/sdk/evaluations/local-reports": {
+      "post": {
+        "operationId": "submit_local_report_api_v1_sdk_evaluations_local_reports_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LocalEvaluationSubmission"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationRunResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Submit Local Report",
         "tags": [
           "SDK evaluations"
         ]

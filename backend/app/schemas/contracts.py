@@ -150,7 +150,7 @@ class EvaluatorPreview(BaseModel):
 class EvaluationRunResponse(BaseModel):
     id: UUID
     prompt_version_id: UUID
-    dataset_revision_id: UUID
+    dataset_revision_id: UUID | None
     source_run_id: UUID | None
     config: dict[str, Any]
     status: Literal["queued", "running", "completed", "failed", "cancelled"]

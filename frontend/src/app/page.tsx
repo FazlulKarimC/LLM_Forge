@@ -18,10 +18,10 @@ const steps = [
   { title: "Improve", text: "Use disagreements and failed checks to guide your next change. Test it again before moving a prompt release label." },
 ];
 const faqs = [
-  { question: "Do I need to sign in?", answer: "The walkthrough and documentation are public. Sign in to open the workspace, select a project and save prompts, datasets or runs." },
-  { question: "Do I need a provider API key?", answer: "The Echo demo needs no model credits. Live prompt generation, judging and provider-backed model runs need the relevant provider credentials. Evaluation keys stay in memory and must be supplied again after an interruption." },
+  { question: "Do I need to sign in?", answer: "The walkthrough and documentation are public. Sign in to open the workspace, select a project and save prompts and track evaluation runs." },
+  { question: "Do I need a provider API key?", answer: "The Echo demo needs no model credits. Live playground and benchmark runs need the relevant provider credentials. For local SDK evaluations, your application owns model calls and credentials." },
   { question: "Are these real model results?", answer: "These are screenshots of the actual application with deliberately prepared examples. Seeded benchmark measurements and Echo demo checks illustrate the workflow; they do not measure real model quality or establish a winning model." },
-  { question: "How do I try the workspace demo?", answer: "Sign in, select a project and choose Create demo examples on Overview. This prepares an Echo demo prompt and a Greetings dataset. Follow the demo guide to run checks and compare results." },
+  { question: "How do I try the workspace demo?", answer: "Sign in, save an Echo prompt, then follow Evaluate with SDK to run local example cases without a model call. Upload the summary to inspect evaluation history." },
   { question: "Can I run it locally and use it in my application?", answer: "Yes. The repository documents local setup with Next.js, FastAPI, PostgreSQL and Clerk. The Python SDK fetches released prompts and submits evaluation results; CLI quality gates can check them in CI." },
 ];
 
@@ -71,7 +71,7 @@ export default function LandingPage() {
             <p>Fetch released prompts with the Python SDK, submit evaluation results and apply quality thresholds in CI.</p>
             <Link href="/docs#sdk" className="landing-text-link">Read the SDK guide <ArrowRight className="size-4" aria-hidden="true" /></Link></article>
           <article className="panel"><Check className="evidence-icon" aria-hidden="true" /><h3>Start without model credits</h3>
-            <p>The provider-free Echo demo makes prompt versions, dataset checks and comparison easy to explore.</p>
+            <p>The local Echo example demonstrates prompt versions and SDK-reported checks without a model call.</p>
             <Link href="/docs#demo" className="landing-text-link">Follow the demo <ArrowRight className="size-4" aria-hidden="true" /></Link></article>
         </div>
       </section>
@@ -80,7 +80,7 @@ export default function LandingPage() {
         <div className="faq-list">{faqs.map((faq) => <details key={faq.question}><summary>{faq.question}<span aria-hidden="true">+</span></summary><p>{faq.answer}</p></details>)}</div>
       </section>
       <section className="landing-final-cta" aria-labelledby="start-title"><div><p className="section-label">Your next experiment starts here</p>
-        <h2 id="start-title">Make the next change with confidence.</h2><p>Sign in to your workspace, then choose <strong>Create demo examples</strong> on Overview.</p></div>
+        <h2 id="start-title">Make the next change with confidence.</h2><p>Sign in to your workspace, save a prompt, then choose <strong>Evaluate with SDK</strong> in Evaluations.</p></div>
         <div className="flex flex-wrap gap-3"><Link href="/dashboard" className="btn-primary">Open workspace <ArrowRight className="size-4" aria-hidden="true" /></Link>
           <Link href="/docs#demo" className="btn-secondary">Read the demo guide</Link></div></section>
     </main>

@@ -1,10 +1,10 @@
 # LlmForge backend
 
-FastAPI API for authenticated projects, versioned prompts and datasets, evaluations, and the legacy reasoning-benchmark workflow.
+FastAPI API for authenticated projects, versioned prompts, local SDK evaluation summaries and reasoning benchmarks. Legacy hosted datasets and evaluation history remain readable; dataset writes are disabled by default. Apply migration p9q0r1s2t3u4 before enabling local reporting.
 
 The prompt workflow saves immutable versions, runs fixed cases with assertions or an optional judge, and exposes released prompts to the Python SDK. The experiment workflow runs reasoning methods through configured providers and records per-sample results, routing, cost, metrics, and regression checks.
 
-Prompt versions support text or role-preserving chat content and JSON configuration. Labels include automatic latest plus mutable custom labels; tags and folder paths organize the catalog. Project keys read by default, with optional prompts:write for creation and label movement. See the [prompt-management comparison](../docs/PROMPT_MANAGEMENT_COMPARISON.md) for contracts and deliberate scope choices.
+Prompt versions support text or role-preserving chat content and JSON configuration. Labels include automatic latest plus mutable custom labels; tags and folder paths organize the catalog. Project keys read by default, with optional prompts:write for creation and label movement. See the [prompt contracts](../docs/ARCHITECTURE.md#prompt-lifecycle) for selector behavior, capabilities and scope.
 
 ---
 
@@ -31,7 +31,7 @@ Provides epsilon-greedy auto-routing across `HF Inference API`, `OpenRouter`, `G
 Each candidate run is passed through a comprehensive `GraderEngine` employing deterministic bounds checks such as specific token/latency budgets, explicit tool dependencies, or hard F1-score floors. The system isolates and flags regressions against pinned baseline experiments to ensure deployment safety.
 
 ### Reliability & Error Tracking
-Experiment and job metadata is stored in PostgreSQL. Inline execution is best-effort: a backend restart can leave a benchmark queued or running. Startup does not change a run another process might own. Use **Stop run** on its detail page, or `POST /api/v1/experiments/{id}/interrupt`, to mark it failed and keep partial results, then rerun it. Dispatched jobs include an attempt number so an older queued job cannot take over a rerun; pre-upgrade RQ jobs without an attempt number are ignored and may need **Stop run**. A running worker checks for interruption between examples; an in-flight provider call may finish. Final metrics and completion are committed under the same experiment lock. Evaluation runs are marked failed when their next authorized read finds 120 seconds without progress. RAG experiments preflight collections before running.
+Experiment and job metadata is stored in PostgreSQL. Inline execution is best-effort: a backend restart can leave a benchmark queued or running. Startup does not change a run another process might own. Use **Stop run** on its detail page, or `POST /api/v1/experiments/{id}/interrupt`, to mark it failed and keep partial results, then rerun it. Dispatched jobs include an attempt number so an older queued job cannot take over a rerun; pre-upgrade RQ jobs without an attempt number are ignored and may need **Stop run**. A running worker checks for interruption between examples; an in-flight provider call may finish. Final metrics and completion are committed under the same experiment lock. Evaluation execution instead uses lifecycle-managed ownership leases, durable checkpoints and explicit live recovery; see the [architecture guide](../docs/ARCHITECTURE.md). RAG experiments preflight collections before running.
 
 ---
 
@@ -143,4 +143,4 @@ The worker is optional. Without it, experiments run inline via FastAPI `Backgrou
 
 ## Tests and CI
 
-From the repository root, install `backend/requirements-dev.txt` and the SDK test extra, then run `python -m pytest backend/tests sdk/python/tests -q` with mock inference and a non-production `DATABASE_URL`. The isolated API fixtures use SQLite; the [testing guide](../docs/TESTING.md) has the exact commands. GitHub Actions additionally applies migrations to PostgreSQL and runs a real HTTP/SDK smoke test. The local provider-free demo is documented in the [evaluation walkthrough](../docs/PHASE_3_EVALUATIONS.md).
+From the repository root, install `backend/requirements-dev.txt` and the SDK test extra, then run `python -m pytest backend/tests sdk/python/tests -q` with mock inference and a non-production `DATABASE_URL`. The isolated API fixtures use SQLite; the [testing guide](../docs/DEVELOPMENT.md#testing) has the exact commands. GitHub Actions additionally applies migrations to PostgreSQL and runs a real HTTP/SDK smoke test. The local provider-free demo is documented in the [evaluation walkthrough](../docs/ARCHITECTURE.md#local-evaluations-and-legacy-compatibility).

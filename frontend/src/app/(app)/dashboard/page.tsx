@@ -1,19 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import {
-  ArrowRight,
-  Database,
   FileText,
-  FlaskConical,
   RefreshCcw,
 } from "lucide-react";
-import { toast } from "sonner";
 import {
-  createDemoExamples,
-  listDatasets,
   listEvaluations,
   isActive,
 } from "@/lib/evaluation-api";
@@ -22,15 +15,9 @@ import { getReadinessStatus } from "@/lib/api";
 import { PageHeader, StatusPill } from "@/components/ui/primitives";
 
 export default function DashboardPage() {
-  const router = useRouter();
-  const cache = useQueryClient();
   const prompts = useQuery({
     queryKey: ["prompt-library", "", false, 0],
     queryFn: ({ signal }) => listPrompts("", false, 0, signal),
-  });
-  const datasets = useQuery({
-    queryKey: ["datasets", false, 0],
-    queryFn: ({ signal }) => listDatasets(false, 0, signal),
   });
   const runs = useQuery({
     queryKey: ["evaluations", 0],
@@ -44,30 +31,12 @@ export default function DashboardPage() {
     staleTime: 5 * 60_000,
     retry: 1,
   });
-  const demo = useMutation({
-    mutationFn: createDemoExamples,
-    onSuccess: (examples) => {
-      cache.invalidateQueries({ queryKey: ["prompt-library"] });
-      cache.invalidateQueries({ queryKey: ["datasets"] });
-      const params = new URLSearchParams({
-        prompt: examples.prompt_id,
-        version: examples.prompt_version_id,
-        dataset: examples.dataset_id,
-        revision: examples.dataset_revision_id,
-        view: "new",
-      });
-      router.push(`/evaluations?${params}`);
-    },
-    onError: (error: Error) =>
-      toast.error(`Could not prepare demo: ${error.message}`),
-  });
-  const loading = prompts.isLoading || datasets.isLoading || runs.isLoading;
+  const loading = prompts.isLoading || runs.isLoading;
   const empty =
     !loading &&
     prompts.data?.total === 0 &&
-    datasets.data?.total === 0 &&
     runs.data?.total === 0;
-  const error = [prompts.error, datasets.error, runs.error].find(
+  const error = [prompts.error, runs.error].find(
     (item) => item instanceof Error,
   );
 
@@ -93,7 +62,6 @@ export default function DashboardPage() {
             className="btn-secondary"
             onClick={() => {
               prompts.refetch();
-              datasets.refetch();
               runs.refetch();
             }}
           >
@@ -114,100 +82,11 @@ export default function DashboardPage() {
           </button>
         </div>
       )}
-      {empty ? (
-        <section className="panel p-4">
-          <div className="section-label">First run</div>
-          <h2 className="mt-1 text-lg font-semibold">
-            See a prompt regression in minutes
-          </h2>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-(--muted-foreground)">
-            Create an Echo demo prompt and a two-case Greetings dataset in this
-            project. The demo echoes the compiled prompt, so it needs no model
-            credits and does not measure model quality.
-          </p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            <button
-              className="btn-primary"
-              disabled={demo.isPending}
-              onClick={() => demo.mutate()}
-            >
-              {demo.isPending ? "Preparing…" : "Create demo examples"}
-              <ArrowRight className="size-4" />
-            </button>
-            <Link className="btn-secondary" href="/prompts/new">
-              Start with my own prompt
-            </Link>
-          </div>
-        </section>
-      ) : (
-        <section className="panel flex flex-wrap items-center justify-between gap-3 p-4">
-          <div>
-            <h2 className="font-semibold">Continue testing</h2>
-            <p className="mt-1 text-sm text-(--muted-foreground)">
-              Use a saved prompt version and dataset revision for a reproducible
-              evaluation.
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Link href="/evaluations?view=new" className="btn-primary">
-              New evaluation <ArrowRight className="size-4" />
-            </Link>
-            <button
-              className="btn-secondary"
-              disabled={demo.isPending}
-              onClick={() => demo.mutate()}
-            >
-              {demo.isPending ? "Preparing…" : "Create demo examples"}
-            </button>
-          </div>
-        </section>
-      )}
-
-      <section
-        className="grid gap-3 sm:grid-cols-3"
-        aria-label="Project inventory"
-      >
-        {[
-          {
-            label: "Prompts",
-            value: prompts.data?.total,
-            href: "/prompts",
-            icon: FileText,
-          },
-          {
-            label: "Datasets",
-            value: datasets.data?.total,
-            href: "/datasets",
-            icon: Database,
-          },
-          {
-            label: "Evaluation runs",
-            value: runs.data?.total,
-            href: "/evaluations",
-            icon: FlaskConical,
-          },
-        ].map((item) => {
-          const Icon = item.icon;
-          return (
-            <Link
-              key={item.label}
-              href={item.href}
-              className="panel flex items-center justify-between p-3 transition-colors hover:border-(--border-strong)"
-            >
-              <div>
-                <p className="text-sm text-(--muted-foreground)">
-                  {item.label}
-                </p>
-                <p className="mt-1 text-2xl font-semibold tabular-nums">
-                  {item.value ?? (loading ? "…" : "—")}
-                </p>
-              </div>
-              <Icon className="size-5 text-(--primary)" />
-            </Link>
-          );
-        })}
-      </section>
-
+      {empty && <section className="panel p-5 space-y-3">
+        <h2 className="font-semibold">Start with a saved prompt</h2>
+        <p className="text-sm text-(--muted-foreground)">Keep your test cases and model execution local. Save a prompt, evaluate with the Python SDK and upload a summary here.</p>
+        <Link className="btn-secondary" href="/evaluations?view=sdk">Evaluate with SDK</Link>
+      </section>}
       <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
         <section className="panel overflow-hidden">
           <div className="flex items-center justify-between border-b border-(--border) px-4 py-3">
@@ -232,7 +111,7 @@ export default function DashboardPage() {
               <Link className="underline" href="/evaluations?view=new">
                 Start an evaluation
               </Link>{" "}
-              after saving a prompt and dataset.
+              after evaluating a saved prompt with the SDK.
             </div>
           ) : (
             <div className="divide-y divide-(--border)">
@@ -245,7 +124,7 @@ export default function DashboardPage() {
                   <div className="min-w-0">
                     <p className="truncate text-sm font-semibold">
                       {run.config.prompt_name} v{run.config.prompt_version} ·{" "}
-                      {run.config.dataset_name} v{run.config.dataset_version}
+                      {run.config.dataset_name}{run.config.source === "sdk_local" ? " · Local" : " · Legacy hosted"}
                     </p>
                     <p className="mt-1 text-xs text-(--muted-foreground)">
                       {new Date(run.created_at).toLocaleString()} ·{" "}

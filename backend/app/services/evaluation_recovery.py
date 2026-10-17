@@ -14,6 +14,8 @@ from app.services.evaluation_runner import runner, new_execution, request_from_c
 
 
 async def recovery(db, run):
+    if run.config.get("source") == "sdk_local":
+        return {"available": False, "remaining_calls": {"generation": 0, "judging": 0, "total": 0}, "failure_code": None, "attempts": []}
     attempts = (
         await db.scalars(
             select(EvaluationExecution)
@@ -225,9 +227,14 @@ async def cases(db, run_id, offset, limit, filter, reference_id=None):
     from app.repositories.evaluation_reads import case_rows
 
     run = await find_run(db, run_id)
+    if run.config.get("source") == "sdk_local":
+        if reference_id or filter != "all":
+            raise HTTPException(409, "Per-case comparisons require uploaded case results; this is a summary-only report")
+        return {"items": [], "total": 0, "offset": offset, "limit": limit}
     if reference_id:
         reference = await find_run(db, reference_id)
-        if reference.dataset_revision_id != run.dataset_revision_id:
+        from app.services.local_evaluations import compatible
+        if not compatible(run, reference):
             raise HTTPException(422, "Compare runs using the same dataset revision")
     elif filter in ("improved", "regressed", "unchanged", "comparison_errors"):
         raise HTTPException(422, "Select a reference run for comparison filters")
@@ -242,7 +249,9 @@ async def cases(db, run_id, offset, limit, filter, reference_id=None):
 
 
 async def case_detail(db, run_id, case_index):
-    await find_run(db, run_id)
+    run = await find_run(db, run_id)
+    if run.config.get("source") == "sdk_local":
+        raise HTTPException(404, "Case content is retained in the local SDK report")
     result = await db.scalar(
         select(EvaluationResult).where(
             EvaluationResult.run_id == run_id, EvaluationResult.case_index == case_index

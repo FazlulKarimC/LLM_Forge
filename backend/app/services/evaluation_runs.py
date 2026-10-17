@@ -173,6 +173,7 @@ async def list_runs(
     dataset_revision_id=None,
     search="",
     status=None,
+    reference_run_id=None,
 ):
     # Reconcile abandoned runs only in this authorized project.
     active = (
@@ -186,6 +187,16 @@ async def list_runs(
         await expire_run(run, db)
     await db.flush()
     query = select(EvaluationRun)
+    if reference_run_id:
+        reference = await find_run(db, reference_run_id)
+        if reference.config.get("source") == "sdk_local":
+            query = query.where(
+                EvaluationRun.config["source"].as_string() == "sdk_local",
+                EvaluationRun.config["dataset_fingerprint"].as_string() == reference.config["dataset_fingerprint"],
+                EvaluationRun.config["scoring_fingerprint"].as_string() == reference.config["scoring_fingerprint"],
+            )
+        else:
+            query = query.where(EvaluationRun.dataset_revision_id == reference.dataset_revision_id)
     if dataset_revision_id:
         query = query.where(EvaluationRun.dataset_revision_id == dataset_revision_id)
     if status:
@@ -366,6 +377,8 @@ async def dispatch_scoring(
             409, "Two evaluations are already active; wait or cancel one"
         )
     source = await find_run(db, source_id)
+    if source.config.get("source") == "sdk_local":
+        raise HTTPException(409, "This report has no hosted outputs; score again locally with the SDK")
     if source.status != "completed" or source.completed != source.total:
         raise HTTPException(
             409, "Select a completed generation run before scoring its outputs"

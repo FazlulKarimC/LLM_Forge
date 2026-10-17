@@ -22,3 +22,5 @@ application API or project permissions are used to display them.
 Desktop images are 1153 × 783 pixels. Mobile dimensions are recorded beside the
 preview metadata so the browser can reserve the correct aspect ratio. Recapture
 these assets if the product layout changes; retain visible example disclosures.
+
+Design and responsive behavior follow the single [frontend design guide](../../../DESIGN_SYSTEM.md); this file records asset provenance only.

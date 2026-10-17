@@ -4,10 +4,10 @@ Next.js 16 and React 19 interface for a personal prompt-development and reasonin
 
 ## Main workflows
 
-- `/dashboard` shows project activity and backend readiness. **Create demo examples** creates a provider-free prompt and dataset without replacing existing content.
+- `/dashboard` shows project activity and backend readiness. New evaluations use local SDK cases and summary uploads.
 - `/prompts` and `/prompts/[id]` manage immutable versions, playground calls, release labels, and project API keys.
-- `/datasets` edits versioned cases; `/evaluations` runs and compares assertions or optional rubric-judged results.
-- `/experiments`, `/experiments/new`, `/experiments/[id]`, and `/experiments/compare` cover the legacy benchmark, result inspection, export, and statistical comparison. The detail page has **Stop run** for a stranded queued/running attempt; partial results remain available.
+- `/evaluations` provides local SDK instructions, summary history and compatible reference reports. Existing hosted results retain case inspection and recovery. `/datasets` redirects to the SDK guide.
+- `/experiments`, `/experiments/new`, `/experiments/[id]`, and `/experiments/compare` cover reasoning benchmarks,, result inspection, export, and statistical comparison. The detail page has **Stop run** for a stranded queued/running attempt; partial results remain available.
 - `/settings` manages organizations and projects. `/docs` is a public walkthrough.
 
 ## Local setup
@@ -20,14 +20,14 @@ NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_REPLACE_ME
 CLERK_SECRET_KEY=sk_test_REPLACE_ME
 ```
 
-The frontend and backend must use the same Clerk application. Set the backend's `CLERK_ISSUER_URL` and `CLERK_AUTHORIZED_PARTIES` as described in [workspace setup](../docs/PHASE_1_SETUP.md). The API URL must include `/api/v1`; without it, a production build's browser requests would fall back to localhost. Configure `NEXT_PUBLIC_SENTRY_DSN` only if you want Sentry reporting.
+The frontend and backend must use the same Clerk application. Set the backend's `CLERK_ISSUER_URL` and `CLERK_AUTHORIZED_PARTIES` as described in [workspace setup](../docs/DEVELOPMENT.md#authentication). The API URL must include `/api/v1`; without it, a production build's browser requests would fall back to localhost. Configure `NEXT_PUBLIC_SENTRY_DSN` only if you want Sentry reporting.
 
 ```bash
 npm ci
 npm run dev
 ```
 
-Open <http://localhost:3000>, sign in, and select a project. The app shows an auth-setup screen if Clerk keys are absent. The dashboard's demo setup and the [evaluation walkthrough](../docs/PHASE_3_EVALUATIONS.md) provide a model-free path to exercise the product.
+Open <http://localhost:3000>, sign in, and select a project. The app shows an auth-setup screen if Clerk keys are absent. The [local SDK walkthrough](../docs/DEVELOPMENT.md#local-sdk-evaluations) provides a model-free path to exercise the product.
 
 ## Checks and production build
 

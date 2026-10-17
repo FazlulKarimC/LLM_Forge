@@ -36,7 +36,7 @@ async def main():
                     await connection.scalar(
                         text(f'SELECT version_num FROM "{schema}".alembic_version')
                     )
-                    == "o8p9q0r1s2t3"
+                    == "p9q0r1s2t3u4"
                 )
                 assert (
                     await connection.scalar(

@@ -50,6 +50,7 @@ async def list_evaluations(
     offset: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=100),
     dataset_revision_id: UUID | None = None,
+    reference_run_id: UUID | None = None,
     search: str = Query("", max_length=255),
     status: str | None = Query(
         None, pattern="^(queued|running|completed|failed|cancelled)$"
@@ -57,7 +58,7 @@ async def list_evaluations(
     db: AsyncSession = Depends(get_db),
 ):
     return await evaluation_runs.list_runs(
-        db, offset, limit, dataset_revision_id, search, status
+        db, offset, limit, dataset_revision_id, search, status, reference_run_id
     )
 
 

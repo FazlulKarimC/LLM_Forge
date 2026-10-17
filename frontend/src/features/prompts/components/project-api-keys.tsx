@@ -71,7 +71,7 @@ export function ProjectAPIKeys() {
         Keys read prompts in this project by default. Enable only the extra
         capabilities your application needs. Evaluation access runs checks;
         prompt write access creates versions and moves release labels. Keys
-        cannot manage keys or edit datasets.
+        cannot manage project keys. Local evaluation reports contain summary metadata only.
       </p>
       <label className="flex gap-2 text-sm">
         <input

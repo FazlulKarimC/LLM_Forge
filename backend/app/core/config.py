@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     VERSION: str = "0.1.0"
     API_V1_PREFIX: str = "/api/v1"
     ENVIRONMENT: str = "development"
+    LEGACY_DATASET_WRITES: bool = False
     DEBUG: bool = False # Default to False for production readiness
     # Non-secret release metadata only. Normally embedded by the build workflow.
     BUILD_COMMIT: str = ""

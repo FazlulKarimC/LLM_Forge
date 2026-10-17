@@ -16,12 +16,12 @@ export const productPreviews = [
     detail: "Develop text or chat prompts, test candidates in the playground, and retain the version history behind each release.",
   },
   {
-    id: "evaluations", label: "Evaluations", mobileWidth: 350, mobileHeight: 391, title: "See the case behind the score.",
-    description: "Evaluate a saved prompt against a fixed dataset revision. Inspect outputs and checks, compare compatible runs, and improve the cases that fail.",
-    caption: "A provider-free Echo demo with saved checks. It demonstrates the evaluation workflow, not real model quality.",
-    alt: "LLMForge provider-free evaluation example with failed checks and candidate output",
+    id: "evaluations", label: "Evaluations", mobileWidth: 350, mobileHeight: 391, title: "Track evaluations from your application.",
+    description: "Run local cases and evaluator callbacks with the SDK, then compare compatible summary reports. Full inputs, outputs and checks stay in your application.",
+    caption: "Legacy hosted Echo history shown here remains readable. New evaluations upload summaries from the SDK; this illustration does not measure model quality.",
+    alt: "Legacy LLMForge evaluation history with saved checks and candidate output",
     benefit: "Catch failures before the next release.",
-    detail: "Use assertions or versioned evaluators, inspect score coverage and reasons, and apply quality thresholds through SDK and CI gates.",
+    detail: "Keep local cases and full reports in your application, track summary counts here, and apply quality thresholds through SDK and CI gates.",
   },
 ] as const;
 export type PreviewId = typeof productPreviews[number]["id"];

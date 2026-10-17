@@ -33,7 +33,7 @@ describe("public landing walkthrough", () => {
     render(<ThemeProvider><LandingPage /></ThemeProvider>);
     expect(screen.getByRole("link", { name: "View walkthrough" })).toHaveAttribute("href", "#walkthrough");
     expect(screen.getByRole("link", { name: "View GitHub" })).toHaveAttribute("href", "https://github.com/FazlulKarimC/LLM_Forge");
-    expect(screen.getByText(/Sign in to your workspace/)).toHaveTextContent("Create demo examples");
+    expect(screen.getByText(/Sign in to your workspace/)).toHaveTextContent("Evaluate with SDK");
     expect(screen.getByRole("tabpanel")).toHaveTextContent("not claims about model performance");
   });
 

@@ -26,11 +26,14 @@ type RunWire = components["schemas"]["EvaluationRunResponse"];
 export type EvaluationRun = Omit<RunWire, "config" | "source_run_id" | "updated_at"> & {
   id: string;
   prompt_version_id: string;
-  dataset_revision_id: string;
+  dataset_revision_id: string | null;
   source_run_id?: string | null;
   config: {
     provider: Provider | "external";
-    source?: "sdk_submission" | "score_only";
+    source?: "sdk_submission" | "score_only" | "sdk_local";
+    dataset_fingerprint?: string;
+    scoring_fingerprint?: string;
+    reporting?: "summary";
     evaluators?: EvaluatorSnapshot[];
     call_budget?: {
       generation: number;
@@ -43,7 +46,7 @@ export type EvaluationRun = Omit<RunWire, "config" | "source_run_id" | "updated_
     prompt_name: string;
     prompt_version: number;
     dataset_name: string;
-    dataset_version: number;
+    dataset_version: number | null;
     is_mock: boolean;
     judge?: Omit<Judge, "api_key">;
     assertions: Assertion[];
@@ -117,6 +120,7 @@ export const listEvaluations = (
   signal?: AbortSignal,
   filters: {
     dataset_revision_id?: string;
+    reference_run_id?: string;
     search?: string;
     status?: string;
   } = {},

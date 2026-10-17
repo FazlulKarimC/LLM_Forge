@@ -1,4 +1,2 @@
-import { DatasetsWorkbench } from "@/features/datasets/components/datasets-workbench";
-export default function DatasetsPage() {
-  return <DatasetsWorkbench />;
-}
+import { redirect } from "next/navigation";
+export default function DatasetsPage() { redirect("/evaluations?view=sdk"); }

@@ -50,10 +50,16 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Datasets */
+        /**
+         * List Datasets
+         * @deprecated
+         */
         get: operations["list_datasets_api_v1_datasets_get"];
         put?: never;
-        /** Create Dataset */
+        /**
+         * Create Dataset
+         * @deprecated
+         */
         post: operations["create_dataset_api_v1_datasets_post"];
         delete?: never;
         options?: never;
@@ -70,7 +76,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Parse Import */
+        /**
+         * Parse Import
+         * @deprecated
+         */
         post: operations["parse_import_api_v1_datasets_import_post"];
         delete?: never;
         options?: never;
@@ -85,15 +94,24 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Dataset */
+        /**
+         * Get Dataset
+         * @deprecated
+         */
         get: operations["get_dataset_api_v1_datasets__dataset_id__get"];
         put?: never;
         post?: never;
-        /** Archive Dataset */
+        /**
+         * Archive Dataset
+         * @deprecated
+         */
         delete: operations["archive_dataset_api_v1_datasets__dataset_id__delete"];
         options?: never;
         head?: never;
-        /** Update Dataset */
+        /**
+         * Update Dataset
+         * @deprecated
+         */
         patch: operations["update_dataset_api_v1_datasets__dataset_id__patch"];
         trace?: never;
     };
@@ -104,10 +122,16 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Revisions */
+        /**
+         * Revisions
+         * @deprecated
+         */
         get: operations["revisions_api_v1_datasets__dataset_id__revisions_get"];
         put?: never;
-        /** Add Revision */
+        /**
+         * Add Revision
+         * @deprecated
+         */
         post: operations["add_revision_api_v1_datasets__dataset_id__revisions_post"];
         delete?: never;
         options?: never;
@@ -124,7 +148,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Setup Demo */
+        /**
+         * Setup Demo
+         * @deprecated
+         */
         post: operations["setup_demo_api_v1_demo_setup_post"];
         delete?: never;
         options?: never;
@@ -997,6 +1024,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/sdk/evaluations/local-reports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Submit Local Report */
+        post: operations["submit_local_report_api_v1_sdk_evaluations_local_reports_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/sdk/evaluations/runs": {
         parameters: {
             query?: never;
@@ -1784,11 +1828,8 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
-            /**
-             * Dataset Revision Id
-             * Format: uuid
-             */
-            dataset_revision_id: string;
+            /** Dataset Revision Id */
+            dataset_revision_id: string | null;
             /** Error */
             error: string | null;
             /** Errors */
@@ -2458,6 +2499,43 @@ export interface components {
              * Format: uuid
              */
             version_id: string;
+        };
+        /**
+         * LocalEvaluationSubmission
+         * @description Bounded content-free report; no dataset rows or provider execution.
+         */
+        LocalEvaluationSubmission: {
+            /** Completed */
+            completed: number;
+            /** Dataset Fingerprint */
+            dataset_fingerprint: string;
+            /** Dataset Name */
+            dataset_name: string;
+            /** Errors */
+            errors: number;
+            /** Metrics */
+            metrics?: {
+                [key: string]: number;
+            };
+            /** Model */
+            model: string;
+            /** Passed */
+            passed: number;
+            /**
+             * Prompt Version Id
+             * Format: uuid
+             */
+            prompt_version_id: string;
+            /** Scoring Fingerprint */
+            scoring_fingerprint: string;
+            /**
+             * Status
+             * @default completed
+             * @enum {string}
+             */
+            status: "completed" | "failed" | "cancelled";
+            /** Total */
+            total: number;
         };
         /**
          * MetricsResponse
@@ -3798,6 +3876,7 @@ export interface operations {
                 offset?: number;
                 limit?: number;
                 dataset_revision_id?: string | null;
+                reference_run_id?: string | null;
                 search?: string;
                 status?: string | null;
             };
@@ -5824,6 +5903,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EvaluatorPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    submit_local_report_api_v1_sdk_evaluations_local_reports_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LocalEvaluationSubmission"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvaluationRunResponse"];
                 };
             };
             /** @description Validation Error */

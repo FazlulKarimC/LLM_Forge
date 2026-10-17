@@ -15,6 +15,7 @@ from app.models.evaluation import Dataset, DatasetRevision
 from app.schemas.evaluation import (
     EvaluationCreate,
     EvaluationSubmission,
+    LocalEvaluationSubmission,
     dataset_response,
     revision_response,
 )
@@ -211,3 +212,15 @@ async def resume_run(
     return await evaluation_recovery.resume(
         run_id, data, project_id, db, token, request.state.request_id
     )
+
+
+@router.post("/local-reports", status_code=201, response_model=EvaluationRunResponse)
+async def submit_local_report(
+    data: LocalEvaluationSubmission,
+    idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
+    project_id: UUID = Depends(get_evaluation_project),
+    db: AsyncSession = Depends(get_db),
+    key: ProjectAPIKey = Depends(get_sdk_key),
+):
+    from app.services.local_evaluations import submit_local
+    return await submit_local(data, db, (str(key.id), "local-report", idempotency_key) if idempotency_key is not None else None)

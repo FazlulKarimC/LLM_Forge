@@ -18,7 +18,7 @@ export function RunSummary({ detail }: { detail: EvaluationDetail }) {
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="font-semibold">
           {run.config.prompt_name} v{run.config.prompt_version} ·{" "}
-          {run.config.dataset_name} v{run.config.dataset_version}
+          {run.config.dataset_name}{run.config.dataset_version == null ? " · Local dataset" : " v" + run.config.dataset_version}
         </h2>
         <span className="text-sm text-(--muted-foreground)">{run.status}</span>
       </div>
@@ -40,7 +40,9 @@ export function RunSummary({ detail }: { detail: EvaluationDetail }) {
       </div>
       <p className="text-xs text-(--muted-foreground)">
         {run.passed} passed · {run.config.provider} / {run.config.model} ·{" "}
-        {run.config.source === "score_only"
+        {run.config.source === "sdk_local"
+          ? "SDK-reported summary; inputs, outputs and provider keys stay local"
+          : run.config.source === "score_only"
           ? "Saved outputs reused; no generation calls"
           : run.config.source === "sdk_submission"
             ? "Outputs supplied by your application"

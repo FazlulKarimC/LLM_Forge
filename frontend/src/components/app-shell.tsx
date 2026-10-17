@@ -26,7 +26,7 @@ import { Keycap } from "@/components/ui/primitives";
 import { cn } from "@/lib/utils";
 import { UserButton } from "@clerk/nextjs";
 import { WorkspaceSwitcher } from "@/components/workspace-provider";
-import { FileText, Database, Settings } from "lucide-react";
+import { FileText, Settings } from "lucide-react";
 import { Brand } from "@/components/brand";
 import { ThemeToggle } from "@/components/theme-provider";
 type NavItem = {
@@ -50,13 +50,6 @@ const navItems: NavItem[] = [
     icon: FileText,
     group: "Build",
     match: (p) => p.startsWith("/prompts"),
-  },
-  {
-    href: "/datasets",
-    label: "Datasets",
-    icon: Database,
-    group: "Build",
-    match: (p) => p.startsWith("/datasets"),
   },
   {
     href: "/evaluations",
@@ -190,7 +183,6 @@ function CommandPalette({
       { label: "Open overview", action: () => router.push("/dashboard") },
       { label: "Browse prompts", action: () => router.push("/prompts") },
       { label: "Create prompt", action: () => router.push("/prompts/new") },
-      { label: "Browse datasets", action: () => router.push("/datasets") },
       { label: "Open evaluations", action: () => router.push("/evaluations") },
       { label: "Browse benchmarks", action: () => router.push("/experiments") },
       {

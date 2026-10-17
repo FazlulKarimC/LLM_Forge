@@ -459,3 +459,28 @@ class LLMForge:
         return self._json(
             self._request("POST", "sdk/evaluations/submissions", body=body, headers={"Idempotency-Key": idempotency_key} if idempotency_key else None)
         )["id"]
+
+
+    def submit_local_evaluation(
+        self, prompt_version_id: str, *, dataset_name: str,
+        dataset_fingerprint: str, scoring_fingerprint: str, model: str,
+        total: int, completed: int, passed: int, errors: int,
+        status: str = "completed", metrics: dict[str, float] | None = None,
+        idempotency_key: str | None = None,
+    ) -> dict:
+        """Upload a content-free local report; never creates a hosted dataset."""
+        body = {
+            "prompt_version_id": prompt_version_id, "dataset_name": dataset_name,
+            "dataset_fingerprint": dataset_fingerprint, "scoring_fingerprint": scoring_fingerprint,
+            "model": model, "total": total, "completed": completed,
+            "passed": passed, "errors": errors, "status": status, "metrics": metrics or {},
+        }
+        return self._json(self._request(
+            "POST", "sdk/evaluations/local-reports", body=body,
+            headers={"Idempotency-Key": idempotency_key} if idempotency_key else None,
+        ))
+
+    def evaluate_local(self, prompt, cases, **kwargs):
+        """Run task/evaluator callbacks locally and optionally upload the summary."""
+        from .local import evaluate_local
+        return evaluate_local(self, prompt, cases, **kwargs)

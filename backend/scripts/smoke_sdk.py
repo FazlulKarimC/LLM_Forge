@@ -29,11 +29,14 @@ def verify_client(read_key, evaluation_key):
             raise AssertionError("Read-only key allowed dataset reads")
     with LLMForge(api_key=evaluation_key) as forge:
         prompt = forge.get_prompt("SDK smoke", version=1)
-        dataset = forge.get_dataset("SDK cases", version=1)
-        results = [{"case_index": i, "output": prompt.compile(case["inputs"]), "checks": [{"name": "correctness", "passed": True}]} for i, case in enumerate(dataset["revision"]["cases"])]
-        run_id = forge.submit_evaluation(prompt.id, dataset["revision"]["id"], model="sdk-local-echo", results=results, metrics={"accuracy": 1})
-        detail = forge.get_evaluation(run_id)
-        assert detail.meets_threshold() and detail.run["config"]["source"] == "sdk_submission"
+        cases = [{"id": "hello", "inputs": {"query": "Hello"}, "expected_output": "Hello"}]
+        result = forge.evaluate_local(prompt, cases, task=lambda compiled: compiled,
+            evaluators={"correctness": lambda output, case: output == case["expected_output"]},
+            scoring_version="exact-v1", model="sdk-local-echo", report_path=None)
+        detail = forge.get_evaluation(result.id)
+        assert detail.meets_threshold() and detail.run["config"]["source"] == "sdk_local"
+        assert detail.results == []
+
 
 
 async def main():
@@ -56,15 +59,18 @@ async def main():
             await post(f'prompt-library/{prompt["prompt"]["id"]}/versions', {"template_text": "Reply: {{query}}", "base_version": 1})
             response = await setup.put(f'/api/v1/prompt-library/{prompt["prompt"]["id"]}/labels/production', headers=headers, json={"version_id": prompt["version"]["id"]})
             assert response.status_code == 200
-            await post("datasets", {"name": "SDK cases", "cases": [{"inputs": {"query": "Hello"}, "expected_output": "Hello"}, {"inputs": {"query": "Goodbye"}, "expected_output": "Goodbye"}]})
             read_key = await post("project-keys", {"name": "Read only"})
             ci_key = await post("project-keys", {"name": "Smoke CI", "scopes": ["evaluations:write"]})
             await asyncio.to_thread(verify_client, read_key["secret"], ci_key["secret"])
             with tempfile.TemporaryDirectory(prefix="llmforge-sdk-smoke-") as reports:
+                import json
+                cases_path = os.path.join(reports, "cases.json")
+                with open(cases_path, "w", encoding="utf-8") as handle:
+                    json.dump([{"id": "hello", "inputs": {"query": "Hello"}, "expected_output": "Hello"}], handle)
                 env = {**os.environ, "LLMFORGE_URL": "http://localhost:8000/api/v1", "LLMFORGE_API_KEY": ci_key["secret"]}
                 for version, expected in ((1, 0), (2, 1)):
                     report = os.path.join(reports, f"v{version}.json")
-                    process = await asyncio.create_subprocess_exec(sys.executable, "-m", "llmforge", "evaluate", "--prompt", "SDK smoke", "--version", str(version), "--dataset", "SDK cases", "--dataset-version", "1", "--output", report, env=env, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+                    process = await asyncio.create_subprocess_exec(sys.executable, "-m", "llmforge", "evaluate-local", "--prompt", "SDK smoke", "--version", str(version), "--dataset", cases_path, "--upload", "--output", report, env=env, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
                     await process.communicate()
                     assert process.returncode == expected, f"Expected gate code {expected} for prompt v{version}"
                     checked = await asyncio.create_subprocess_exec(sys.executable, "-m", "llmforge", "check", report, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)

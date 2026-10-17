@@ -19,7 +19,9 @@ from app.services.evaluation_service import import_cases
 
 from app.schemas.contracts import CaseImport, DatasetDetail, DatasetPage, DatasetResponse, RevisionResponse
 
-router = APIRouter(tags=["Datasets"])
+from app.core.legacy_datasets import legacy_dataset_write
+
+router = APIRouter(deprecated=True, dependencies=[Depends(legacy_dataset_write)], tags=["Datasets"])
 
 
 async def find_dataset(db, dataset_id, lock=False):

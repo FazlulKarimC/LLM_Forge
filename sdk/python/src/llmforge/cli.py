@@ -48,7 +48,7 @@ def main(argv=None):
         description="Fetch released prompts and gate CI on evaluation quality",
     )
     sub = parser.add_subparsers(dest="command", required=True)
-    evaluate = sub.add_parser("evaluate", help="Run saved prompt and dataset versions")
+    evaluate = sub.add_parser("evaluate", help="Legacy hosted evaluation (requires compatibility authoring)")
     evaluate.add_argument("--prompt", required=True)
     selector = evaluate.add_mutually_exclusive_group()
     selector.add_argument("--label", help="Release label, including custom labels or latest")
@@ -64,6 +64,13 @@ def main(argv=None):
     )
     evaluate.add_argument("--timeout", type=float, default=180)
     evaluate.add_argument("--output", default="artifacts/evaluation.json")
+    local = sub.add_parser("evaluate-local", help="Evaluate local JSON/JSONL cases with an echo task; use Python callbacks for live models")
+    local.add_argument("--prompt", required=True)
+    local.add_argument("--version", required=True, type=int)
+    local.add_argument("--dataset", required=True, help="Local JSON/JSONL path")
+    local.add_argument("--upload", action="store_true", help="Upload summary only with an evaluation-enabled key")
+    local.add_argument("--output", default="artifacts/evaluation.json")
+    local.add_argument("--min-pass-rate", type=float, default=1.0)
     check = sub.add_parser(
         "check", help="Gate a previously exported evaluation JSON report"
     )
@@ -74,6 +81,16 @@ def main(argv=None):
     try:
         if not 0 <= args.min_pass_rate <= 1:
             raise ValueError("Minimum pass rate must be between 0 and 1")
+        if args.command == "evaluate-local":
+            with LLMForge() as client:
+                prompt = client.get_prompt(args.prompt, version=args.version)
+                result = client.evaluate_local(
+                    prompt, args.dataset, task=lambda compiled: compiled,
+                    evaluators={"exact_match": lambda output, case: output == case.get("expected_output")},
+                    scoring_version="exact-match-v1", model="local-echo-demo",
+                    upload=args.upload, report_path=args.output,
+                )
+            return gate(result, args.min_pass_rate)
         if args.command == "check":
             data = json.loads(Path(args.report).read_text(encoding="utf-8"))
             result = Evaluation(run=data["run"], results=data["results"])

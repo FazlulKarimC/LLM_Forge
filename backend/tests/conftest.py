@@ -46,6 +46,7 @@ def sqlite_jsonb(_type, _compiler, **_kwargs):
 
 @pytest_asyncio.fixture
 async def api(monkeypatch, request):
+    monkeypatch.setattr("app.core.config.settings.LEGACY_DATASET_WRITES", True)
     schema = None
     if request.node.get_closest_marker("postgres"):
         url = os.environ.get("LLMFORGE_TEST_POSTGRES_URL")

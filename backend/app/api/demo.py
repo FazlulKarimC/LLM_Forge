@@ -16,7 +16,9 @@ from app.models.workspace import Project
 from app.schemas.prompt import VersionCreate
 from app.services.prompt_service import add_version
 
-router = APIRouter(tags=["Demo"])
+from app.core.legacy_datasets import legacy_dataset_write
+
+router = APIRouter(deprecated=True, dependencies=[Depends(legacy_dataset_write)], tags=["Demo"])
 
 PROMPT_NAME = "Echo demo"
 DATASET_NAME = "Greetings"
