@@ -9,6 +9,7 @@ const push = vi.fn();
 const apiMocks = vi.hoisted(() => ({
   createExperiment: vi.fn(),
   getAvailableModels: vi.fn(),
+  getBenchmarkProfile: vi.fn(),
   runExperiment: vi.fn(),
   resolveRunExperimentCredentials: vi.fn(() => ({})),
   persistCustomProviderCredentials: vi.fn(),
@@ -28,6 +29,7 @@ vi.mock("@/lib/api", async () => {
     ...actual,
     createExperiment: apiMocks.createExperiment,
     getAvailableModels: apiMocks.getAvailableModels,
+    getBenchmarkProfile: apiMocks.getBenchmarkProfile,
     runExperiment: apiMocks.runExperiment,
     resolveRunExperimentCredentials: apiMocks.resolveRunExperimentCredentials,
     persistCustomProviderCredentials: apiMocks.persistCustomProviderCredentials,
@@ -52,6 +54,11 @@ function renderPage() {
 describe("NewExperimentPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    apiMocks.getBenchmarkProfile.mockResolvedValue({
+      max_samples: 20, max_provider_calls: 20, max_seconds: 300, call_timeout_seconds: 30,
+      react_max_samples: 5, react_max_iterations: 3, global_concurrency: 1, provider_concurrency: 1,
+      rag_enabled: false, enrichment_enabled: false, dataset_counts: { trivia_qa: 100, sample: 10 },
+    });
     apiMocks.getAvailableModels.mockResolvedValue({
       models: [
         {
@@ -118,5 +125,17 @@ describe("NewExperimentPage", () => {
       exploration_window: 10,
       strict_comparison: true,
     });
+  });
+
+  it("shows actual selected cases and rejects excessive hosted work", async () => {
+    const { container } = renderPage();
+    fireEvent.change(screen.getByLabelText(/benchmark name/i), { target: { value: "Budget preview" } });
+    fireEvent.change(screen.getByLabelText(/^dataset$/i), { target: { value: "sample" } });
+    fireEvent.change(screen.getByLabelText(/^samples$/i), { target: { value: "20" } });
+    expect(await screen.findByText(/10 selected cases · at most 10 provider calls/)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/^samples$/i), { target: { value: "21" } });
+    fireEvent.submit(container.querySelector("form")!);
+    expect(await screen.findByText("Samples must be between 1 and 20 for this hosted mode.")).toBeInTheDocument();
+    expect(apiMocks.createExperiment).not.toHaveBeenCalled();
   });
 });

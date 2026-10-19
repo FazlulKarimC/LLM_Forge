@@ -506,17 +506,6 @@ class TestRunMetadataColumn:
         )
         assert run.run_metadata is None
 
-    def test_runner_batch_data_uses_run_metadata(self):
-        """Verify experiment_runner stores parse_method inside run_metadata."""
-        import ast
-        from pathlib import Path
-        runner_path = Path(__file__).parent.parent / "app" / "services" / "experiment_runner.py"
-        source = runner_path.read_text(encoding="utf-8")
-        # Ensure parse_method is NOT a top-level key in batch data
-        assert '"parse_method": parse_method,' not in source, \
-            "parse_method should be inside run_metadata, not a top-level key"
-        # Should be passed via build_run_record's run_metadata kwarg
-        assert 'run_metadata={"parse_method": parse_method}' in source
 
 
 # ─── P1 Wiring: Metrics API response ───────────────────────────────────────

@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.models.result import Result
+from app.services.attempts import result_at
 
 router = APIRouter()
 
@@ -15,12 +16,11 @@ router = APIRouter()
 @router.get("/{experiment_id}/routing")
 async def get_routing_telemetry(
     experiment_id: UUID,
+    attempt: int | None = None,
     db: AsyncSession = Depends(get_db),
 ):
     """Get routing telemetry for an experiment."""
-    query = select(Result).where(Result.experiment_id == experiment_id)
-    result = await db.execute(query)
-    db_result = result.scalar_one_or_none()
+    db_result = await result_at(db, experiment_id, attempt)
 
     if not db_result:
         raise HTTPException(status_code=404, detail="No results found for experiment")

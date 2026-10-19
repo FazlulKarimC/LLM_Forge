@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field, ConfigDict
 
 class QualityMetrics(BaseModel):
     """Quality-related metrics."""
+    primary_accuracy: Optional[float] = None
     accuracy_exact: Optional[float] = Field(None, ge=0, le=1)
     accuracy_f1: Optional[float] = Field(None, ge=0, le=1)
     accuracy_substring: Optional[float] = Field(None, ge=0, le=1)
@@ -41,6 +42,10 @@ class CostMetrics(BaseModel):
     total_tokens_output: int = 0
     total_runs: int = 0
     gpu_time_seconds: Optional[float] = None
+    provider_time_seconds: Optional[float] = None
+    cache_hits: int = 0
+    provider_calls: int = 0
+    usage_sources: List[str] = Field(default_factory=list)
     total_cost_usd: Optional[float] = None
     cost_per_correct_answer: Optional[float] = None
     provider: Optional[str] = None
@@ -54,9 +59,10 @@ class CostMetrics(BaseModel):
 
 
 class RunSummary(BaseModel):
-    """Lightweight per-run data for grid view."""
+    """Complete retained case data for detail reads and exports."""
     id: Optional[UUID] = None
     example_id: Optional[str] = None
+    attempt: Optional[int] = None
     is_correct: Optional[bool] = None
     score: Optional[float] = None
     is_exact_match: Optional[bool] = None
@@ -69,7 +75,6 @@ class RunSummary(BaseModel):
     expected_output: Optional[str] = None
     faithfulness_score: Optional[float] = None
     context_relevance_score: Optional[float] = None
-    attempt: Optional[int] = None
     agent_trace: Optional[Dict[str, Any]] = None
     failure_mode: Optional[str] = None
     error_message: Optional[str] = None
@@ -79,6 +84,10 @@ class RunSummary(BaseModel):
     routing_reason: Optional[str] = None
     cost_usd: Optional[float] = None
     run_metadata: Optional[Dict[str, Any]] = None
+    tokens_input: Optional[int] = None
+    tokens_output: Optional[int] = None
+    tool_calls: Optional[int] = None
+    match_alias: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -90,6 +99,7 @@ class RunGridSummary(BaseModel):
     large nested objects (agent_trace, retrieved_chunks) to reduce
     payload size on initial detail page load.
     """
+    attempt: Optional[int] = None
     id: Optional[UUID] = None
     example_id: Optional[str] = None
     is_correct: Optional[bool] = None
@@ -107,12 +117,42 @@ class RunGridSummary(BaseModel):
 class MetricsResponse(BaseModel):
     """Complete metrics for an experiment."""
     experiment_id: UUID
+    attempt: int = 0
+    coverage: Dict[str, Any] = Field(default_factory=dict)
+    scoring_versions: List[str] = Field(default_factory=list)
     summary_text: Optional[str] = None
     quality: QualityMetrics
     performance: PerformanceMetrics
     cost: CostMetrics
     failure_modes: Optional[Dict[str, Any]] = None
     computed_at: datetime
+
+
+class BenchmarkAttemptSummary(BaseModel):
+    number: int
+    status: str
+    provenance: str
+    generation_calls: Optional[int] = None
+    dataset_hash: Optional[str] = None
+    selected: Optional[int] = None
+    created_at: datetime
+    run_manifest: Optional[Dict[str, Any]] = None
+
+
+class BenchmarkAttemptPage(BaseModel):
+    current_attempt: int
+    total: int
+    skip: int
+    limit: int
+    attempts: List[BenchmarkAttemptSummary]
+
+
+class RunPage(BaseModel):
+    attempt: int
+    total: int
+    skip: int
+    limit: int
+    runs: List[RunGridSummary]
 
 
 class ResultResponse(BaseModel):
@@ -136,7 +176,7 @@ class ExperimentComparison(BaseModel):
 class ComparisonResponse(BaseModel):
     """Side-by-side comparison of experiments."""
     experiments: List[ExperimentComparison]
-    comparison_metrics: Dict[str, List[float]]  # metric_name -> [values per experiment]
+    comparison_metrics: Dict[str, List[Optional[float]]]  # metric_name -> [values per experiment]
     
     # p_values: Optional[Dict[str, float]] = None
 

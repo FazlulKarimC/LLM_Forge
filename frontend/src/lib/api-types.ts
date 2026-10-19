@@ -71,6 +71,8 @@ export interface ExperimentConfig {
 }
 
 export interface Experiment {
+    current_attempt: number;
+    pinned_attempt?: number;
     id: string;
     name: string;
     description?: string;
@@ -132,9 +134,13 @@ export interface ListExperimentsParams {
 }
 
 export interface Metrics {
+    attempt?: number;
+    coverage?: { selected?: number | null; completed?: number; scored?: number; missing?: number | null; failed?: number; status?: string; provenance?: string };
+    scoring_versions?: string[];
     experiment_id: string;
     summary_text?: string;
     quality: {
+        primary_accuracy?: number;
         accuracy_exact?: number;
         accuracy_f1?: number;
         accuracy_substring?: number;
@@ -194,6 +200,7 @@ export interface AgentTrace {
 }
 
 export interface RunSummary {
+    run_metadata?: Record<string, unknown>;
     id: string;
     example_id?: string;
     is_correct?: boolean;
@@ -303,7 +310,7 @@ export interface BootstrapCI {
 
 export interface McNemarResult {
     statistic: number;
-    p_value: number;
+    p_value: number | null;
     is_significant: boolean;
     b: number;
     c: number;
@@ -323,15 +330,17 @@ export interface PerExampleDiff {
 }
 
 export interface StatisticalComparison {
+    comparable?: boolean;
+    compatibility_reasons?: string[];
     experiment_a_id: string;
     experiment_b_id: string;
     num_common_examples: number;
     overlap_ratio: number;
     total_examples_a?: number;
     total_examples_b?: number;
-    accuracy_a: number;
-    accuracy_b: number;
-    accuracy_diff: number;
+    accuracy_a: number | null;
+    accuracy_b: number | null;
+    accuracy_diff: number | null;
     mcnemar: McNemarResult;
     bootstrap_ci_a: BootstrapCI;
     bootstrap_ci_b: BootstrapCI;

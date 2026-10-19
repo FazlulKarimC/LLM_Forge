@@ -29,19 +29,19 @@ import {
  * - Config diff
  * - Grader summary (both sides)
  */
-export function RegressionPanel({ experimentId }: { experimentId: string }) {
+export function RegressionPanel({ experimentId, attempt, allowRerun = true }: { experimentId: string; attempt?: number; allowRerun?: boolean }) {
   const queryClient = useQueryClient();
 
   const reportQuery = useQuery({
-    queryKey: ["regression", experimentId],
-    queryFn: ({ signal }) => getRegressionReport(experimentId, { signal }),
+    queryKey: ["regression", experimentId, attempt],
+    queryFn: ({ signal }) => getRegressionReport(experimentId, { signal }, attempt),
     retry: false,
   });
 
   const rerunMutation = useMutation({
     mutationFn: () => rerunRegression(experimentId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["regression", experimentId] });
+      queryClient.invalidateQueries({ queryKey: ["regression", experimentId, attempt] });
       queryClient.invalidateQueries({ queryKey: ["experiment", experimentId] });
       toast.success("Regression check completed");
     },
@@ -69,7 +69,7 @@ export function RegressionPanel({ experimentId }: { experimentId: string }) {
               type="button"
               className="btn-secondary"
               onClick={() => rerunMutation.mutate()}
-              disabled={rerunMutation.isPending}
+              disabled={!allowRerun || rerunMutation.isPending}
             >
               {rerunMutation.isPending ? (
                 <LoaderCircle className="size-4 animate-spin" />
@@ -125,7 +125,7 @@ export function RegressionPanel({ experimentId }: { experimentId: string }) {
             type="button"
             className="btn-ghost"
             onClick={() => rerunMutation.mutate()}
-            disabled={rerunMutation.isPending}
+            disabled={!allowRerun || rerunMutation.isPending}
           >
             {rerunMutation.isPending ? (
               <LoaderCircle className="size-4 animate-spin" />

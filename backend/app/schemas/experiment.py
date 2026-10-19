@@ -118,9 +118,9 @@ class AgentConfig(BaseModel):
     
     Only used when reasoning_method == REACT.
     """
-    max_iterations: int = Field(default=5, ge=1, le=20)
+    max_iterations: int = Field(default=3, ge=1, le=20)
     tools: List[str] = Field(
-        default=["wikipedia_search", "calculator", "retrieval"],
+        default=["wikipedia_search", "calculator"],
         description="Enabled tool names"
     )
 
@@ -154,7 +154,7 @@ class OptimizationConfig(BaseModel):
         description="Batch prompts into concurrent API calls"
     )
     batch_size: int = Field(
-        default=8, ge=1, le=32,
+        default=1, ge=1, le=32,
         description="Number of prompts per batch"
     )
     enable_caching: bool = Field(
@@ -297,7 +297,7 @@ class ExperimentConfig(BaseModel):
     
     # Dataset sampling
     num_samples: int = Field(
-        default=100,
+        default=10,
         ge=1,
         le=500,  # Matches frontend validation cap
         description="Number of dataset samples to evaluate"
@@ -356,6 +356,8 @@ class ExperimentCreate(BaseModel):
 
 
 class ExperimentResponse(BaseModel):
+    current_attempt: int = 1
+    pinned_attempt: Optional[int] = None
     """Response schema for experiment details."""
     id: UUID
     name: str

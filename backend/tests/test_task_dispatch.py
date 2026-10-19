@@ -370,6 +370,24 @@ def test_attempt_token_reaches_rq_job(mock_background_tasks):
             mock_background_tasks, uuid4(), expected_attempt=3
         ))
     assert get_queue.return_value.enqueue.call_args.kwargs["expected_attempt"] == 3
+    options = get_queue.return_value.enqueue.call_args.kwargs
+    assert options["job_timeout"] > options["ttl"] > 0
+
+
+def test_custom_credentials_never_enter_rq(mock_background_tasks):
+    with patch("app.core.task_dispatch._get_backend") as factory:
+        result = _run(dispatch_experiment(
+            mock_background_tasks, uuid4(), custom_base_url="http://localhost:8080/v1",
+            custom_api_key="request-only-sentinel", expected_attempt=1,
+        ))
+    factory.assert_not_called()
+    assert result.backend_used == "inline"
+    with patch("app.core.redis.get_queue") as queue:
+        direct = _run(UpstashRQDispatchBackend().dispatch(
+            mock_background_tasks, uuid4(), custom_api_key="request-only-sentinel",
+        ))
+    queue.assert_not_called()
+    assert direct.backend_used == "inline"
 
 
 # ── Top-Level dispatch_experiment Tests ─────────────────────────────────

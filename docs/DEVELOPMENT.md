@@ -128,6 +128,8 @@ Dataset management and old dataset demo creation are retired and return 410 for 
 
 ## Testing
 
+The bounded hosted benchmark profile defaults to `QUEUE_BACKEND_MODE=inline`, 20 cases, 20 generation calls, a 300-second new-call deadline and a 30-second HTTP timeout. `BENCHMARK_*` settings are documented in `backend/.env.example`; they are application limits, not provider quotas. ReAct defaults to three iterations and at most five hosted cases. Concurrent batch requests execute with effective batch size one; optional remote scoring and new RAG execution are disabled in this profile. Drafts/historical records retain their original configuration. The frontend reads actual budgets and bundled dataset counts from `/api/v1/capabilities`.
+
 Install backend test dependencies and SDK test extras from the repository root:
 
 ```powershell
@@ -159,6 +161,8 @@ npm run build
 Stop `next dev` before building because both use `.next`. These checks validate behavior/compilation, not authenticated browser or live-provider acceptance. Browser layout/theme/focus checks follow the single [design guide](../DESIGN_SYSTEM.md#verification-and-maintenance). Documentation-only edits require link/source checks rather than a fresh application build.
 
 ### PostgreSQL and HTTP checks
+
+`tests/test_benchmark_execution.py` exercises durable per-case writes, provider-free saved-prompt batches, interruption, cancellation, expiry and shared model-job admission. Set `LLMFORGE_TEST_POSTGRES_URL` to a disposable target to run its real-lock Stop and competing-project tests. CI provides that variable against its existing PostgreSQL service. Without it, those tests skip; SQLite success does not establish lock behavior.
 
 Use a separate shell with a dedicated development database, not the unreachable unit-test URL. From `backend` set `LLMFORGE_TEST_POSTGRES_URL` to that database and run:
 
@@ -198,16 +202,22 @@ Commit `contracts/openapi.json` and `frontend/src/lib/generated/api-schema.ts` t
 
 ## Deployment and diagnosis
 
+Apply additive migrations through `r1s2t3u4v5w6` before deploying benchmark admission and attempt history. The migrations add execution reservations and attempt records, preserve existing experiments/cases, and keep old aggregates at unbound attempt zero. Do not delete history or guess the old result attempt. Drain existing model jobs before changing execution versions; old workers do not implement the new admission contract. Keep the additive schema on rollback. Once several result attempts exist, older code that assumes one result per experiment needs a compatibility patch; do not deploy it unchanged. Downgrade refuses to remove the table while unexpired active reservations exist. No migration, deployment or hosted configuration change is performed by local tests.
+
 [Repository CI](../.github/workflows/ci.yml) runs on pushes/PRs targeting main. It tests/builds/installs the SDK wheel on Python 3.10/3.12, tests backend on Python 3.12/PostgreSQL 15 with migrations/locking/HTTP smoke checks, and validates generated contracts plus frontend lint/types/tests/build on Node 20. After all three jobs pass, a main push calls [HF sync](../.github/workflows/hf-sync.yml); PRs do not publish the backend.
 
 HF sync stages only `backend/` at the Space root, embeds the upstream source/build identity and uses `backend/Dockerfile.hf`. The root Dockerfile also copies backend contents. A separate configured frontend deployment serves Next.js; backend sync does not deploy it. No workflow here migrates the hosted database. Apply migrations to that intended database before launching the new image, and preserve durable records when rolling back.
+
+Use the direct Neon endpoint in `DATABASE_URL` for the migration command, then restore the application connection URL before starting the API. Runtime defaults to a two-connection pool plus one overflow, pre-ping, and 10-second connect/checkout timeouts. Production requires PostgreSQL and TLS. Prefer `sslmode=verify-full`; the parser preserves other query options instead of stripping them. An unsupported `channel_binding=require` fails explicitly: configure a supported TLS policy rather than assuming the driver honored channel binding. Local disposable PostgreSQL tests can use a development URL without TLS. Never point the test URL at Neon.
+
+Verify an attempt export before purging it. JSON exports are bounded; use `?attempt=N&format=jsonl` for a complete historical export, including traces, scoring/provider metadata and retention-truncation markers. Active, pinned or referenced attempts are protected. New case storage and project attempt caps are documented in [architecture](ARCHITECTURE.md#benchmarks-and-optional-infrastructure). Idle runner verification and provider-free rerun/export/tenant/gate regressions live in `backend/tests/test_benchmark_attempts.py`. PostgreSQL locking and migration checks require the disposable CI/local PostgreSQL service; SQLite does not prove row locking.
 
 Set frontend build-time Clerk/API URL values and backend database/Clerk/CORS/optional-service values for their respective targets. Use HTTPS for a hosted API root. Provider validity and model availability still require an explicit live check; `INFERENCE_ENGINE` configures the benchmark default, not the new evaluation provider contract.
 
 | Symptom / endpoint | Check |
 | --- | --- |
 | `/health` passes but work fails | It only checks process liveness; inspect `/ready`, request ID and safe run/attempt status |
-| `/ready` is degraded | Database/runner/usable dispatch are required; Redis/Qdrant/provider configuration is reported separately |
+| `/ready` fails | Check database connectivity, required schema and the capacity row. Optional Redis/Qdrant/providers and an idle runner never gate readiness |
 | Fresh browser 401 | Matching Clerk app, issuer, exact authorized-party origin, token expiry and frontend URL configuration |
 | Browser API URL failure | Built `NEXT_PUBLIC_API_URL` includes HTTPS host and `/api/v1`; CORS includes the frontend origin |
 | Unexpected provider behavior | Inspect deployed `/api/v1/capabilities`; benchmark and evaluation provider registries differ |

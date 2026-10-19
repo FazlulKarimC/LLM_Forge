@@ -4,29 +4,102 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
-from sqlalchemy import select
+from sqlalchemy import select, func, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.results_common import latest_runs_for_experiment, result_to_metrics_response
 from app.core.database import get_db
 from app.models.experiment import Experiment
 from app.models.result import Result
-from app.schemas.result import MetricsResponse, ResultResponse, RunGridSummary, RunSummary
+from app.models.run import Run
+from app.models.experiment_attempt import ExperimentAttempt
+from app.services.attempts import current_number, result_at, lock_history_mutation
+from app.schemas.result import BenchmarkAttemptPage, RunPage, MetricsResponse, ResultResponse, RunGridSummary, RunSummary
 from app.services.metrics_service import MetricsService
 
 router = APIRouter()
+
+
+@router.get("/{experiment_id}/attempts", response_model=BenchmarkAttemptPage)
+async def get_attempts(experiment_id: UUID, skip: int = Query(0, ge=0), limit: int = Query(25, ge=1, le=50),
+                       db: AsyncSession = Depends(get_db)):
+    number = await current_number(db, experiment_id)
+    rows = (await db.scalars(select(ExperimentAttempt).where(ExperimentAttempt.experiment_id == experiment_id)
+                            .order_by(ExperimentAttempt.number.desc()).offset(skip).limit(limit))).all()
+    total = await db.scalar(select(func.count()).select_from(ExperimentAttempt).where(ExperimentAttempt.experiment_id == experiment_id))
+    return {"current_attempt": number, "total": total, "skip": skip, "limit": limit,
+            "attempts": [{"number": r.number, "status": r.status, "provenance": r.provenance_status,
+                          "generation_calls": r.generation_calls,
+                          "dataset_hash": r.dataset_hash, "selected": len(r.sample_ids) if r.sample_ids is not None else None,
+                          "created_at": r.created_at.isoformat(), "run_manifest": r.run_manifest} for r in rows]}
+
+
+@router.get("/{experiment_id}/runs/page", response_model=RunPage)
+async def get_run_page(experiment_id: UUID, attempt: int | None = Query(None, ge=0),
+                       skip: int = Query(0, ge=0), limit: int = Query(25, ge=1, le=50), db: AsyncSession = Depends(get_db)):
+    number = await current_number(db, experiment_id, attempt)
+    rows = await get_run_summaries(experiment_id, True, skip, limit, number, db)
+    total = await db.scalar(select(func.count()).select_from(Run).where(Run.experiment_id == experiment_id, Run.attempt == number))
+    return {"attempt": number, "total": total, "skip": skip, "limit": limit, "runs": rows}
+
+
+@router.get("/{experiment_id}/runs/{run_id}", response_model=RunSummary)
+async def get_run_detail(experiment_id: UUID, run_id: UUID, attempt: int | None = Query(None, ge=1), db: AsyncSession = Depends(get_db)):
+    number = await current_number(db, experiment_id, attempt)
+    run = await db.scalar(select(Run).where(Run.id == run_id, Run.experiment_id == experiment_id, Run.attempt == number))
+    if run is None:
+        raise HTTPException(404, "Case not found in selected attempt")
+    return RunSummary.model_validate(run)
+
+
+@router.delete("/{experiment_id}/attempts/{attempt}")
+async def purge_attempt(experiment_id: UUID, attempt: int, exported: bool = False, db: AsyncSession = Depends(get_db)):
+    await current_number(db, experiment_id, attempt)
+    await lock_history_mutation(db)
+    experiment = await db.scalar(select(Experiment).where(Experiment.id == experiment_id).with_for_update())
+    if not exported:
+        raise HTTPException(409, "Export this attempt before confirming purge with exported=true")
+    if attempt == experiment.pinned_attempt or (attempt == experiment.current_attempt and experiment.status in ("queued", "running")):
+        raise HTTPException(409, "Active and pinned attempts cannot be purged")
+    from app.models.benchmark_reservation import BenchmarkReservation
+    from app.services.benchmark_execution import utcnow
+    active = await db.scalar(select(BenchmarkReservation.id).where(
+        BenchmarkReservation.resource_id == str(experiment_id), BenchmarkReservation.attempt == attempt,
+        BenchmarkReservation.released_at.is_(None), BenchmarkReservation.expires_at > utcnow(),
+    ).limit(1))
+    if active:
+        raise HTTPException(409, "An issued call still owns this attempt; wait for it to finish")
+    referenced = await db.scalar(select(Experiment.id).where(Experiment.baseline_id == experiment_id).limit(1))
+    report_reference = await db.scalar(select(Result.id).where(
+        Result.raw_metrics["regression"]["baseline_id"].as_string() == str(experiment_id),
+        Result.raw_metrics["regression"]["baseline_attempt"].as_integer() == attempt,
+    ).limit(1))
+    if referenced or report_reference:
+        raise HTTPException(409, "An experiment or regression report references this baseline")
+    if await db.get(ExperimentAttempt, (experiment_id, attempt)) is None:
+        raise HTTPException(404, "Attempt not found")
+    await db.execute(delete(Run).where(Run.experiment_id == experiment_id, Run.attempt == attempt))
+    await db.execute(delete(Result).where(Result.experiment_id == experiment_id, Result.attempt == attempt))
+    await db.execute(delete(ExperimentAttempt).where(ExperimentAttempt.experiment_id == experiment_id, ExperimentAttempt.number == attempt))
+    if attempt == experiment.current_attempt:
+        from app.schemas.experiment import ExperimentStatus
+        experiment.status = ExperimentStatus.FAILED
+        experiment.error_message = "Results were manually purged after export. Rerun to create a new attempt."
+        experiment.run_manifest, experiment.dataset_hash, experiment.sample_ids = None, None, None
+        experiment.regression_status, experiment.regression_passed = "not_checked", None
+    await db.commit()
+    return {"purged_attempt": attempt}
 
 
 @router.get("/{experiment_id}", response_model=ResultResponse)
 async def get_results(
     experiment_id: UUID,
     include_runs: bool = Query(False, description="Include individual run logs"),
+    attempt: int | None = Query(None, ge=0),
     db: AsyncSession = Depends(get_db),
 ):
     """Get aggregated results for a specific experiment."""
-    query = select(Result).where(Result.experiment_id == experiment_id)
-    result = await db.execute(query)
-    db_result = result.scalar_one_or_none()
+    db_result = await result_at(db, experiment_id, attempt)
 
     if not db_result:
         raise HTTPException(
@@ -39,7 +112,7 @@ async def get_results(
 
     runs = None
     if include_runs:
-        run_rows = await latest_runs_for_experiment(db, experiment_id)
+        run_rows = await latest_runs_for_experiment(db, experiment_id, db_result.attempt)
 
         from app.schemas.run import RunResponse
 
@@ -56,21 +129,23 @@ async def get_results(
 async def get_metrics(
     experiment_id: UUID,
     recompute: bool = Query(False, description="Force recompute metrics"),
+    attempt: int | None = Query(None, ge=0),
     db: AsyncSession = Depends(get_db),
 ):
     """Get computed metrics for an experiment."""
     if recompute:
+        number = await current_number(db, experiment_id, attempt, legacy_metrics=True)
+        if number == 0:
+            raise HTTPException(409, "Select a positive case attempt explicitly; an unbound historical aggregate cannot be recomputed")
         metrics_svc = MetricsService(db)
         try:
-            db_result = await metrics_svc.compute_and_save(experiment_id)
+            db_result = await metrics_svc.compute_and_save(experiment_id, attempt=attempt)
             await db.commit()
         except ValueError as e:
             raise HTTPException(status_code=404, detail=str(e))
         return result_to_metrics_response(db_result)
 
-    query = select(Result).where(Result.experiment_id == experiment_id)
-    result = await db.execute(query)
-    db_result = result.scalar_one_or_none()
+    db_result = await result_at(db, experiment_id, attempt)
 
     if not db_result:
         raise HTTPException(
@@ -86,30 +161,31 @@ async def get_metrics(
 async def get_run_summaries(
     experiment_id: UUID,
     sparse: bool = Query(False, description="Return sparse grid summaries (no prompt/output text)"),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(25, ge=1, le=50),
+    attempt: int | None = Query(None, ge=0),
     db: AsyncSession = Depends(get_db),
 ):
     """Get run summaries for the correctness grid view."""
-    runs = await latest_runs_for_experiment(db, experiment_id)
-
-    if not runs:
-        raise HTTPException(
-            status_code=404,
-            detail=f"No runs found for experiment {experiment_id}",
-        )
-
+    number = await current_number(db, experiment_id, attempt)
     schema = RunGridSummary if sparse else RunSummary
-    return [schema.model_validate(r) for r in runs]
+    query = select(*[getattr(Run, name) for name in schema.model_fields]) if sparse else select(Run)
+    query = query.where(Run.experiment_id == experiment_id, Run.attempt == number).order_by(Run.example_id, Run.id).offset(skip).limit(limit)
+    result = await db.execute(query)
+    if sparse:
+        return [schema.model_validate(dict(row)) for row in result.mappings()]
+    return [schema.model_validate(row) for row in result.scalars()]
+
 
 
 @router.get("/{experiment_id}/profile")
 async def get_profile(
     experiment_id: UUID,
+    attempt: int | None = Query(None, ge=0),
     db: AsyncSession = Depends(get_db),
 ):
     """Get optimization profiling data for an experiment."""
-    query = select(Result).where(Result.experiment_id == experiment_id)
-    result = await db.execute(query)
-    db_result = result.scalar_one_or_none()
+    db_result = await result_at(db, experiment_id, attempt)
 
     if not db_result:
         raise HTTPException(
@@ -146,6 +222,8 @@ async def get_profile(
 @router.get("/{experiment_id}/export")
 async def export_results(
     experiment_id: UUID,
+    format: str = Query("json", pattern="^(json|jsonl)$"),
+    attempt: int | None = Query(None, ge=0),
     db: AsyncSession = Depends(get_db),
 ):
     """Export full results as JSON download."""
@@ -156,68 +234,5 @@ async def export_results(
     if not experiment:
         raise HTTPException(status_code=404, detail="Experiment not found")
 
-    res_query = select(Result).where(Result.experiment_id == experiment_id)
-    res_result = await db.execute(res_query)
-    db_result = res_result.scalar_one_or_none()
-
-    runs = await latest_runs_for_experiment(db, experiment_id)
-
-    export_data = {
-        "experiment": {
-            "id": str(experiment.id),
-            "name": experiment.name,
-            "status": experiment.status.value if experiment.status else None,
-            "config": experiment.config,
-            "run_manifest": experiment.run_manifest,
-            "dataset_hash": experiment.dataset_hash,
-            "sample_ids": experiment.sample_ids,
-            "created_at": experiment.created_at.isoformat() if experiment.created_at else None,
-        },
-        "metrics": None,
-        "runs": [
-            {
-                "id": str(run.id),
-                "example_id": run.example_id,
-                "prompt": run.prompt,
-                "raw_output": run.raw_output,
-                "expected_output": run.expected_output,
-                "is_correct": run.is_correct,
-                "score": run.score,
-                "latency_ms": run.latency_ms,
-                "tokens_input": run.tokens_input,
-                "tokens_output": run.tokens_output,
-                "served_provider": run.served_provider,
-                "routing_reason": run.routing_reason,
-                "cost_usd": run.cost_usd,
-                "failure_mode": run.failure_mode.value if run.failure_mode else None,
-            }
-            for run in runs
-        ],
-        "total_runs": len(runs),
-    }
-
-    if db_result:
-        export_data["metrics"] = {
-            "accuracy_exact": db_result.accuracy_exact,
-            "accuracy_f1": db_result.accuracy_f1,
-            "accuracy_substring": db_result.accuracy_substring,
-            "semantic_similarity": db_result.semantic_similarity,
-            "faithfulness": db_result.faithfulness,
-            "hallucination_rate": db_result.hallucination_rate,
-            "latency_p50": db_result.latency_p50,
-            "latency_p95": db_result.latency_p95,
-            "latency_p99": db_result.latency_p99,
-            "throughput": db_result.throughput,
-            "total_tokens_input": db_result.total_tokens_input,
-            "total_tokens_output": db_result.total_tokens_output,
-            "total_runs": db_result.total_runs,
-            "gpu_time_seconds": db_result.gpu_time_seconds,
-            "computed_at": db_result.computed_at.isoformat() if db_result.computed_at else None,
-        }
-
-    return JSONResponse(
-        content=export_data,
-        headers={
-            "Content-Disposition": f'attachment; filename="{experiment.name}_results.json"'
-        },
-    )
+    from app.api.results_export import export_attempt
+    return await export_attempt(db, experiment, attempt, format)

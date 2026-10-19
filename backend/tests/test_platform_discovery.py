@@ -21,6 +21,11 @@ async def test_capabilities_match_generation_and_judge_contracts_without_databas
     assert body["judge_providers"] == list(get_args(JudgeProvider)) == schema["JudgeConfig"]["properties"]["provider"]["enum"]
     assert body["external_submissions"] is True
     assert "gemini" not in body["generation_providers"]
+    profile = body["benchmarks"]
+    assert profile["max_samples"] == settings.BENCHMARK_MAX_SAMPLES
+    assert profile["provider_concurrency"] == profile["global_concurrency"] == 1
+    assert profile["dataset_counts"]["sample"] == 10
+    assert profile["enrichment_enabled"] is False
 
 
 @pytest.mark.asyncio

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Providers } from "@/app/providers";
 import { ApiError, fetchAPI } from "@/lib/api-client";
 import { SessionExpiredError, setApiContext } from "@/lib/request-context";
+import { clearCustomProviderCredentials } from "@/lib/custom-provider";
 import { Panel } from "@/components/ui/primitives";
 import type { components } from "@/lib/generated/api-schema";
 export type WorkspaceProject = components["schemas"]["ProjectResponse"];
@@ -61,6 +62,7 @@ function AuthenticatedWorkspace({ children, userId, getToken }: { children: Reac
     setError(null);
   }, [getToken, storageKey]);
   useEffect(() => {
+    clearCustomProviderCredentials();
     const controller = new AbortController();
     setApiContext({ getToken });
     Promise.resolve().then(() => refresh(undefined, controller.signal)).catch((err: unknown) => {
@@ -72,6 +74,7 @@ function AuthenticatedWorkspace({ children, userId, getToken }: { children: Reac
     if (!snapshot?.organizations.some((org) => org.projects.some((p) => p.id === id))) return false;
     if (id === projectId) return true;
     if (!window.dispatchEvent(new Event("llmforge:before-workspace-switch", { cancelable: true }))) return false;
+    clearCustomProviderCredentials();
     setApiContext({ getToken, projectId: id });
     window.localStorage.setItem(storageKey, id);
     setProjectId(id);

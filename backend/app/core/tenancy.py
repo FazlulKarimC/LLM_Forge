@@ -55,6 +55,8 @@ def scope_project_queries(state):
     from app.models.run import Run
     from app.models.result import Result
     from app.models.background_job import BackgroundJobRecord
+    from app.models.benchmark_reservation import BenchmarkReservation
+    from app.models.experiment_attempt import ExperimentAttempt
     from app.models.prompt import Prompt, PromptLabel, ProjectAPIKey
     from app.models.evaluation import Dataset, DatasetRevision, EvaluationRun, EvaluationResult
     from app.models.evaluator import Evaluator, EvaluatorVersion, EvaluationScore
@@ -79,6 +81,8 @@ def scope_project_queries(state):
         with_loader_criteria(Experiment, Experiment.project_id == project_id, include_aliases=True),
         with_loader_criteria(PromptVersion, PromptVersion.project_id == project_id, include_aliases=True),
         with_loader_criteria(BackgroundJobRecord, BackgroundJobRecord.project_id == project_id, include_aliases=True),
+        with_loader_criteria(BenchmarkReservation, BenchmarkReservation.project_id == project_id, include_aliases=True),
+        with_loader_criteria(ExperimentAttempt, ExperimentAttempt.project_id == project_id, include_aliases=True),
         with_loader_criteria(Run, Run.experiment_id.in_(experiment_ids), include_aliases=True),
         with_loader_criteria(Result, Result.experiment_id.in_(experiment_ids), include_aliases=True),
     )
@@ -92,12 +96,14 @@ def scope_project_writes(session, _flush_context, _instances):
     from app.models.experiment import Experiment
     from app.models.prompt_version import PromptVersion
     from app.models.background_job import BackgroundJobRecord
+    from app.models.benchmark_reservation import BenchmarkReservation
+    from app.models.experiment_attempt import ExperimentAttempt
     from app.models.prompt import Prompt, PromptLabel, ProjectAPIKey
     from app.models.evaluation import Dataset, DatasetRevision, EvaluationRun, EvaluationResult
     from app.models.evaluator import Evaluator, EvaluatorVersion, EvaluationScore
     from app.models.evaluation_execution import EvaluationExecution, EvaluationCheckpoint, EvaluationIdempotency
     for obj in session.new:
-        if isinstance(obj, (Experiment, PromptVersion, BackgroundJobRecord, Prompt, PromptLabel, ProjectAPIKey, Dataset, DatasetRevision, EvaluationRun, EvaluationResult, Evaluator, EvaluatorVersion, EvaluationScore, EvaluationExecution, EvaluationCheckpoint, EvaluationIdempotency)):
+        if isinstance(obj, (Experiment, ExperimentAttempt, PromptVersion, BackgroundJobRecord, BenchmarkReservation, Prompt, PromptLabel, ProjectAPIKey, Dataset, DatasetRevision, EvaluationRun, EvaluationResult, Evaluator, EvaluatorVersion, EvaluationScore, EvaluationExecution, EvaluationCheckpoint, EvaluationIdempotency)):
             if obj.project_id is not None and obj.project_id != project_id:
                 raise ValueError("Cannot write to a different project")
             obj.project_id = project_id

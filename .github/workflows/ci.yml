@@ -93,6 +93,7 @@ jobs:
       working-directory: ./backend
       env:
         DATABASE_URL: postgresql+asyncpg://llmforge:llmforge_password@localhost:5432/llmforge_test
+        LLMFORGE_TEST_POSTGRES_URL: postgresql+asyncpg://llmforge:llmforge_password@localhost:5432/llmforge_test
         INFERENCE_ENGINE: mock
         DEMO_MODE: true
       run: |

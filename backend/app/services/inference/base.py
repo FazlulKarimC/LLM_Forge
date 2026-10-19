@@ -53,6 +53,10 @@ class GenerationResult:
     error_message: Optional[str] = None
     served_provider: Optional[str] = None
     routing_reason: Optional[str] = None
+    served_model: Optional[str] = None
+    backend_provider: Optional[str] = None
+    usage_source: str = "unknown"
+    cost_source: str = "unknown"
 
 
 class InferenceEngine(ABC):

@@ -8,6 +8,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.services.attempts import result_at, lock_history_mutation
 from app.models.result import Result
 from app.schemas.experiment import ExperimentResponse, regression_status_from_verdict
 
@@ -100,9 +101,7 @@ class ExperimentPostProcessor:
         opt_report.batch_stats = dict(batch_stats)
         opt_report.total_wall_time_ms = (wall_end - wall_start) * 1000
 
-        res_query = select(Result).where(Result.experiment_id == experiment_id)
-        res_result = await self.db.execute(res_query)
-        result_obj = res_result.scalar_one_or_none()
+        result_obj = await result_at(self.db, experiment_id)
         if not result_obj:
             return
 
@@ -118,7 +117,7 @@ class ExperimentPostProcessor:
         await self.db.flush()
         logger.info("[EXECUTE] Optimization report saved to raw_metrics")
 
-    async def run_auto_regression_check(self, experiment_id: UUID) -> None:
+    async def run_auto_regression_check(self, experiment_id: UUID, attempt=None) -> None:
         """Run the post-execution regression check when a baseline exists."""
         try:
             from app.models.experiment import Experiment as _RegExp
@@ -126,10 +125,11 @@ class ExperimentPostProcessor:
             from sqlalchemy.orm.attributes import flag_modified as _flag_modified
 
             reg_svc = RegressionService(self.db)
-            reg_query = select(_RegExp).where(_RegExp.id == experiment_id)
+            await lock_history_mutation(self.db)
+            reg_query = select(_RegExp).where(_RegExp.id == experiment_id).with_for_update().execution_options(populate_existing=True)
             reg_result = await self.db.execute(reg_query)
             reg_exp = reg_result.scalar_one_or_none()
-            if not reg_exp:
+            if not reg_exp or reg_exp.status != "completed" or (attempt is not None and reg_exp.current_attempt != attempt):
                 return
 
             baseline = await reg_svc.find_baseline(reg_exp)
@@ -138,9 +138,7 @@ class ExperimentPostProcessor:
 
             verdict = await reg_svc.run_regression_check(experiment_id, baseline.id)
 
-            res_query = select(Result).where(Result.experiment_id == experiment_id)
-            res_result = await self.db.execute(res_query)
-            result_obj = res_result.scalar_one_or_none()
+            result_obj = await result_at(self.db, experiment_id, verdict.candidate_attempt)
             if result_obj:
                 existing_raw: dict[str, Any] = dict(result_obj.raw_metrics or {})
                 existing_raw["regression"] = verdict.to_dict()

@@ -67,8 +67,8 @@ async def lifespan(app: FastAPI):
     """
     Application lifespan manager.
     
-    Log configuration and preflight warnings. Database sessions are opened on
-    demand; no provider or vector connection is established here.
+    Log configuration and reconcile one bounded batch of interrupted legacy work.
+    The runner then sleeps until a request; no provider/vector call occurs here.
     """
     # Startup
     logger.info("Starting %s v%s (env=%s)", settings.PROJECT_NAME, settings.VERSION, settings.ENVIRONMENT)

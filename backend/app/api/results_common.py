@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.background_jobs import mark_job_completed, mark_job_failed, mark_job_running
 from app.core.database import async_session_maker
+from app.services.attempts import result_at, current_number
 from app.models.result import Result
 from app.models.run import Run
 from app.schemas.result import (
@@ -44,8 +45,12 @@ def result_to_metrics_response(result: Result) -> MetricsResponse:
 
     return MetricsResponse(
         experiment_id=result.experiment_id,
+        attempt=result.attempt or 0,
+        coverage=raw_metrics.get("coverage", {}),
+        scoring_versions=raw_metrics.get("scoring_versions", ["unknown"]),
         summary_text=raw_metrics.get("summary_text"),
         quality=QualityMetrics(
+            primary_accuracy=accuracy_metrics.get("primary_accuracy"),
             accuracy_exact=result.accuracy_exact,
             accuracy_f1=result.accuracy_f1,
             accuracy_substring=result.accuracy_substring,
@@ -74,6 +79,10 @@ def result_to_metrics_response(result: Result) -> MetricsResponse:
             total_tokens_output=result.total_tokens_output or 0,
             total_runs=result.total_runs or 0,
             gpu_time_seconds=result.gpu_time_seconds,
+            provider_time_seconds=cost_metrics.get("provider_time_seconds"),
+            cache_hits=cost_metrics.get("cache_hits", 0),
+            provider_calls=cost_metrics.get("provider_calls", 0),
+            usage_sources=cost_metrics.get("usage_sources", ["unknown"]),
             total_cost_usd=cost_metrics.get("total_cost_usd"),
             cost_per_correct_answer=cost_metrics.get("cost_per_correct_answer"),
             provider=cost_metrics.get("provider"),
@@ -86,32 +95,17 @@ def result_to_metrics_response(result: Result) -> MetricsResponse:
     )
 
 
-async def latest_runs_for_experiment(db: AsyncSession, experiment_id: UUID) -> List[Run]:
-    """Return only the latest-attempt runs for an experiment."""
-    attempt_query = (
-        select(Run.attempt)
-        .where(Run.experiment_id == experiment_id)
-        .order_by(Run.attempt.desc())
-        .limit(1)
-    )
-    attempt_result = await db.execute(attempt_query)
-    latest_attempt = attempt_result.scalar_one_or_none()
-    if latest_attempt is None:
-        return []
-
-    runs_query = select(Run).where(
-        Run.experiment_id == experiment_id,
-        Run.attempt == latest_attempt,
-    )
-    runs_result = await db.execute(runs_query)
-    return runs_result.scalars().all()
+async def latest_runs_for_experiment(db: AsyncSession, experiment_id: UUID, attempt=None, *, skip=0, limit=50) -> List[Run]:
+    """Filter the requested/current attempt in SQL before loading bounded rows."""
+    number = await current_number(db, experiment_id, attempt)
+    return list((await db.scalars(select(Run).where(
+        Run.experiment_id == experiment_id, Run.attempt == number
+    ).order_by(Run.example_id, Run.id).offset(skip).limit(limit))).all())
 
 
-async def save_llm_judge_result(db: AsyncSession, experiment_id: UUID, result: dict) -> None:
+async def save_llm_judge_result(db: AsyncSession, experiment_id: UUID, result: dict, attempt=None) -> None:
     """Persist LLM judge output into Result.raw_metrics when aggregate results exist."""
-    res_query = select(Result).where(Result.experiment_id == experiment_id)
-    res_result = await db.execute(res_query)
-    result_obj = res_result.scalar_one_or_none()
+    result_obj = await result_at(db, experiment_id, attempt)
     if result_obj is None:
         return
 
@@ -145,7 +139,7 @@ def load_knowledge_base_chunks(max_chunks: int) -> List[str]:
     return chunks
 
 
-async def run_llm_judge_job(job_id: str, experiment_id: UUID, sample_size: int) -> None:
+async def run_llm_judge_job(job_id: str, experiment_id: UUID, sample_size: int, attempt=None) -> None:
     """Execute judge evaluation as best-effort in-process background work."""
     import logging
 
@@ -156,13 +150,23 @@ async def run_llm_judge_job(job_id: str, experiment_id: UUID, sample_size: int) 
 
     try:
         async with async_session_maker() as session:
+            from app.services.benchmark_execution import BudgetedEngine, execution_deadline
+            deadline = await execution_deadline(session, kind="llm_judge", resource_id=job_id)
+            await session.commit()
             judge = LLMJudgeService(session, sample_size=sample_size)
-            result = await judge.evaluate_experiment(experiment_id)
-            await save_llm_judge_result(session, experiment_id, result)
+            result = await judge.evaluate_experiment(
+                experiment_id, attempt=attempt, budget=lambda engine: BudgetedEngine(engine, deadline_at=deadline),
+            )
+            await save_llm_judge_result(session, experiment_id, result, attempt)
         await mark_job_completed(job_id, result)
     except Exception as exc:  # pragma: no cover - best-effort background execution
-        logger.exception("Judge background job failed for %s", experiment_id)
-        await mark_job_failed(job_id, f"Judge evaluation failed: {str(exc)[:200]}")
+        logger.error("Judge background job failed: experiment=%s exception_type=%s", experiment_id, type(exc).__name__)
+        await mark_job_failed(job_id, "Judge evaluation failed; completed benchmark cases were kept")
+    finally:
+        from app.services.benchmark_execution import release_execution
+        async with async_session_maker() as session:
+            await release_execution(session, kind="llm_judge", resource_id=job_id)
+            await session.commit()
 
 
 async def run_synthetic_generation_job(
@@ -180,6 +184,9 @@ async def run_synthetic_generation_job(
     await mark_job_running(job_id)
 
     try:
+        from app.services.benchmark_execution import BudgetedEngine, execution_deadline
+        async with async_session_maker() as session:
+            deadline = await execution_deadline(session, kind="synthetic_generation", resource_id=job_id)
         chunks = load_knowledge_base_chunks(max_chunks)
         synth = SyntheticDatasetService()
         result = await synth.generate_from_chunks(
@@ -187,8 +194,14 @@ async def run_synthetic_generation_job(
             pairs_per_chunk=pairs_per_chunk,
             max_chunks=max_chunks,
             seed=seed,
+            budget=lambda engine: BudgetedEngine(engine, deadline_at=deadline),
         )
         await mark_job_completed(job_id, result)
     except Exception as exc:  # pragma: no cover - best-effort background execution
-        logger.exception("Synthetic generation background job failed")
-        await mark_job_failed(job_id, str(exc)[:200])
+        logger.error("Synthetic generation failed: exception_type=%s", type(exc).__name__)
+        await mark_job_failed(job_id, "Synthetic generation failed")
+    finally:
+        from app.services.benchmark_execution import release_execution
+        async with async_session_maker() as session:
+            await release_execution(session, kind="synthetic_generation", resource_id=job_id)
+            await session.commit()

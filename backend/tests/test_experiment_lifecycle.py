@@ -29,8 +29,7 @@ class TestEnqueueFailureRollback:
 
     @patch('app.api.experiments.ExperimentService')
     @patch('app.core.task_dispatch.dispatch_experiment')
-    @patch('app.api.experiments._active_run_count', new_callable=AsyncMock, return_value=0)
-    def test_enqueue_failure_rollback(self, mock_active_count, mock_dispatch, MockServiceClass, client):
+    def test_enqueue_failure_rollback(self, mock_dispatch, MockServiceClass, client):
         """
         Test that if dispatching an experiment fails, the status is properly
         rolled back to FAILED from QUEUED, rather than getting stuck.

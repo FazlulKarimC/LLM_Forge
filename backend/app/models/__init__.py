@@ -10,6 +10,7 @@ Database models for:
 """
 
 from app.models.background_job import BackgroundJobRecord
+from app.models.benchmark_reservation import BenchmarkReservation
 from app.models.evaluation_execution import EvaluationExecution, EvaluationCheckpoint, EvaluationIdempotency, EvaluationCapacity
 from app.models.evaluator import Evaluator, EvaluatorVersion, EvaluationScore
 from app.models.evaluation import (
@@ -19,6 +20,7 @@ from app.models.evaluation import (
     EvaluationRun,
 )
 from app.models.experiment import Experiment
+from app.models.experiment_attempt import ExperimentAttempt
 from app.models.prompt import ProjectAPIKey, Prompt, PromptLabel
 from app.models.result import Result
 from app.models.run import Run
@@ -27,7 +29,9 @@ from app.models.workspace import Organization, OrganizationMembership, Project, 
 
 __all__ = [
     "BackgroundJobRecord",
+    "BenchmarkReservation",
     "Experiment",
+    "ExperimentAttempt",
     "Result",
     "Run",
     "WorkerHeartbeatRecord",

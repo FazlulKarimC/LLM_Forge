@@ -50,14 +50,16 @@ class OpenAIEngine(InferenceEngine):
         self._provider_id = provider_id
         self._client = None if async_only else self._make_client()
         self._is_loaded = True
-        logger.info(f"OpenAIEngine initialized: base_url={self._base_url}, model={self._model_name}")
+        logger.info("OpenAI-compatible engine initialized")
 
     def _make_client(self) -> OpenAI:
         """Create an OpenAI SDK client pointed at the custom Base URL."""
+        from app.core.config import settings
         return OpenAI(
             base_url=self._base_url,
             api_key=self._api_key,
-            timeout=120.0, # Generous timeout for local or unoptimized models
+            timeout=float(settings.BENCHMARK_CALL_TIMEOUT_SECONDS),
+            max_retries=0,
         )
     
     def load_model(self, model_name: str) -> None:
@@ -66,7 +68,7 @@ class OpenAIEngine(InferenceEngine):
         """
         self._model_name = model_name
         self._client = self._make_client()
-        logger.info(f"OpenAIEngine: switched to model {model_name} (base_url={self._base_url})")
+        logger.info("OpenAI-compatible model configured")
     
     def generate(
         self,
@@ -114,17 +116,21 @@ class OpenAIEngine(InferenceEngine):
                 latency_ms=latency_ms,
                 finish_reason=finish_reason,
                 cost_usd=pricing["total_cost_usd"],
+                served_provider=self._provider_id,
+                served_model=getattr(response, "model", None),
+                usage_source="provider_reported" if response.usage else "word_count_estimate",
+                cost_source="pricing_table_estimate",
                 gpu_memory_mb=None,
                 failure_mode=failure_mode,
             )
 
         except NotFoundError as e:
             latency_ms = (time.perf_counter() - start_time) * 1000
-            logger.error(f"Model not found on custom endpoint (url={self._base_url}, model={self._model_name}): {e}")
+            logger.error("Provider request failed: %s", type(e).__name__)
             raise RuntimeError(f"Model '{self._model_name}' not found on the provided endpoint. Please verify the model ID.") from e
         except RateLimitError as e:
             latency_ms = (time.perf_counter() - start_time) * 1000
-            logger.error(f"Rate limit exceeded (url={self._base_url}, model={self._model_name}): {e}")
+            logger.error("Provider request failed: %s", type(e).__name__)
             return GenerationResult(
                 text="",
                 tokens_input=len(prompt.split()),
@@ -134,11 +140,11 @@ class OpenAIEngine(InferenceEngine):
                 cost_usd=0.0,
                 gpu_memory_mb=None,
                 failure_mode=FailureMode.API_ERROR,
-                error_message=f"Rate limit exceeded: {str(e)}",
+                error_message=f"Provider request failed ({type(e).__name__})",
             )
         except (APIConnectionError, APIError) as e:
             latency_ms = (time.perf_counter() - start_time) * 1000
-            logger.error(f"Custom OpenAI API Error (url={self._base_url}, model={self._model_name}): {e}")
+            logger.error("Provider request failed: %s", type(e).__name__)
             return GenerationResult(
                 text="",
                 tokens_input=len(prompt.split()),
@@ -148,11 +154,11 @@ class OpenAIEngine(InferenceEngine):
                 cost_usd=0.0,
                 gpu_memory_mb=None,
                 failure_mode=FailureMode.API_ERROR,
-                error_message=f"API Error from custom endpoint: {str(e)}",
+                error_message=f"Provider request failed ({type(e).__name__})",
             )
         except Exception as e:
             latency_ms = (time.perf_counter() - start_time) * 1000
-            logger.error(f"Unexpected custom API inference failure (url={self._base_url}, model={self._model_name}): {e}")
+            logger.error("Provider request failed: %s", type(e).__name__)
             
             error_str = str(e).lower()
             failure_mode = FailureMode.UNKNOWN
@@ -170,7 +176,7 @@ class OpenAIEngine(InferenceEngine):
                 cost_usd=0.0,
                 gpu_memory_mb=None,
                 failure_mode=failure_mode,
-                error_message=str(e),
+                error_message=f"Provider request failed ({type(e).__name__})",
             )
     
     async def generate_async(self, prompt: str, config: GenerationConfig) -> GenerationResult:

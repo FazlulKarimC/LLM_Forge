@@ -161,7 +161,7 @@ class TestCostMetrics:
         assert result["total_cost_usd"] == 0.003
         assert result["cost_per_correct_answer"] == 0.003
         assert result["provider"] == "mixed"
-        assert result["cost_source"] == "observed_per_run"
+        assert result["cost_source"] == "pricing_table_estimate"
 
 
 # =============================================================================
@@ -213,7 +213,7 @@ class TestExperimentSummary:
 
         summary = service._generate_summary(accuracy, latency, cost, faithfulness, failure_modes, uuid4())
 
-        assert "no measurable" in summary.lower()
+        assert "does not verify provider billing" in summary.lower()
 
     def test_summary_includes_failure_modes(self):
         """Summary should mention failures when present."""

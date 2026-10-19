@@ -28,6 +28,11 @@ class EvaluationRunner:
     async def start(self):
         self.wakeup = asyncio.Event()
         self.last_tick = now()
+        try:
+            async with async_session_maker() as db:
+                await asyncio.wait_for(repository.reconcile(db), timeout=5)
+        except Exception:
+            logger.warning("evaluation_startup_reconciliation_unavailable")
         self.loop_task = asyncio.create_task(self.loop())
 
     async def stop(self):
@@ -50,17 +55,20 @@ class EvaluationRunner:
         self.wakeup.set()
 
     async def loop(self):
+        # Demand driven: an idle process never opens a database connection.
         while True:
+            await self.wakeup.wait()
             self.wakeup.clear()
             try:
                 await self.tick()
                 self.last_tick = now()
             except Exception:
                 logger.error("evaluation_runner_tick_failed")
-            try:
-                await asyncio.wait_for(self.wakeup.wait(), timeout=30)
-            except TimeoutError:
-                pass
+            if self.credentials or self.tasks:
+                try:
+                    await asyncio.wait_for(self.wakeup.wait(), timeout=30)
+                except TimeoutError:
+                    self.wakeup.set()
 
     async def tick(self):
         async with async_session_maker() as db:
@@ -87,6 +95,7 @@ class EvaluationRunner:
                 (
                     await db.scalars(
                         select(EvaluationExecution.id).where(
+                            EvaluationExecution.id.in_([identity for identity in self.attempts.values() if identity]),
                             EvaluationExecution.status.in_(("queued", "running"))
                         )
                     )
@@ -99,40 +108,7 @@ class EvaluationRunner:
                 ):
                     self.credentials.pop(run_id, None)
                     self.attempts.pop(run_id, None)
-            candidates = (
-                await db.scalars(
-                    select(EvaluationRun)
-                    .where(EvaluationRun.status.in_(("queued", "failed")))
-                    .order_by(EvaluationRun.created_at)
-                )
-            ).all()
-            for run in candidates:
-                if run.id in self.tasks:
-                    continue
-                if run.id not in self.credentials and not needs_credentials(run.config):
-                    execution = await db.scalar(
-                        select(EvaluationExecution)
-                        .where(EvaluationExecution.run_id == run.id)
-                        .order_by(EvaluationExecution.attempt.desc())
-                        .limit(1)
-                    )
-                    if execution is None or execution.status not in (
-                        "queued",
-                        "interrupted",
-                    ):
-                        continue  # Legacy runs have no checkpoint recovery contract.
-                    if execution.status == "interrupted":
-                        identity = await self.recover_provider_free(db, run, execution)
-                        if not identity:
-                            continue
-                    else:
-                        identity = execution.id
-                    self.credentials[run.id] = (
-                        run.project_id,
-                        request_from_config(run),
-                        {},
-                    )
-                    self.attempts[run.id] = identity
+            # Resume requests own recovery; never redispatch historical failed runs.
         for run_id in list(self.credentials):
             if run_id not in self.tasks:
                 task = asyncio.create_task(self.execute(run_id))
@@ -194,11 +170,11 @@ class EvaluationRunner:
             self.wakeup.set()
 
     def health(self):
-        if self.loop_task is None or self.loop_task.done() or self.last_tick is None:
+        if self.loop_task is None:
+            return "idle"
+        if self.loop_task.done():
             return "unhealthy"
-        return (
-            "healthy" if (now() - self.last_tick).total_seconds() < 90 else "unhealthy"
-        )
+        return "healthy" if self.credentials or self.tasks else "idle"
 
     async def execute(self, run_id):
         accepted = self.credentials.get(run_id)

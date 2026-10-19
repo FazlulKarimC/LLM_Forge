@@ -11,18 +11,17 @@ describe("custom provider credential helpers", () => {
     window.sessionStorage.clear();
   });
 
-  it("persists and restores session-scoped credentials", () => {
-    persistCustomProviderCredentials("custom-model", "http://localhost:8000/v1", "secret-key");
-
-    expect(getStoredCustomProviderCredentials("custom-model")).toEqual({
-      customBaseUrl: "http://localhost:8000/v1",
-      customApiKey: "secret-key",
-    });
+  it("removes legacy credentials from both storage locations", () => {
+    window.sessionStorage.setItem("customLLMSettings", JSON.stringify({model: {apiKey: "sentinel"}}));
+    window.localStorage.setItem("customApiKey", "sentinel");
+    persistCustomProviderCredentials();
+    expect(getStoredCustomProviderCredentials()).toEqual({});
+    expect(window.sessionStorage.getItem("customLLMSettings")).toBeNull();
+    expect(window.localStorage.getItem("customApiKey")).toBeNull();
   });
-
-  it("throws when a custom-provider run has no saved base url", () => {
-    expect(() =>
-      resolveRunExperimentCredentials({ provider: "custom", model_name: "missing-model" }),
-    ).toThrow(/No saved custom endpoint settings/i);
+  it("requires fresh custom endpoint input for each run", () => {
+    expect(() => resolveRunExperimentCredentials({provider: "custom"})).toThrow(/Enter endpoint credentials/);
+    expect(resolveRunExperimentCredentials({provider: "custom"}, {customBaseUrl: "http://localhost/v1", customApiKey: "sentinel"})).toEqual({customBaseUrl: "http://localhost/v1", customApiKey: "sentinel"});
+    expect(window.sessionStorage.length).toBe(0);
   });
 });

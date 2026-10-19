@@ -10,7 +10,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import ForeignKey, String, Text, Float, Integer, Boolean, DateTime, UniqueConstraint, Enum as SQLEnum
+from sqlalchemy import ForeignKey, String, Text, Float, Integer, Boolean, DateTime, UniqueConstraint, Index, Enum as SQLEnum
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -68,6 +68,7 @@ class Run(Base):
     # Unique constraint for idempotency: prevents duplicate runs per example
     __table_args__ = (
         UniqueConstraint("experiment_id", "example_id", "attempt", name="uq_runs_experiment_example_attempt"),
+        Index("ix_runs_attempt_page", "experiment_id", "attempt", "example_id", "id"),
     )
     
     id: Mapped[uuid.UUID] = mapped_column(

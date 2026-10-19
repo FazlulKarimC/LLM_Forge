@@ -250,7 +250,7 @@ class ProviderRouter(InferenceEngine):
                 elapsed_ms = (time.perf_counter() - start_time) * 1000
                 self._stats.record(engine_name, elapsed_ms, 0, 0, 0.0, True)
 
-                last_error = str(exc)
+                last_error = type(exc).__name__
                 err_lower = str(exc).lower()
                 is_retryable = any(keyword in err_lower for keyword in RETRYABLE_KEYWORDS)
 
@@ -258,7 +258,7 @@ class ProviderRouter(InferenceEngine):
                     logger.warning(
                         "Provider %s failed (%s), falling back...",
                         engine_name,
-                        exc,
+                        type(exc).__name__,
                     )
                     continue
                 raise
@@ -298,13 +298,10 @@ class ProviderRouter(InferenceEngine):
                     result.routing_reason = "strict_batch_delegate"
                     self._record_result_stats(engine_name, result)
                 return results
-            except Exception as exc:
-                logger.warning(
-                    "Strict batch generation failed on %s: %s; falling back to strict sequential",
-                    engine_name,
-                    exc,
-                )
-                return [self.generate(prompt, config) for prompt in prompts]
+            except Exception:
+                # A batch can fail after some calls have completed. Replaying it
+                # would repeat potentially charged requests without consent.
+                raise
 
         if self._policy == RoutingPolicy.FALLBACK_CHAIN and len(available) <= 1:
             for engine in self._engines:
@@ -322,7 +319,7 @@ class ProviderRouter(InferenceEngine):
                     logger.warning(
                         "Batch generation failed on %s: %s",
                         self._get_engine_name(engine),
-                        exc,
+                        type(exc).__name__,
                     )
 
             logger.warning("All engine batch methods failed, falling back to sequential")

@@ -32,29 +32,6 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-async def _active_run_count(service: ExperimentService) -> int:
-    """Best-effort queued/running count used for global concurrency gating."""
-    from app.core.rate_limit import MAX_CONCURRENT_RUNS
-
-    try:
-        stats = await service.get_stats()
-    except Exception as exc:
-        logger.warning("Failing closed on concurrency check because stats query failed: %s", exc)
-        return MAX_CONCURRENT_RUNS
-
-    if not isinstance(stats, dict):
-        logger.warning("Failing closed because stats payload was not a dict: %s", type(stats).__name__)
-        return MAX_CONCURRENT_RUNS
-
-    running = stats.get("running", 0)
-    queued = stats.get("queued", 0)
-    if not isinstance(running, int) or not isinstance(queued, int):
-        logger.warning("Failing closed because stats payload was malformed: %s", stats)
-        return MAX_CONCURRENT_RUNS
-
-    return running + queued
-
-
 async def _execute_inline(
     experiment_id: UUID, 
     custom_base_url: Optional[str] = None, 
@@ -82,19 +59,19 @@ async def _execute_inline(
         # svc.execute() sets FAILED status internally, but if its commit
         # also fails (e.g., DB session corruption), the experiment stays
         # stuck in RUNNING forever. Use a fresh session as a safety net.
-        logger.error(f"[INLINE] Execution failed for {experiment_id}: {e}")
+        logger.error("[INLINE] Execution failed: %s", type(e).__name__)
         try:
             async with async_session_maker() as fallback_session:
                 fallback_svc = ExperimentService(fallback_session)
                 changed = await fallback_svc._fail_active_attempt(
                     experiment_id,
-                    f"Execution failed: {str(e)[:400]}",
+                    f"Execution failed ({type(e).__name__})",
                     attempt=expected_attempt,
                 )
                 if changed:
                     logger.info(f"[INLINE] Safety-net: set {experiment_id} to FAILED")
         except Exception as fallback_err:
-            logger.error(f"[INLINE] Safety-net commit also failed: {fallback_err}")
+            logger.error("[INLINE] Safety-net commit failed: %s", type(fallback_err).__name__)
 
 
 @router.get("/stats")
@@ -126,7 +103,7 @@ async def list_experiments(
     tag: Optional[str] = None,
     slim: bool = Query(False, description="Return slim list items (no full config/run_manifest)"),
     skip: int = Query(0, ge=0),
-    limit: int = Query(20, ge=1, le=100),
+    limit: int = Query(25, ge=1, le=50),
     db: AsyncSession = Depends(get_db),
 ):
     """List experiments with optional filtering and pagination.
@@ -239,20 +216,17 @@ async def run_experiment(
         parsed = urlparse(x_custom_llm_base)
         if parsed.scheme not in ("http", "https"):
             raise ValidationException(message="Custom LLM base URL must use http:// or https://")
+        if parsed.username or parsed.password or parsed.query or parsed.fragment:
+            raise ValidationException(message="Keep credentials in the API key field; the base URL must not contain user info, query parameters, or a fragment")
         if not parsed.hostname:
             raise ValidationException(message="Custom LLM base URL must include a valid hostname")
         if settings.ENVIRONMENT != "development":
             raise ValidationException(message="Custom LLM execution is only allowed in development mode")
 
-    from app.core.rate_limit import MAX_CONCURRENT_RUNS
-    active_runs = await _active_run_count(service)
-    if active_runs >= MAX_CONCURRENT_RUNS:
-        raise HTTPException(
-            status_code=429,
-            detail=f"Server is busy - {MAX_CONCURRENT_RUNS} experiments are already queued or running. Please wait for one to complete.",
-            headers={"Retry-After": "30"},
-        )
-
+    try:
+        await service.preflight(experiment)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
     try:
         expected_attempt = await service.queue_for_execution(experiment_id)
     except ValueError as exc:

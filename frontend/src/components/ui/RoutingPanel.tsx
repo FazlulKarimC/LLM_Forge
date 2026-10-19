@@ -19,10 +19,10 @@ import {
  * - Aggregate KPIs (total requests, total errors, error rate)
  * - Per-provider data table (requests, errors, latency, tokens, cost)
  */
-export function RoutingPanel({ experimentId }: { experimentId: string }) {
+export function RoutingPanel({ experimentId, attempt }: { experimentId: string; attempt?: number }) {
   const telemetryQuery = useQuery({
-    queryKey: ["routing", experimentId],
-    queryFn: ({ signal }) => getRoutingTelemetry(experimentId, { signal }),
+    queryKey: ["routing", experimentId, attempt],
+    queryFn: ({ signal }) => getRoutingTelemetry(experimentId, { signal }, attempt),
     retry: false,
   });
 

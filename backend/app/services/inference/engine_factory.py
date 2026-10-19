@@ -32,8 +32,8 @@ def build_auto_provider_engines(model_name: str) -> list:
 
             engines.append(OpenRouterEngine(model_name=model_name))
         except Exception as exc:
-            logger.warning("Could not init OpenRouter: %s", exc)
-            provider_errors.append(f"openrouter={exc}")
+            logger.warning("Could not init OpenRouter: %s", type(exc).__name__)
+            provider_errors.append(f"openrouter={type(exc).__name__}")
 
     if settings.GROQ_API_KEY:
         try:
@@ -41,8 +41,8 @@ def build_auto_provider_engines(model_name: str) -> list:
 
             engines.append(GroqEngine(model_name=model_name))
         except Exception as exc:
-            logger.warning("Could not init Groq: %s", exc)
-            provider_errors.append(f"groq={exc}")
+            logger.warning("Could not init Groq: %s", type(exc).__name__)
+            provider_errors.append(f"groq={type(exc).__name__}")
 
     if engines:
         return engines
@@ -74,7 +74,7 @@ def create_inference_engine(
 
     if provider_value == "custom" and not custom_base_url:
         raise ValueError(
-            "Custom provider runs require stored custom endpoint credentials for the configured model."
+            "Custom provider runs require endpoint credentials on this request."
         )
 
     if "mock" in model_name.lower():
@@ -127,9 +127,9 @@ def create_inference_engine(
             strict_comparison=strict_comparison,
         ), "auto (router)"
 
-    if default_engine == "hf_api":
+    if provider_value == "hf_api":
         from app.services.inference.hf_api_engine import HFAPIEngine
 
         return HFAPIEngine(model_name=model_name), "hf_api"
 
-    return MockEngine(), default_engine or "mock"
+    raise ValueError(f"Unsupported inference provider: {provider_value}")

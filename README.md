@@ -25,7 +25,7 @@ flowchart LR
 - **Historical results:** saved hosted runs remain readable. Legacy dataset writes and server-side demo dataset creation are disabled by default.
 - **Workspaces and access:** Clerk browser sessions, organization/project isolation, owner-managed hashed project keys with read-only prompt access and explicit optional prompt-write/evaluation scopes.
 - **Python SDK and CI:** fetch/compile prompts, evaluate pinned versions locally, upload summary results and run pass-rate gates. The SDK installs from this repository; external results remain self-reported.
-- **Reasoning benchmarks:** separate Naive, CoT, RAG and ReAct runs, provider routing/provenance, diagnostic datasets, profiling, exports, pinned baseline checks and paired statistical comparisons.
+- **Reasoning benchmarks:** bounded hosted Naive, CoT and small ReAct runs, diagnostic datasets, profiling, exports and baseline comparisons. Hosted RAG starts are temporarily paused while retrieval call budgets are added; existing RAG results remain readable.
 
 ## Try a provider-free evaluation
 
@@ -121,7 +121,7 @@ Current evaluation execution runs in your application or CI. LLMForge stores at 
 
 Existing hosted evaluation records/checkpoints are preserved for compatibility. `LEGACY_DATASET_WRITES=false` is the default: dataset create/import/edit/archive and old demo setup return 410. An explicit compatibility switch exists for older integrations/tests; it does not bypass authentication or change the default product. Dataset tables have not been dropped.
 
-Benchmarks retain their separate bundled diagnostic datasets, provider routing, optional Redis/RQ dispatch and RAG/Qdrant integration. The root `data/` duplication is still pending separate cleanup. The SDK remains repository-installed, not published to PyPI. Generic production tracing, online scheduling and hosted dataset authoring are outside the current product scope.
+Benchmarks retain their separate bundled diagnostic datasets. The hosted profile runs one model job and one provider call at a time, defaults to inline dispatch, and does not require Redis/RQ or Qdrant. Optional dispatch/RAG integrations remain in the code; new hosted RAG execution is paused. The root `data/` duplication is still pending separate cleanup. The SDK remains repository-installed, not published to PyPI. Generic production tracing, online scheduling and hosted dataset authoring are outside the current product scope.
 
 ## Development and deployment
 

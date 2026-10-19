@@ -1,4 +1,5 @@
 "use client";
+import { benchmarkPollDelay } from "@/lib/benchmark-polling";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
@@ -56,7 +57,7 @@ export function EvaluationsWorkbench() {
   const runs = useQuery({
     queryKey: scopedKey(["evaluations", offset, search, status]),
     queryFn: ({signal}) => listEvaluations(offset, signal, {search, ...(status ? {status} : {})}),
-    refetchInterval: query => query.state.data?.items.some(isActive) ? 2500 : false,
+    refetchInterval: query => query.state.data?.items.some(isActive) ? benchmarkPollDelay(query.state.data.items.find(isActive)?.created_at) : false,
   });
   const detail = useEvaluationSummary(runId);
   const comparison = useEvaluationSummary(compareId);

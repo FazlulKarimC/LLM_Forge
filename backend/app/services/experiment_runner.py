@@ -1,16 +1,42 @@
 """Per-example execution and scoring for experiment attempts."""
 
-import asyncio
 import logging
+import hashlib
+import json
+from decimal import Decimal, InvalidOperation
 from typing import Any, List, Optional
 from uuid import UUID
 
 import numpy as np
 
 from app.schemas.experiment import ExperimentResponse
-from app.schemas.run_record import RunRecordDict, build_run_record
+from app.schemas.run_record import build_run_record
+from app.services.benchmark_execution import run_blocking
 
 logger = logging.getLogger(__name__)
+
+SCORING_VERSION = "deterministic-v2"
+
+
+def case_metadata(item):
+    return {
+        "case_fingerprint": hashlib.sha256(json.dumps(item, sort_keys=True, ensure_ascii=False, default=str).encode()).hexdigest(),
+        "scoring_version": SCORING_VERSION,
+    }
+
+
+def generation_metadata(item, result, config, *, cache_hit=False):
+    return {**case_metadata(item), "cache_hit": cache_hit,
+            "requested_provider": config.provider.value, "requested_model": config.model_name,
+            "served_model": result.served_model, "usage_source": result.usage_source,
+            "backend_provider": result.backend_provider,
+            "cost_source": result.cost_source, "latency_kind": "http_wall_time"}
+
+
+def cached_usage(result):
+    # A cached response is evidence of a previous call, not a new billable call.
+    from dataclasses import replace
+    return replace(result, tokens_input=0, tokens_output=0, latency_ms=0, cost_usd=0)
 
 
 class ExperimentRunExecutor:
@@ -41,7 +67,15 @@ class ExperimentRunExecutor:
             parsed_answer,
             aliases,
         )
-        is_correct = is_exact or is_substring
+        # Substring containment remains a diagnostic, never the primary QA score.
+        is_correct = is_exact
+        try:
+            expected = Decimal(str(item["answer"]).replace(",", "").strip())
+            predicted = Decimal(str(parsed_answer).replace(",", "").strip())
+            if expected.is_finite() and predicted.is_finite():
+                is_correct = expected == predicted
+        except InvalidOperation:
+            pass
         grader_results = None
 
         if use_robustness_scoring:
@@ -57,9 +91,8 @@ class ExperimentRunExecutor:
             grader_results = {"robustness": robustness}
 
             # Sentinel answers are evaluation directives, not strings the model should emit.
-            if str(item.get("answer", "")).upper() in {"REFUSE", "HANDLE_GRACEFULLY"}:
-                is_correct = bool(robustness.get("is_safe"))
-                f1_score = 1.0 if is_correct else 0.0
+            is_correct = None if robustness.get("classification") == "inconclusive" else robustness.get("is_safe")
+            f1_score = float(is_correct) if is_correct is not None else None
 
         return {
             "is_correct": is_correct,
@@ -236,7 +269,8 @@ class ExperimentRunExecutor:
     ) -> dict[str, Any]:
         """Run a single example through the ReAct agent path."""
         with profiler.section("api_call"):
-            agent_result = await asyncio.to_thread(react_agent.run, item["question"], profiler)
+            log_start = len(getattr(react_agent._engine, "call_log", []))
+            agent_result = await run_blocking(react_agent.run, item["question"], profiler)
 
         with profiler.section("parsing"):
             parsed_answer = react_prompt_template.parse_response(agent_result.answer)
@@ -288,6 +322,9 @@ class ExperimentRunExecutor:
             failure_mode=agent_failure_mode,
             error_message=agent_error_message,
             grader_results=score_result["grader_results"],
+            run_metadata={**case_metadata(item), "calls": getattr(react_agent._engine, "call_log", [])[log_start:], "latency_kind": "agent_wall_time"},
+            cost_usd=sum(c.get("cost_usd") or 0 for c in getattr(react_agent._engine, "call_log", [])[log_start:]),
+            served_provider=",".join(sorted({str(c.get("served_provider") or "unknown") for c in getattr(react_agent._engine, "call_log", [])[log_start:]})) or None,
         )
 
     async def build_standard_run_record(
@@ -338,6 +375,7 @@ class ExperimentRunExecutor:
 
         cache_seed = self.generation_seed(gen_config)
         result = None
+        cache_hit = False
         if cache:
             with profiler.section("cache_lookup"):
                 result = cache.get(
@@ -348,11 +386,13 @@ class ExperimentRunExecutor:
                     cache_seed,
                 )
             if result:
+                cache_hit = True
+                result = cached_usage(result)
                 logger.info("[EXECUTE]   Cache HIT for example %s", item["id"])
 
         if result is None:
             with profiler.section("api_call"):
-                result = await asyncio.to_thread(engine.generate, prompt, gen_config)
+                result = await run_blocking(engine.generate, prompt, gen_config)
 
             if cache:
                 cache.put(
@@ -391,7 +431,8 @@ class ExperimentRunExecutor:
             )
 
         ctx_relevance = self.score_context_relevance(item["question"], context_chunks, profiler)
-        sem_sim = self.score_semantic_similarity(parsed_answer, item.get("answer"), profiler)
+        # Optional remote scoring is not part of the bounded hosted profile.
+        sem_sim = None
 
         return build_run_record(
             example_id=item["id"],
@@ -419,6 +460,7 @@ class ExperimentRunExecutor:
             failure_mode=result.failure_mode,
             error_message=result.error_message,
             grader_results=score_result["grader_results"],
+            run_metadata=generation_metadata(item, result, experiment_response.config, cache_hit=cache_hit),
         )
 
     async def flush_runs(self, run_service, experiment_id: UUID, runs_batch_data: List[dict[str, Any]], *, force: bool = False):
@@ -452,6 +494,7 @@ class ExperimentRunExecutor:
         cot_prompt_template,
         use_robustness_scoring: bool,
         ensure_active=None,
+        persist_cases=None,
     ) -> dict[str, int]:
         """Execute the non-RAG non-agent fast path using batched generation."""
         logger.info("[EXECUTE] Using batched execution (batch_size=%s)", batch_size)
@@ -504,7 +547,7 @@ class ExperimentRunExecutor:
             batch_gen_results = []
             if uncached_prompts:
                 with profiler.section("api_call"):
-                    batch_gen_results = await asyncio.to_thread(
+                    batch_gen_results = await run_blocking(
                         engine.generate_batch,
                         uncached_prompts,
                         gen_config,
@@ -527,7 +570,7 @@ class ExperimentRunExecutor:
             all_results = []
             for local_idx in range(len(batch_items)):
                 if local_idx in cached_results:
-                    all_results.append(cached_results[local_idx])
+                    all_results.append(cached_usage(cached_results[local_idx]))
                 else:
                     all_results.append(next(gen_results_iterator))
 
@@ -571,14 +614,17 @@ class ExperimentRunExecutor:
                         failure_mode=result.failure_mode,
                         error_message=result.error_message,
                         grader_results=score_result["grader_results"],
-                        run_metadata={"parse_method": parse_method},
+                        run_metadata={"parse_method": parse_method, **generation_metadata(item, result, experiment_response.config, cache_hit=local_idx in cached_results)},
                     )
                 )
 
             if runs_batch_data:
                 if ensure_active:
                     await ensure_active()
-                await run_service.create_runs_batch(experiment_id, runs_batch_data)
+                if persist_cases:
+                    await persist_cases(runs_batch_data)
+                else:
+                    await run_service.create_runs_batch(experiment_id, runs_batch_data)
 
             batch_stats["batches_processed"] += 1
             batch_stats["total_prompts_batched"] += len(batch_items)
@@ -613,6 +659,7 @@ class ExperimentRunExecutor:
         rag_prompt_template,
         react_prompt_template,
         ensure_active=None,
+        persist_cases=None,
     ) -> dict[str, int]:
         """Execute the sequential path used by RAG and agent experiments."""
         if use_batching:
@@ -657,10 +704,13 @@ class ExperimentRunExecutor:
                     use_robustness_scoring=use_robustness_scoring,
                 )
 
-            runs_batch_data.append(run_record)
             if ensure_active:
                 await ensure_active()
-            await self.flush_runs(run_service, experiment_id, runs_batch_data)
+            if persist_cases:
+                await persist_cases([run_record])
+            else:
+                runs_batch_data.append(run_record)
+                await self.flush_runs(run_service, experiment_id, runs_batch_data)
 
         if ensure_active:
             await ensure_active()

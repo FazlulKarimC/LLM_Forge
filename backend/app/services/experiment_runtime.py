@@ -67,6 +67,9 @@ class VersionedPromptTemplate:
     def parse_response(self, response: str) -> str:
         return self._parser(response)
 
+    def parse_response_with_method(self, response: str) -> tuple[str, str]:
+        return self.parse_response(response), "versioned_prompt"
+
 
 def cot_examples_path() -> Path:
     """Resolve CoT examples path via settings."""
@@ -85,13 +88,7 @@ _MAX_ERROR_LENGTH = 500
 
 def sanitize_error_message(exc: Exception) -> str:
     """Build a safe error string from an exception."""
-    raw = f"{type(exc).__name__}: {exc}"
-    sanitized = _PATH_PATTERN.sub("<path>", raw)
-    sanitized = _WIN_PATH_PATTERN.sub("<path>", sanitized)
-    sanitized = _TOKEN_PATTERN.sub("<redacted>", sanitized)
-    if len(sanitized) > _MAX_ERROR_LENGTH:
-        sanitized = sanitized[:_MAX_ERROR_LENGTH] + "..."
-    return f"Execution failed: {sanitized}"
+    return f"Execution failed ({type(exc).__name__}); completed cases were kept"
 
 
 class ExperimentRuntimeBuilder:
@@ -106,6 +103,9 @@ class ExperimentRuntimeBuilder:
 
         wall_start = _time.perf_counter()
         opt_config = experiment_response.config.optimization or OptimizationConfig()
+        # Persist each hosted response before issuing another call, even when a
+        # historical/draft configuration requested concurrent batches.
+        opt_config = opt_config.model_copy(update={"batch_size": 1})
         cache = PromptCache(max_size=opt_config.cache_max_size) if opt_config.enable_caching else None
         profiler = ProfilerContext(enabled=opt_config.enable_profiling)
         opt_report = OptimizationReport()
@@ -339,6 +339,13 @@ class ExperimentRuntimeBuilder:
             execution_mode="batched" if use_batching and not use_rag else "sequential",
             rag_enabled=use_rag,
             optimization=opt_config,
+            execution_budget={
+                "max_provider_calls": settings.BENCHMARK_MAX_CALLS,
+                "new_call_deadline_seconds": settings.BENCHMARK_MAX_SECONDS,
+                "http_timeout_seconds": settings.BENCHMARK_CALL_TIMEOUT_SECONDS,
+                "provider_concurrency": 1,
+                "optional_scoring": False,
+            },
         )
         manifest = dict(cast(dict, exp_obj.run_manifest or experiment_response.run_manifest or {}))
         manifest["effective_execution"] = effective_execution
@@ -362,7 +369,7 @@ class ExperimentRuntimeBuilder:
 
         agent_config = experiment_response.config.agent
         enabled_tools_names = agent_config.tools if agent_config else ["wikipedia_search", "calculator"]
-        agent_max_iter = agent_config.max_iterations if agent_config else 5
+        agent_max_iter = agent_config.max_iterations if agent_config else 3
         agent_tools = []
 
         for tool_name in enabled_tools_names:

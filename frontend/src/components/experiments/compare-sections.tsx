@@ -128,10 +128,10 @@ export function SignificancePanel({ stats }: { stats: StatisticalComparison }) {
           <Sigma className="mt-0.5 size-4 shrink-0" />
           <div className="space-y-1">
             <div className="font-semibold">
-              {stats.mcnemar.is_significant ? "Difference is statistically significant" : "Difference is not statistically significant"}
+              {stats.comparable === false ? "Inferential comparison unavailable" : stats.mcnemar.is_significant ? "Difference is statistically significant" : "Difference is not statistically significant"}
             </div>
             <p className="text-sm text-(--muted-foreground)">
-              McNemar p-value {stats.mcnemar.p_value < 0.0001 ? "< 0.0001" : stats.mcnemar.p_value.toFixed(4)}
+              McNemar p-value {stats.mcnemar.p_value == null ? "unavailable" : stats.mcnemar.p_value < 0.0001 ? "< 0.0001" : stats.mcnemar.p_value.toFixed(4)}
               {" "}from {stats.mcnemar.n} paired examples ({stats.mcnemar.test_type ?? "test"}).
             </p>
           </div>
@@ -156,13 +156,13 @@ export function SignificancePanel({ stats }: { stats: StatisticalComparison }) {
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="metric-card">
             <div className="metric-label">Accuracy A</div>
-            <div className="metric-value text-3xl">{(stats.accuracy_a * 100).toFixed(1)}%</div>
-            <div className="metric-caption">95% CI {(stats.accuracy_ci_a ?? stats.bootstrap_ci_a).lower.toFixed(2)} to {(stats.accuracy_ci_a ?? stats.bootstrap_ci_a).upper.toFixed(2)}</div>
+            <div className="metric-value text-3xl">{stats.accuracy_a == null ? "Unknown" : `${(stats.accuracy_a * 100).toFixed(1)}%`}</div>
+            <div className="metric-caption">{stats.comparable === false ? "Descriptive only; paired inference unavailable" : `95% CI ${(stats.accuracy_ci_a ?? stats.bootstrap_ci_a).lower.toFixed(2)} to ${(stats.accuracy_ci_a ?? stats.bootstrap_ci_a).upper.toFixed(2)}`}</div>
           </div>
           <div className="metric-card">
             <div className="metric-label">Accuracy B</div>
-            <div className="metric-value text-3xl">{(stats.accuracy_b * 100).toFixed(1)}%</div>
-            <div className="metric-caption">95% CI {(stats.accuracy_ci_b ?? stats.bootstrap_ci_b).lower.toFixed(2)} to {(stats.accuracy_ci_b ?? stats.bootstrap_ci_b).upper.toFixed(2)}</div>
+            <div className="metric-value text-3xl">{stats.accuracy_b == null ? "Unknown" : `${(stats.accuracy_b * 100).toFixed(1)}%`}</div>
+            <div className="metric-caption">{stats.comparable === false ? "Descriptive only; paired inference unavailable" : `95% CI ${(stats.accuracy_ci_b ?? stats.bootstrap_ci_b).lower.toFixed(2)} to ${(stats.accuracy_ci_b ?? stats.bootstrap_ci_b).upper.toFixed(2)}`}</div>
           </div>
         </div>
         {notes.length ? (
