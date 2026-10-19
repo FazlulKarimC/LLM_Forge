@@ -41,6 +41,14 @@ import type {
     StatisticalComparison,
     SyntheticDataResult,
 } from "@/lib/api-types";
+import type { components } from "@/lib/generated/api-schema";
+
+export type HostedBenchmarkProfile = components["schemas"]["HostedBenchmarkProfile"];
+
+export async function getBenchmarkProfile(options: RequestInit = {}): Promise<HostedBenchmarkProfile> {
+    const capabilities = await fetchAPI<{ benchmarks: HostedBenchmarkProfile }>("/capabilities", options);
+    return capabilities.benchmarks;
+}
 
 export { ApiError };
 export {
@@ -142,8 +150,8 @@ export async function deleteExperiment(id: string): Promise<void> {
 /**
  * Get metrics for an experiment.
  */
-export async function getMetrics(experimentId: string, options: RequestInit = {}): Promise<Metrics> {
-    return fetchAPI<Metrics>(`/results/${experimentId}/metrics`, options);
+export async function getMetrics(experimentId: string, options: RequestInit = {}, attempt?: number): Promise<Metrics> {
+    return fetchAPI<Metrics>(`/results/${experimentId}/metrics${attempt === undefined ? "" : `?attempt=${attempt}`}`, options);
 }
 
 /**
@@ -163,24 +171,23 @@ export async function getRunGridSummaries(experimentId: string, options: Request
 /**
  * Get optimization profiling data for an experiment.
  */
-export async function getProfile(experimentId: string, options: RequestInit = {}): Promise<ProfileData> {
-    return fetchAPI<ProfileData>(`/results/${experimentId}/profile`, options);
+export async function getProfile(experimentId: string, options: RequestInit = {}, attempt?: number): Promise<ProfileData> {
+    return fetchAPI<ProfileData>(`/results/${experimentId}/profile${attempt === undefined ? "" : `?attempt=${attempt}`}`, options);
 }
 
 /**
  * Export results as JSON download.
  */
-export async function exportResults(experimentId: string, experimentName?: string): Promise<void> {
-    const url = `${API_BASE_URL}/results/${experimentId}/export`;
+export async function exportResults(experimentId: string, experimentName?: string, attempt?: number, format: "json" | "jsonl" = "json"): Promise<void> {
+    const url = `${API_BASE_URL}/results/${experimentId}/export?format=${format}${attempt === undefined ? "" : `&attempt=${attempt}`}`;
     const response = await fetchWithHandling(url, {}, { timeoutMs: SAFE_METHOD_TIMEOUT_MS, maxRetries: SAFE_METHOD_MAX_RETRIES });
-    const data = await response.json();
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const blob = await response.blob();
     const downloadUrl = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = downloadUrl;
     // Use the experiment name in the filename if provided, fallback to ID
     const safeName = (experimentName || experimentId).replace(/[^a-z0-9_-]/gi, '_').toLowerCase();
-    a.download = `experiment_${safeName}_results.json`;
+    a.download = `experiment_${safeName}_attempt_${attempt ?? "current"}.${format}`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -195,8 +202,9 @@ export async function exportMarkdownReport(
     experimentName?: string,
     metrics?: Metrics,
     runs?: RunGridSummary[],
+    attempt?: number,
 ): Promise<void> {
-    const url = `${API_BASE_URL}/results/${experimentId}/export`;
+    const url = `${API_BASE_URL}/results/${experimentId}/export${attempt === undefined ? "" : `?attempt=${attempt}`}`;
     const response = await fetchWithHandling(url, {}, { timeoutMs: SAFE_METHOD_TIMEOUT_MS, maxRetries: SAFE_METHOD_MAX_RETRIES });
     const data = await response.json();
 
@@ -310,8 +318,8 @@ export async function getReadinessStatus(options: RequestInit = {}): Promise<Rea
 /**
  * Compare metrics across multiple experiments.
  */
-export async function compareExperiments(ids: string[], options: RequestInit = {}): Promise<ComparisonResponse> {
-    const params = ids.map(id => `experiment_ids=${id}`).join('&');
+export async function compareExperiments(ids: string[], options: RequestInit = {}, attempts: [number | undefined, number | undefined] = [undefined, undefined]): Promise<ComparisonResponse> {
+    const params = ids.map(id => `experiment_ids=${id}`).join('&') + (attempts[0] === undefined ? "" : `&attempt_a=${attempts[0]}`) + (attempts[1] === undefined ? "" : `&attempt_b=${attempts[1]}`);
     return fetchAPI<ComparisonResponse>(`/results/compare?${params}`, options);
 }
 
@@ -322,9 +330,10 @@ export async function getStatisticalComparison(
     experimentA: string,
     experimentB: string,
     options: RequestInit = {},
+    attempts: [number | undefined, number | undefined] = [undefined, undefined],
 ): Promise<StatisticalComparison> {
     return fetchAPI<StatisticalComparison>(
-        `/results/compare/statistical?experiment_a=${experimentA}&experiment_b=${experimentB}`,
+        `/results/compare/statistical?experiment_a=${experimentA}&experiment_b=${experimentB}${attempts[0] === undefined ? "" : `&attempt_a=${attempts[0]}`}${attempts[1] === undefined ? "" : `&attempt_b=${attempts[1]}`}`,
         options,
     );
 }
@@ -397,8 +406,8 @@ export async function unsetBaseline(experimentId: string): Promise<Experiment> {
 /**
  * Get regression report for an experiment.
  */
-export async function getRegressionReport(experimentId: string, options: RequestInit = {}): Promise<RegressionReport> {
-    return fetchAPI<RegressionReport>(`/results/${experimentId}/regression`, options);
+export async function getRegressionReport(experimentId: string, options: RequestInit = {}, attempt?: number): Promise<RegressionReport> {
+    return fetchAPI<RegressionReport>(`/results/${experimentId}/regression${attempt === undefined ? "" : `?attempt=${attempt}`}`, options);
 }
 
 /**
@@ -414,6 +423,20 @@ export async function rerunRegression(experimentId: string, baselineId?: string)
 /**
  * Get routing telemetry (per-provider stats) for an experiment.
  */
-export async function getRoutingTelemetry(experimentId: string, options: RequestInit = {}): Promise<Record<string, ProviderStats>> {
-    return fetchAPI<Record<string, ProviderStats>>(`/results/${experimentId}/routing`, options);
+export async function getRoutingTelemetry(experimentId: string, options: RequestInit = {}, attempt?: number): Promise<Record<string, ProviderStats>> {
+    return fetchAPI<Record<string, ProviderStats>>(`/results/${experimentId}/routing${attempt === undefined ? "" : `?attempt=${attempt}`}`, options);
+}
+
+export type BenchmarkAttempt = components["schemas"]["BenchmarkAttemptSummary"];
+export async function getBenchmarkAttempts(id: string, skip = 0, options: RequestInit = {}) {
+    return fetchAPI<components["schemas"]["BenchmarkAttemptPage"]>(`/results/${id}/attempts?skip=${skip}&limit=25`, options);
+}
+export async function getRunPage(id: string, attempt: number | undefined, skip: number, options: RequestInit = {}) {
+    return fetchAPI<{total: number; runs: RunGridSummary[]}>(`/results/${id}/runs/page?skip=${skip}&limit=25${attempt === undefined ? "" : `&attempt=${attempt}`}`, options);
+}
+export async function getRunDetail(id: string, runId: string, attempt: number | undefined, options: RequestInit = {}) {
+    return fetchAPI<RunSummary>(`/results/${id}/runs/${runId}${attempt === undefined ? "" : `?attempt=${attempt}`}`, options);
+}
+export async function purgeBenchmarkAttempt(id: string, attempt: number) {
+    return fetchAPI(`/results/${id}/attempts/${attempt}?exported=true`, {method: "DELETE"});
 }

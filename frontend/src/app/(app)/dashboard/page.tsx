@@ -1,4 +1,5 @@
 "use client";
+import { benchmarkPollDelay } from "@/lib/benchmark-polling";
 
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
@@ -23,7 +24,7 @@ export default function DashboardPage() {
     queryKey: ["evaluations", 0],
     queryFn: ({ signal }) => listEvaluations(0, signal),
     refetchInterval: (query) =>
-      query.state.data?.items.some(isActive) ? 2500 : false,
+      query.state.data?.items.some(isActive) ? benchmarkPollDelay(query.state.data.items.find(isActive)?.created_at) : false,
   });
   const readiness = useQuery({
     queryKey: ["readiness"],

@@ -31,6 +31,10 @@ async def claim(db, run_id, owner, *, expected_execution_id=None):
     )
     if capacity is None:
         raise RuntimeError("Evaluation capacity migration is missing")
+    from app.models.benchmark_reservation import BenchmarkReservation
+    reservations = BenchmarkReservation.__table__
+    if await db.scalar(select(reservations.c.id).where(reservations.c.released_at.is_(None), reservations.c.expires_at > now()).limit(1)):
+        return None
     queued = select(EvaluationExecution).where(
         EvaluationExecution.run_id == run_id, EvaluationExecution.status == "queued"
     )
@@ -215,7 +219,7 @@ async def reconcile(db):
                 EvaluationExecution.status.in_(("queued", "running")),
                 EvaluationExecution.lease_until <= now(),
             )
-            .order_by(EvaluationExecution.run_id)
+            .order_by(EvaluationExecution.run_id).limit(100)
         )
     ).all()
     for execution in rows:

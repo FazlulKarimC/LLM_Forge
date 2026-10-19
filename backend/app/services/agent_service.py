@@ -615,6 +615,8 @@ class ReActAgent:
         total_tokens_out = 0
         
         for iteration in range(self._max_iterations):
+            if getattr(self, "ensure_active", None):
+                self.ensure_active()
             # Check for loops
             if self._detect_loop(trace):
                 logger.warning(f"Loop detected at iteration {iteration + 1}")
@@ -643,7 +645,10 @@ class ReActAgent:
                 total_tokens_in += gen_result.tokens_input
                 total_tokens_out += gen_result.tokens_output
             except Exception as e:
-                logger.error(f"LLM generation failed at iteration {iteration + 1}: {e}")
+                from app.services.benchmark_execution import ExecutionInterrupted, BenchmarkBudgetExceeded
+                if isinstance(e, (ExecutionInterrupted, BenchmarkBudgetExceeded)):
+                    raise
+                logger.error("LLM generation failed at iteration %s: %s", iteration + 1, type(e).__name__)
                 answer = self._extract_best_answer(trace)
                 return AgentResult(
                     answer=answer,
@@ -685,6 +690,8 @@ class ReActAgent:
             
             # Execute action
             if parsed["action"] and parsed["action"] in self._tools:
+                if getattr(self, "ensure_active", None):
+                    self.ensure_active()
                 step.action = parsed["action"]
                 step.action_input = parsed["action_input"] or ""
                 

@@ -78,7 +78,8 @@ class HFAPIEngine(InferenceEngine):
 
     def _make_client(self) -> InferenceClient:
         """Create an InferenceClient with the configured provider and a strict timeout to prevent silent hangs."""
-        return InferenceClient(provider=self._provider, api_key=self._api_key, timeout=60)
+        from app.core.config import settings
+        return InferenceClient(provider=self._provider, api_key=self._api_key, timeout=settings.BENCHMARK_CALL_TIMEOUT_SECONDS)
     
     def load_model(self, model_name: str) -> None:
         """
@@ -148,6 +149,11 @@ class HFAPIEngine(InferenceEngine):
                 latency_ms=latency_ms,
                 finish_reason=finish_reason,
                 cost_usd=pricing["total_cost_usd"],
+                served_provider="hf_api",
+                backend_provider=self._provider,
+                served_model=getattr(response, "model", None),
+                usage_source="provider_reported" if response.usage else "word_count_estimate",
+                cost_source="pricing_table_estimate",
                 gpu_memory_mb=None,  # N/A for API
                 failure_mode=failure_mode,
             )
@@ -155,11 +161,11 @@ class HFAPIEngine(InferenceEngine):
         except ValueError as e:
             # Re-raise ValueError immediately without retrying
             # so we bubble up "Model X is not supported" properly.
-            logger.error(f"HF API rejected model {self._model_name} on provider {self._provider}: {e}")
+            logger.error("Provider request failed: %s", type(e).__name__)
             raise
         except Exception as e:
             latency_ms = (time.perf_counter() - start_time) * 1000
-            logger.error(f"HF API inference failed (provider={self._provider}, model={self._model_name}): {e}")
+            logger.error("Provider request failed: %s", type(e).__name__)
             
             error_str = str(e).lower()
             failure_mode = FailureMode.API_ERROR
@@ -180,7 +186,7 @@ class HFAPIEngine(InferenceEngine):
                 cost_usd=0.0,
                 gpu_memory_mb=None,
                 failure_mode=failure_mode,
-                error_message=str(e),
+                error_message=f"Provider request failed ({type(e).__name__})",
             )
     
     def generate_batch(

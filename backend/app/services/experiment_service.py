@@ -5,6 +5,7 @@ Business logic for experiment management.
 Handles CRUD operations and experiment execution orchestration.
 """
 
+import asyncio
 import json
 import logging
 import time as _time
@@ -17,6 +18,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_
 
 from app.models.experiment import Experiment
+from app.models.experiment_attempt import ExperimentAttempt
+from app.services.attempts import create_attempt, freeze_manifest
 from app.schemas.experiment import (
     ExperimentCreate,
     ExperimentResponse,
@@ -28,12 +31,12 @@ from app.schemas.experiment import (
     RegressionStatus,
 )
 from app.services.experiment_runtime import sanitize_error_message as _sanitize_error_message
+from app.services.benchmark_execution import (
+    BudgetedEngine, ExecutionInterrupted, execution_deadline,
+    release_execution, reserve_execution,
+)
 
 logger = logging.getLogger(__name__)
-
-
-class ExecutionInterrupted(Exception):
-    """This attempt was stopped before it could start another model call."""
 
 
 class ExperimentService:
@@ -71,6 +74,8 @@ class ExperimentService:
             error_message=experiment.error_message,
             tags=experiment.tags,
             run_manifest=experiment.run_manifest,
+            current_attempt=experiment.current_attempt,
+            pinned_attempt=experiment.pinned_attempt,
             is_baseline=getattr(experiment, 'is_baseline', False),
             regression_status=RegressionStatus(
                 getattr(experiment, 'regression_status', None) or RegressionStatus.NOT_CHECKED.value
@@ -111,7 +116,7 @@ class ExperimentService:
         """
         import hashlib
         
-        config_dict = data.config.model_dump()
+        config_dict = data.config.model_dump(mode="json")
         prompt_version_manifest = None
         if data.config.prompt_version_id:
             from app.models.prompt_version import PromptVersion
@@ -281,15 +286,15 @@ class ExperimentService:
     ) -> ExperimentSlimListResponse:
         """List experiments as slim list items (no full config, run_manifest, etc.)."""
         conditions = self._build_list_conditions(status, method, model, tag)
-        total, experiments = await self._paginated_experiments(conditions, skip, limit)
+        total = await self.db.scalar(select(func.count(Experiment.id)).where(*conditions)) or 0
+        direct = ["id", "name", "description", "status", "created_at", "completed_at", "is_baseline", "regression_status"]
+        columns = [getattr(Experiment, key) for key in direct]
+        for key in ("provider", "reasoning_method", "model_name", "dataset_name"):
+            columns.append(Experiment.config[key].as_string().label(key))
+        columns.append(Experiment.config["num_samples"].as_integer().label("num_samples"))
+        rows = (await self.db.execute(select(*columns).where(*conditions).order_by(Experiment.created_at.desc()).offset(skip).limit(limit))).mappings().all()
+        return ExperimentSlimListResponse(total=total, experiments=[ExperimentListItem(**dict(row)) for row in rows], skip=skip, limit=limit)
 
-        return ExperimentSlimListResponse(
-            total=total,
-            experiments=[self._to_list_item(exp) for exp in experiments],
-            skip=skip,
-            limit=limit,
-        )
-    
     async def get_stats(self) -> dict:
         """
         Get aggregated experiment counts by status.
@@ -381,17 +386,25 @@ class ExperimentService:
             return None
         if experiment.status not in (ExperimentStatus.QUEUED, ExperimentStatus.RUNNING):
             raise ValueError("Only a queued or running experiment can be interrupted")
+        was_queued = experiment.status == ExperimentStatus.QUEUED
         experiment.status = ExperimentStatus.FAILED
         experiment.completed_at = datetime.now(timezone.utc)
         experiment.error_message = (
             "Interrupted by user. An in-flight provider call may finish, but no new examples will start."
         )
+        await self._record_terminal_attempt(experiment, "interrupted")
         await self.db.flush()
+        if was_queued:
+            await release_execution(self.db, kind="benchmark", resource_id=experiment_id, attempt=experiment.current_attempt)
         return self._to_response(experiment)
 
     async def queue_for_execution(self, experiment_id: UUID) -> int:
         """Reserve a distinct attempt so stale dispatched jobs cannot run a rerun."""
         from app.models.run import Run
+        from app.models.evaluation_execution import EvaluationCapacity
+
+        # Always acquire capacity before the experiment lock, including reruns.
+        await self.db.scalar(select(EvaluationCapacity).where(EvaluationCapacity.id == 1).with_for_update())
 
         experiment = await self.db.scalar(
             select(Experiment)
@@ -410,6 +423,11 @@ class ExperimentService:
             experiment.current_attempt + (1 if experiment.status != ExperimentStatus.PENDING else 0),
             latest_run + 1,
         )
+        await reserve_execution(
+            self.db, project_id=experiment.project_id, kind="benchmark",
+            resource_id=experiment_id, attempt=experiment.current_attempt,
+        )
+        await create_attempt(self.db, experiment, experiment.current_attempt, "queued")
         await self.update_status(experiment_id, ExperimentStatus.QUEUED)
         return experiment.current_attempt
     
@@ -453,15 +471,21 @@ class ExperimentService:
         from app.models.run import Run as _Run
         from app.models.experiment import Experiment as _Exp
 
+        if not require_queued:
+            from app.models.evaluation_execution import EvaluationCapacity
+            await self.db.scalar(select(EvaluationCapacity).where(EvaluationCapacity.id == 1).with_for_update())
+
         max_attempt_q = await self.db.execute(
             _sel(_fn.coalesce(_fn.max(_Run.attempt), 0)).where(_Run.experiment_id == experiment_id)
         )
         next_run_attempt = (max_attempt_q.scalar() or 0) + 1
 
         exp_row = await self.db.execute(
-            _sel(_Exp).where(_Exp.id == experiment_id).with_for_update()
+            _sel(_Exp).where(_Exp.id == experiment_id).with_for_update().execution_options(populate_existing=True)
         )
         exp_obj = exp_row.scalar_one_or_none()
+        if not require_queued and exp_obj and exp_obj.status in (ExperimentStatus.QUEUED, ExperimentStatus.RUNNING):
+            raise ExecutionInterrupted("Experiment already queued or running")
         if require_queued and (
             exp_obj is None
             or getattr(exp_obj, "status", None) != ExperimentStatus.QUEUED
@@ -472,13 +496,26 @@ class ExperimentService:
         current_attempt = (
             max(exp_obj.current_attempt, next_run_attempt)
             if require_queued and exp_obj is not None
-            else next_run_attempt
+            else max(
+                next_run_attempt,
+                exp_obj.current_attempt + (0 if exp_obj.status == ExperimentStatus.PENDING else 1)
+                if exp_obj else next_run_attempt,
+            )
         )
         if exp_obj:
             exp_obj.current_attempt = current_attempt
             exp_obj.regression_status = RegressionStatus.NOT_CHECKED.value
             exp_obj.regression_passed = None
 
+        if not require_queued and exp_obj is not None:
+            await reserve_execution(
+                self.db, project_id=exp_obj.project_id, kind="benchmark",
+                resource_id=experiment_id, attempt=current_attempt,
+            )
+
+        record = await create_attempt(self.db, exp_obj, current_attempt, "running")
+        record.status = "running"
+        record.started_at = datetime.now(timezone.utc)
         await self.update_status(experiment_id, ExperimentStatus.RUNNING, error_message="")
         await self.db.commit()
         logger.info("[EXECUTE] Status: RUNNING (attempt %s)", current_attempt)
@@ -492,7 +529,8 @@ class ExperimentService:
             state = (
                 await session.execute(
                     select(Experiment.status, Experiment.current_attempt).where(
-                        Experiment.id == experiment_id
+                        Experiment.id == experiment_id,
+                        Experiment.deleted_at.is_(None),
                     )
                 )
             ).one_or_none()
@@ -503,7 +541,7 @@ class ExperimentService:
         """Hold the experiment row lock while persisting final metrics and status."""
         row = await self.db.scalar(
             select(Experiment)
-            .where(Experiment.id == experiment_id)
+            .where(Experiment.id == experiment_id, Experiment.deleted_at.is_(None))
             .with_for_update()
             .execution_options(populate_existing=True)
         )
@@ -515,6 +553,16 @@ class ExperimentService:
         await self._lock_active_attempt(experiment_id, attempt)
         await self.update_status(experiment_id, ExperimentStatus.COMPLETED)
         await self.db.commit()
+
+    async def _record_terminal_attempt(self, experiment, status):
+        from app.models.run import Run
+        from app.services.metrics_service import MetricsService
+        record = await self.db.get(ExperimentAttempt, (experiment.id, experiment.current_attempt))
+        if record is not None:
+            record.status = status
+            record.completed_at = datetime.now(timezone.utc)
+        if await self.db.scalar(select(Run.id).where(Run.experiment_id == experiment.id, Run.attempt == experiment.current_attempt).limit(1)):
+            await MetricsService(self.db).compute_and_save(experiment.id, attempt=experiment.current_attempt)
 
     async def _fail_active_attempt(
         self, experiment_id: UUID, error_message: str, attempt: int | None = None
@@ -530,11 +578,37 @@ class ExperimentService:
             return False
         if attempt is not None and row.current_attempt != attempt:
             return False
+        was_queued = row.status == ExperimentStatus.QUEUED
         await self.update_status(
             experiment_id, ExperimentStatus.FAILED, error_message=error_message
         )
+        await self._record_terminal_attempt(row, "failed")
+        if was_queued:
+            await release_execution(self.db, kind="benchmark", resource_id=experiment_id, attempt=row.current_attempt)
         await self.db.commit()
         return True
+
+    async def _save_completed_cases(self, experiment_id, attempt, records):
+        """Persist a completed case behind the same fence used by Stop/rerun."""
+        from app.services.run_service import RunService
+
+        try:
+            await self._lock_active_attempt(experiment_id, attempt)
+            from app.services.benchmark_retention import bounded_record, MAX_ATTEMPT_BYTES, MAX_PROJECT_BYTES
+            from app.services.benchmark_execution import BenchmarkBudgetExceeded
+            bounded = [bounded_record(record) for record in records]
+            snapshot = await self.db.get(ExperimentAttempt, (experiment_id, attempt))
+            size = sum(item[1] for item in bounded)
+            project_bytes = await self.db.scalar(select(func.coalesce(func.sum(ExperimentAttempt.storage_bytes), 0)).where(ExperimentAttempt.project_id == snapshot.project_id))
+            if snapshot.storage_bytes + size > MAX_ATTEMPT_BYTES or project_bytes + size > MAX_PROJECT_BYTES:
+                raise BenchmarkBudgetExceeded("Storage budget reached; export and purge older unreferenced attempts")
+            snapshot.storage_bytes += size
+            records = [item[0] for item in bounded]
+            await RunService(self.db).create_runs_batch(experiment_id, records)
+            await self.db.commit()
+        except BaseException:
+            await self.db.rollback()
+            raise
 
     def _runtime_helper(self):
         helper = getattr(self, "_runtime", None)
@@ -553,6 +627,31 @@ class ExperimentService:
             helper = ExperimentRunExecutor()
             self._runner = helper
         return helper
+
+    async def preflight(self, experiment_response):
+        """Compile and validate all selected cases before reserving work."""
+        from app.services.benchmark_preflight import validate_benchmark
+        from app.services.dataset_service import DatasetService
+        from app.services.inference.prompting import NaivePromptTemplate, CoTPromptTemplate, RAGPromptTemplate
+
+        config = experiment_response.config
+        summary = validate_benchmark(config)
+        examples = DatasetService.load(config.dataset_name, config.num_samples, config.hyperparameters.seed)
+        method = config.reasoning_method.value
+        naive, cot, _ = await self._resolve_prompt_templates(
+            experiment_response=experiment_response, reasoning_method=method, use_rag=False,
+            naive_prompt_template=NaivePromptTemplate, cot_prompt_template=CoTPromptTemplate,
+            rag_prompt_template=RAGPromptTemplate,
+        )
+        cot_examples = await self._load_cot_examples(method)
+        for item in examples:
+            if method == "cot":
+                prompt = cot.format(item["question"], cot_examples)
+            else:
+                prompt = naive.format(item["question"])
+            if len(prompt.encode()) > 8 * 1024:
+                raise ValueError("Compiled prompt exceeds the 8 KiB hosted input budget")
+        return summary
 
     def _postprocessor_helper(self):
         helper = getattr(self, "_postprocessor", None)
@@ -620,8 +719,8 @@ class ExperimentService:
     async def _save_optimization_report(self, **kwargs) -> None:
         await self._postprocessor_helper().save_optimization_report(**kwargs)
 
-    async def _run_auto_regression_check(self, experiment_id: UUID) -> None:
-        await self._postprocessor_helper().run_auto_regression_check(experiment_id)
+    async def _run_auto_regression_check(self, experiment_id: UUID, attempt=None) -> None:
+        await self._postprocessor_helper().run_auto_regression_check(experiment_id, attempt)
 
     async def execute(
         self, 
@@ -674,18 +773,18 @@ class ExperimentService:
                 expected_attempt=expected_attempt,
             )
 
+            deadline_at = await execution_deadline(
+                self.db, kind="benchmark", resource_id=experiment_id, attempt=current_attempt,
+            )
+            await self.db.commit()
+
             async def ensure_active():
                 await self._ensure_active_attempt(experiment_id, current_attempt)
             reasoning_method = experiment_response.config.reasoning_method.value
             logger.info("[EXECUTE] Reasoning method: %s", reasoning_method)
             wall_start, opt_config, cache, profiler, opt_report = self._create_optimization_runtime(experiment_response)
-            engine, engine_type = self._initialize_engine(
-                experiment_response,
-                custom_base_url=custom_base_url,
-                custom_api_key=custom_api_key,
-            )
-            rag_config, use_rag, rag_pipeline, faithfulness_scorer = self._initialize_rag_runtime(experiment_response)
-
+            from app.services.benchmark_preflight import validate_benchmark
+            validate_benchmark(experiment_response.config)
             # Step 4: Load dataset.
             examples = await self._load_examples(experiment_response, exp_obj)
             cot_examples = await self._load_cot_examples(reasoning_method)
@@ -697,11 +796,25 @@ class ExperimentService:
             naive_prompt_template, cot_prompt_template, rag_prompt_template = await self._resolve_prompt_templates(
                 experiment_response=experiment_response,
                 reasoning_method=reasoning_method,
-                use_rag=use_rag,
+                use_rag=False,
                 naive_prompt_template=NaivePromptTemplate,
                 cot_prompt_template=CoTPromptTemplate,
                 rag_prompt_template=RAGPromptTemplate,
             )
+            # Read/validate templates and persist dataset identity before any I/O.
+            await self.db.commit()
+            validate_benchmark(experiment_response.config, examples)
+            for item in examples:
+                if reasoning_method == "cot":
+                    cot_prompt_template.format(item["question"], cot_examples)
+                else:
+                    naive_prompt_template.format(item["question"])
+
+            engine, engine_type = self._initialize_engine(
+                experiment_response, custom_base_url=custom_base_url, custom_api_key=custom_api_key,
+            )
+            engine = BudgetedEngine(engine, deadline_at=deadline_at, ensure_active=ensure_active)
+            rag_config, use_rag, rag_pipeline, faithfulness_scorer = self._initialize_rag_runtime(experiment_response)
 
             # Step 5: Prepare generation runtime.
             gen_config, max_tokens = self._build_generation_config(experiment_response, reasoning_method)
@@ -711,6 +824,9 @@ class ExperimentService:
                 engine=engine,
                 gen_config=gen_config,
             )
+            if react_agent is not None:
+                react_agent.ensure_active = engine.check
+                react_agent.cancel_pending = engine.cancel_pending
 
             # Step 6: Run inference.
             logger.info("[EXECUTE] Running inference for %s examples...", len(examples))
@@ -718,6 +834,7 @@ class ExperimentService:
                 opt_config.enable_batching
                 and reasoning_method != "react"
             )
+            await self._lock_active_attempt(experiment_id, current_attempt)
             await self._persist_effective_execution_manifest(
                 experiment_response=experiment_response,
                 exp_obj=exp_obj,
@@ -730,6 +847,11 @@ class ExperimentService:
                 use_batching=use_batching,
                 opt_config=opt_config,
             )
+            await freeze_manifest(self.db, exp_obj, current_attempt)
+            await self.db.commit()
+
+            async def persist_cases(records):
+                await self._save_completed_cases(experiment_id, current_attempt, records)
 
             if use_batching and not use_rag:
                 batch_stats = await self._execute_batched_runs(
@@ -751,6 +873,7 @@ class ExperimentService:
                     cot_prompt_template=cot_prompt_template,
                     use_robustness_scoring=use_robustness_scoring,
                     ensure_active=ensure_active,
+                    persist_cases=persist_cases,
                 )
             else:
                 batch_stats = await self._execute_sequential_runs(
@@ -779,6 +902,7 @@ class ExperimentService:
                     rag_prompt_template=rag_prompt_template,
                     react_prompt_template=ReActPromptTemplate,
                     ensure_active=ensure_active,
+                    persist_cases=persist_cases,
                 )
 
             await ensure_active()
@@ -793,33 +917,40 @@ class ExperimentService:
 
             logger.info("[EXECUTE] Computing aggregate metrics...")
             wall_ms = (_time.perf_counter() - wall_start) * 1000
-            await metrics_svc.compute_and_save(experiment_id, wall_clock_ms=wall_ms)
+            attempt_record = await self.db.get(ExperimentAttempt, (experiment_id, current_attempt))
+            attempt_record.status = "completed"
+            attempt_record.completed_at = datetime.now(timezone.utc)
+            await metrics_svc.compute_and_save(experiment_id, wall_clock_ms=wall_ms, attempt=current_attempt)
             await self._save_optimization_report(
                 experiment_id=experiment_id,
-                engine=engine,
+                engine=engine.engine,
                 opt_report=opt_report,
-                batch_stats=batch_stats,
+                batch_stats={**batch_stats, "provider_calls": engine.calls},
                 cache=cache,
                 profiler=profiler,
                 wall_start=wall_start,
             )
 
-            engine.unload_model()
             await self._finish_active_attempt(experiment_id, current_attempt)
-            await self._run_auto_regression_check(experiment_id)
+            await self._run_auto_regression_check(experiment_id, current_attempt)
             logger.info(
                 "[EXECUTE] Execution completed (wall time: %.0fms)",
                 opt_report.total_wall_time_ms,
             )
 
+        except asyncio.CancelledError:
+            await self.db.rollback()
+            if "current_attempt" in locals():
+                await self._fail_active_attempt(experiment_id, "Execution stopped during shutdown; completed cases were kept", current_attempt)
+            raise
         except ExecutionInterrupted:
             await self.db.rollback()
             logger.info("[EXECUTE] Experiment attempt %s stopped", experiment_id)
             return
         except Exception as e:
-            logger.exception("[EXECUTE] Execution failed: %s: %s", type(e).__name__, e)
+            logger.error("Benchmark execution failed: experiment=%s exception_type=%s", experiment_id, type(e).__name__)
             error_message = _sanitize_error_message(e)
-            if require_queued and "current_attempt" in locals():
+            if "current_attempt" in locals():
                 await self.db.rollback()
                 if not await self._fail_active_attempt(
                     experiment_id, error_message, current_attempt
@@ -834,5 +965,17 @@ class ExperimentService:
                 await self.db.commit()
             
             raise
+        finally:
+            try:
+                if "engine" in locals():
+                    engine.unload_model()
+            finally:
+                if "current_attempt" in locals():
+                    await self.db.rollback()
+                    snapshot = await self.db.get(ExperimentAttempt, (experiment_id, current_attempt))
+                    if snapshot is not None and isinstance(locals().get("engine"), BudgetedEngine):
+                        snapshot.generation_calls = engine.calls
+                    await release_execution(self.db, kind="benchmark", resource_id=experiment_id, attempt=current_attempt)
+                    await self.db.commit()
 
 

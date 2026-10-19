@@ -16,6 +16,7 @@ Environment Variables:
 
 from pathlib import Path
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Resolve the backend root (backend/) once at import time.
@@ -67,8 +68,9 @@ class Settings(BaseSettings):
     # ----- Database (NeonDB) -----
     DATABASE_URL: str = ""  # Required: postgresql://...
     
-    DB_POOL_SIZE: int = 5
-    DB_MAX_OVERFLOW: int = 10
+    DB_POOL_SIZE: int = 2
+    DB_MAX_OVERFLOW: int = 1
+    DB_POOL_TIMEOUT: float = 10
 
     # Clerk session verification. No development authentication bypass.
     CLERK_ISSUER_URL: str = ""
@@ -94,6 +96,14 @@ class Settings(BaseSettings):
     INFERENCE_ENGINE: str = "mock"  # mock or hf_api
     INFERENCE_BATCH_SIZE: int = 1
     INFERENCE_TIMEOUT_SECONDS: int = 60
+
+    # Small hosted benchmark profile. These are application budgets, not quotas.
+    BENCHMARK_MAX_SAMPLES: int = Field(20, ge=1, le=500)
+    BENCHMARK_MAX_CALLS: int = Field(20, ge=1, le=1000)
+    BENCHMARK_MAX_SECONDS: int = Field(300, ge=1, le=3600)
+    BENCHMARK_CALL_TIMEOUT_SECONDS: int = Field(30, ge=1, le=120)
+    BENCHMARK_REACT_MAX_SAMPLES: int = Field(5, ge=1, le=20)
+    BENCHMARK_REACT_MAX_ITERATIONS: int = Field(3, ge=1, le=20)
     
     # ----- Multi-Provider (Phase 6) -----
     OPENROUTER_API_KEY: str = ""   # Get from https://openrouter.ai/keys
@@ -108,7 +118,7 @@ class Settings(BaseSettings):
     # auto: use RQ if Upstash healthy + worker alive, else inline
     # upstash: always try RQ (fail hard if unavailable)
     # inline: always run inline via BackgroundTasks
-    QUEUE_BACKEND_MODE: str = "auto"
+    QUEUE_BACKEND_MODE: str = "inline"
     UPSTASH_CIRCUIT_OPEN_MINUTES: int = 30
     UPSTASH_HEALTHCHECK_TIMEOUT_MS: int = 1500
     UPSTASH_HEALTHCHECK_CACHE_SECONDS: int = 60

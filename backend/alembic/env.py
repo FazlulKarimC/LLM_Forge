@@ -23,7 +23,9 @@ load_dotenv()
 # Import app models
 from app.core.database import Base
 from app.models.experiment import Experiment
+from app.models.experiment_attempt import ExperimentAttempt
 from app.models.background_job import BackgroundJobRecord
+from app.models.benchmark_reservation import BenchmarkReservation
 from app.models.result import Result
 from app.models.run import Run
 from app.models.prompt_version import PromptVersion
@@ -40,10 +42,10 @@ config = context.config
 # Get database URL from environment
 database_url = os.getenv("DATABASE_URL", "")
 
-# Strip all query parameters for asyncpg (it handles SSL automatically for neon.tech)
-# NeonDB URLs come with sslmode, channel_binding etc. that asyncpg doesn't understand
-if database_url and "?" in database_url:
-    database_url = database_url.split("?")[0]
+from app.core.database_url import async_database_options
+if not database_url:
+    raise ValueError("Set DATABASE_URL explicitly for migrations (use the direct Neon endpoint)")
+database_url, database_connect_args = async_database_options(database_url, production=os.getenv("ENVIRONMENT", "development") != "development")
 
 # Setup loggers
 if config.config_file_name is not None:
@@ -60,7 +62,7 @@ def run_migrations_offline() -> None:
     Generates SQL script without connecting to the database.
     """
     # Convert to async URL for offline mode
-    url = re.sub(r'^postgresql:', 'postgresql+asyncpg:', database_url)
+    url = database_url
     context.configure(
         url=url,
         target_metadata=target_metadata,
@@ -85,9 +87,9 @@ async def run_async_migrations() -> None:
     Run migrations in 'online' mode with async engine.
     """
     # Convert postgresql:// to postgresql+asyncpg://
-    async_url = re.sub(r'^postgresql:', 'postgresql+asyncpg:', database_url)
+    async_url = database_url
     
-    engine = create_async_engine(async_url, echo=False, poolclass=pool.NullPool)
+    engine = create_async_engine(async_url, echo=False, poolclass=pool.NullPool, connect_args=database_connect_args)
 
     async with engine.connect() as connection:
         await connection.run_sync(do_run_migrations)

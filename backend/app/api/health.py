@@ -53,80 +53,19 @@ async def health_check():
 
 @router.get("/ready")
 async def readiness_check(db: AsyncSession = Depends(get_db)):
-    """
-    Readiness check for dependencies.
-    
-    Checks (run concurrently):
-        - Database connection (NeonDB)
-        - Vector database connection (Qdrant Cloud)
-        - Optional server provider configuration (not credential validation)
-        - Task dispatch / Upstash / RQ worker status
-    
-    Returns:
-        Status of each dependency.
-    """
-    # Run all checks concurrently to minimize latency
-    db_result, vector_result, model_result, dispatch_result = await asyncio.gather(
-        _check_database(db),
-        asyncio.wait_for(_check_vector_db(), timeout=6),
-        _check_models(),
-        asyncio.wait_for(_check_dispatch(), timeout=6),
-        return_exceptions=True,
-    )
-
-    checks = {}
-
-    # Database
-    if isinstance(db_result, Exception):
-        checks["database"] = "unhealthy: dependency check failed"
-    else:
-        checks["database"] = db_result
-
-    # Vector DB
-    if isinstance(vector_result, Exception):
-        checks["vector_db"] = "unhealthy: timed out" if isinstance(vector_result, TimeoutError) else "unhealthy: dependency check failed"
-    else:
-        checks["vector_db"] = vector_result
-
-    # Models
-    if isinstance(model_result, Exception):
-        checks["models"] = "unhealthy: dependency check failed"
-    else:
-        checks["models"] = model_result
-
-    # Dispatch (task_dispatch, upstash, rq_worker)
-    if isinstance(dispatch_result, Exception):
-        checks["task_dispatch"] = "unhealthy: timed out" if isinstance(dispatch_result, TimeoutError) else "unhealthy: dependency check failed"
-        checks["upstash"] = "unknown"
-        checks["rq_worker"] = "unknown"
-    else:
-        checks.update(dispatch_result)
-
+    """Check the core database/schema; optional services never gate readiness."""
+    try:
+        database = await asyncio.wait_for(_check_database(db), timeout=12)
+    except Exception:
+        database = "unhealthy: dependency check failed"
     from app.services.evaluation_runner import runner
-    checks["evaluation_runner"] = runner.health()
-    database_ready = checks.get("database") in _CRITICAL_READY_VALUES
-    dispatch_ready = checks.get("task_dispatch") in _READY_TASK_DISPATCH_STATUSES
-    ready = database_ready and dispatch_ready and checks["evaluation_runner"] == "healthy"
-
-    optional_degraded = any(
-        checks.get(key) not in ("healthy", "not_configured")
-        for key in ("upstash", "rq_worker", "models", "vector_db")
-        if checks.get(key) != "configured"
-    )
-    critical_degraded = checks.get("task_dispatch") in {"inline_only", "fallback_inline"}
-    degraded = ready and (optional_degraded or critical_degraded)
-
-    return JSONResponse(
-        status_code=200 if ready else 503,
-        content={
-            "status": "ready" if ready else "not_ready",
-            "mode": "degraded" if degraded else ("healthy" if ready else "down"),
-            "checks": checks,
-        },
-    )
-
-
-# ── Individual check coroutines ─────────────────────────────────────────
+    from app.core.config import settings
+    checks = {"database": database, "evaluation_runner": runner.health(),
+              "models": await _check_models(), "vector_db": "optional",
+              "task_dispatch": "inline_only" if settings.QUEUE_BACKEND_MODE == "inline" else "optional"}
+    ready = database == "healthy"
+    return JSONResponse(status_code=200 if ready else 503,
+                        content={"status": "ready" if ready else "not_ready", "mode": "healthy" if ready else "down", "checks": checks})
 
 
 async def _check_database(db: AsyncSession) -> str:
@@ -137,6 +76,9 @@ async def _check_database(db: AsyncSession) -> str:
         capacity = await db.scalar(text("SELECT id FROM evaluation_capacity WHERE id = 1"))
         if capacity != 1:
             return "unhealthy: evaluation capacity missing"
+        await db.execute(text("SELECT experiment_id, number, storage_bytes FROM experiment_attempts LIMIT 0"))
+        await db.execute(text("SELECT experiment_id, attempt FROM results LIMIT 0"))
+        await db.commit()
         return "healthy"
     except Exception:
         await db.rollback()

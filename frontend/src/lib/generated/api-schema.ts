@@ -830,6 +830,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/results/{experiment_id}/attempts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Attempts */
+        get: operations["get_attempts_api_v1_results__experiment_id__attempts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/results/{experiment_id}/attempts/{attempt}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Purge Attempt */
+        delete: operations["purge_attempt_api_v1_results__experiment_id__attempts__attempt__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/results/{experiment_id}/export": {
         parameters: {
             query?: never;
@@ -982,6 +1016,40 @@ export interface paths {
          * @description Get run summaries for the correctness grid view.
          */
         get: operations["get_run_summaries_api_v1_results__experiment_id__runs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/results/{experiment_id}/runs/page": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Run Page */
+        get: operations["get_run_page_api_v1_results__experiment_id__runs_page_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/results/{experiment_id}/runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Run Detail */
+        get: operations["get_run_detail_api_v1_results__experiment_id__runs__run_id__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1347,16 +1415,7 @@ export interface paths {
         };
         /**
          * Readiness Check
-         * @description Readiness check for dependencies.
-         *
-         *     Checks (run concurrently):
-         *         - Database connection (NeonDB)
-         *         - Vector database connection (Qdrant Cloud)
-         *         - Optional server provider configuration (not credential validation)
-         *         - Task dispatch / Upstash / RQ worker status
-         *
-         *     Returns:
-         *         Status of each dependency.
+         * @description Check the core database/schema; optional services never gate readiness.
          */
         get: operations["readiness_check_ready_get"];
         put?: never;
@@ -1380,7 +1439,7 @@ export interface components {
         AgentConfig: {
             /**
              * Max Iterations
-             * @default 5
+             * @default 3
              */
             max_iterations: number;
             /**
@@ -1388,8 +1447,7 @@ export interface components {
              * @description Enabled tool names
              * @default [
              *       "wikipedia_search",
-             *       "calculator",
-             *       "retrieval"
+             *       "calculator"
              *     ]
              */
             tools: string[];
@@ -1466,6 +1524,43 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+        };
+        /** BenchmarkAttemptPage */
+        BenchmarkAttemptPage: {
+            /** Attempts */
+            attempts: components["schemas"]["BenchmarkAttemptSummary"][];
+            /** Current Attempt */
+            current_attempt: number;
+            /** Limit */
+            limit: number;
+            /** Skip */
+            skip: number;
+            /** Total */
+            total: number;
+        };
+        /** BenchmarkAttemptSummary */
+        BenchmarkAttemptSummary: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Dataset Hash */
+            dataset_hash?: string | null;
+            /** Generation Calls */
+            generation_calls?: number | null;
+            /** Number */
+            number: number;
+            /** Provenance */
+            provenance: string;
+            /** Run Manifest */
+            run_manifest?: {
+                [key: string]: unknown;
+            } | null;
+            /** Selected */
+            selected?: number | null;
+            /** Status */
+            status: string;
         };
         /** CaseImport */
         CaseImport: {
@@ -1560,7 +1655,7 @@ export interface components {
         ComparisonResponse: {
             /** Comparison Metrics */
             comparison_metrics: {
-                [key: string]: number[];
+                [key: string]: (number | null)[];
             };
             /** Experiments */
             experiments: components["schemas"]["ExperimentComparison"][];
@@ -1618,6 +1713,11 @@ export interface components {
         CostMetrics: {
             /** Accuracy Per Dollar */
             accuracy_per_dollar?: number | null;
+            /**
+             * Cache Hits
+             * @default 0
+             */
+            cache_hits: number;
             /** Cost Per Correct Answer */
             cost_per_correct_answer?: number | null;
             /** Cost Per Sample Usd */
@@ -1628,6 +1728,13 @@ export interface components {
             gpu_time_seconds?: number | null;
             /** Provider */
             provider?: string | null;
+            /**
+             * Provider Calls
+             * @default 0
+             */
+            provider_calls: number;
+            /** Provider Time Seconds */
+            provider_time_seconds?: number | null;
             /** Total Cost Usd */
             total_cost_usd?: number | null;
             /**
@@ -1645,6 +1752,8 @@ export interface components {
              * @default 0
              */
             total_tokens_output: number;
+            /** Usage Sources */
+            usage_sources?: string[];
         };
         /** DatasetCase */
         DatasetCase: {
@@ -1751,6 +1860,7 @@ export interface components {
         };
         /** EvaluationCapabilities */
         EvaluationCapabilities: {
+            benchmarks: components["schemas"]["HostedBenchmarkProfile"];
             /** External Submissions */
             external_submissions: boolean;
             /** Generation Providers */
@@ -2092,7 +2202,7 @@ export interface components {
             /**
              * Num Samples
              * @description Number of dataset samples to evaluate
-             * @default 100
+             * @default 10
              */
             num_samples: number;
             optimization?: components["schemas"]["OptimizationConfig"] | null;
@@ -2139,7 +2249,7 @@ export interface components {
             /**
              * Num Samples
              * @description Number of dataset samples to evaluate
-             * @default 100
+             * @default 10
              */
             num_samples: number;
             optimization?: components["schemas"]["OptimizationConfig"] | null;
@@ -2233,10 +2343,7 @@ export interface components {
             /** Total */
             total: number;
         };
-        /**
-         * ExperimentResponse
-         * @description Response schema for experiment details.
-         */
+        /** ExperimentResponse */
         ExperimentResponse: {
             /** Completed At */
             completed_at: string | null;
@@ -2246,6 +2353,11 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /**
+             * Current Attempt
+             * @default 1
+             */
+            current_attempt: number;
             /** Description */
             description: string | null;
             /** Error Message */
@@ -2259,6 +2371,8 @@ export interface components {
             is_baseline?: boolean | null;
             /** Name */
             name: string;
+            /** Pinned Attempt */
+            pinned_attempt?: number | null;
             /** Regression Passed */
             regression_passed?: boolean | null;
             /** @default not_checked */
@@ -2357,6 +2471,85 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /** HostedBenchmarkProfile */
+        HostedBenchmarkProfile: {
+            /** Call Timeout Seconds */
+            call_timeout_seconds: number;
+            /**
+             * Case Page Size
+             * @default 25
+             */
+            case_page_size: number;
+            /** Dataset Counts */
+            dataset_counts: {
+                [key: string]: number;
+            };
+            /**
+             * Enrichment Enabled
+             * @default false
+             */
+            enrichment_enabled: boolean;
+            /**
+             * Global Concurrency
+             * @default 1
+             */
+            global_concurrency: number;
+            /**
+             * Max Attempt Bytes
+             * @default 2097152
+             */
+            max_attempt_bytes: number;
+            /**
+             * Max Case Bytes
+             * @default 65536
+             */
+            max_case_bytes: number;
+            /**
+             * Max Input Bytes
+             * @default 8192
+             */
+            max_input_bytes: number;
+            /**
+             * Max Output Bytes
+             * @default 8192
+             */
+            max_output_bytes: number;
+            /**
+             * Max Project Attempts
+             * @default 100
+             */
+            max_project_attempts: number;
+            /**
+             * Max Project Bytes
+             * @default 104857600
+             */
+            max_project_bytes: number;
+            /** Max Provider Calls */
+            max_provider_calls: number;
+            /** Max Samples */
+            max_samples: number;
+            /** Max Seconds */
+            max_seconds: number;
+            /**
+             * Max Trace Bytes
+             * @default 16384
+             */
+            max_trace_bytes: number;
+            /**
+             * Provider Concurrency
+             * @default 1
+             */
+            provider_concurrency: number;
+            /**
+             * Rag Enabled
+             * @default false
+             */
+            rag_enabled: boolean;
+            /** React Max Iterations */
+            react_max_iterations: number;
+            /** React Max Samples */
+            react_max_samples: number;
         };
         /**
          * HyperParameters
@@ -2543,11 +2736,20 @@ export interface components {
          */
         MetricsResponse: {
             /**
+             * Attempt
+             * @default 0
+             */
+            attempt: number;
+            /**
              * Computed At
              * Format: date-time
              */
             computed_at: string;
             cost: components["schemas"]["CostMetrics"];
+            /** Coverage */
+            coverage?: {
+                [key: string]: unknown;
+            };
             /**
              * Experiment Id
              * Format: uuid
@@ -2559,6 +2761,8 @@ export interface components {
             } | null;
             performance: components["schemas"]["PerformanceMetrics"];
             quality: components["schemas"]["QualityMetrics"];
+            /** Scoring Versions */
+            scoring_versions?: string[];
             /** Summary Text */
             summary_text?: string | null;
         };
@@ -2577,7 +2781,7 @@ export interface components {
             /**
              * Batch Size
              * @description Number of prompts per batch
-             * @default 8
+             * @default 1
              */
             batch_size: number;
             /**
@@ -2934,6 +3138,8 @@ export interface components {
             faithfulness?: number | null;
             /** Hallucination Rate */
             hallucination_rate?: number | null;
+            /** Primary Accuracy */
+            primary_accuracy?: number | null;
             /** Retrieval Quality */
             retrieval_quality?: {
                 [key: string]: unknown;
@@ -3149,6 +3355,53 @@ export interface components {
             strict_comparison: boolean;
         };
         /**
+         * RunGridSummary
+         * @description Sparse per-run data for filmstrip/grid views.
+         *
+         *     Omits heavy text fields (prompt, raw_output, expected_output) and
+         *     large nested objects (agent_trace, retrieved_chunks) to reduce
+         *     payload size on initial detail page load.
+         */
+        RunGridSummary: {
+            /** Attempt */
+            attempt?: number | null;
+            /** Cost Usd */
+            cost_usd?: number | null;
+            /** Example Id */
+            example_id?: string | null;
+            /** Failure Mode */
+            failure_mode?: string | null;
+            /** Grader Results */
+            grader_results?: {
+                [key: string]: unknown;
+            } | null;
+            /** Id */
+            id?: string | null;
+            /** Is Correct */
+            is_correct?: boolean | null;
+            /** Latency Ms */
+            latency_ms?: number | null;
+            /** Routing Reason */
+            routing_reason?: string | null;
+            /** Score */
+            score?: number | null;
+            /** Served Provider */
+            served_provider?: string | null;
+        };
+        /** RunPage */
+        RunPage: {
+            /** Attempt */
+            attempt: number;
+            /** Limit */
+            limit: number;
+            /** Runs */
+            runs: components["schemas"]["RunGridSummary"][];
+            /** Skip */
+            skip: number;
+            /** Total */
+            total: number;
+        };
+        /**
          * RunResponse
          * @description Response schema for a single run.
          */
@@ -3225,6 +3478,79 @@ export interface components {
             tokens_input: number | null;
             /** Tokens Output */
             tokens_output: number | null;
+        };
+        /**
+         * RunSummary
+         * @description Complete retained case data for detail reads and exports.
+         */
+        RunSummary: {
+            /** Agent Trace */
+            agent_trace?: {
+                [key: string]: unknown;
+            } | null;
+            /** Attempt */
+            attempt?: number | null;
+            /** Context Relevance Score */
+            context_relevance_score?: number | null;
+            /** Cost Usd */
+            cost_usd?: number | null;
+            /** Error Message */
+            error_message?: string | null;
+            /** Example Id */
+            example_id?: string | null;
+            /** Expected Output */
+            expected_output?: string | null;
+            /** Failure Mode */
+            failure_mode?: string | null;
+            /** Faithfulness Score */
+            faithfulness_score?: number | null;
+            /** Grader Results */
+            grader_results?: {
+                [key: string]: unknown;
+            } | null;
+            /** Id */
+            id?: string | null;
+            /** Is Correct */
+            is_correct?: boolean | null;
+            /** Is Exact Match */
+            is_exact_match?: boolean | null;
+            /** Is Substring Match */
+            is_substring_match?: boolean | null;
+            /** Latency Ms */
+            latency_ms?: number | null;
+            /** Match Alias */
+            match_alias?: string | null;
+            /** Parsed Answer */
+            parsed_answer?: string | null;
+            /**
+             * Prompt
+             * @default
+             */
+            prompt: string;
+            /** Raw Output */
+            raw_output?: string | null;
+            /** Retrieved Chunks */
+            retrieved_chunks?: {
+                [key: string]: unknown;
+            } | null;
+            /** Routing Reason */
+            routing_reason?: string | null;
+            /** Run Metadata */
+            run_metadata?: {
+                [key: string]: unknown;
+            } | null;
+            /** Score */
+            score?: number | null;
+            /** Semantic Similarity */
+            semantic_similarity?: number | null;
+            /** Served Provider */
+            served_provider?: string | null;
+            /** Tokens Input */
+            tokens_input?: number | null;
+            /** Tokens Output */
+            tokens_output?: number | null;
+            /** Tool Calls */
+            tool_calls?: number | null;
         };
         /** SDKSnapshot */
         SDKSnapshot: {
@@ -5403,6 +5729,8 @@ export interface operations {
             query: {
                 /** @description List of experiment IDs to compare */
                 experiment_ids: string[];
+                attempt_a?: number | null;
+                attempt_b?: number | null;
             };
             header?: {
                 "X-Project-ID"?: string | null;
@@ -5439,6 +5767,8 @@ export interface operations {
                 experiment_a: string;
                 /** @description Second experiment ID */
                 experiment_b: string;
+                attempt_a?: number | null;
+                attempt_b?: number | null;
             };
             header?: {
                 "X-Project-ID"?: string | null;
@@ -5544,6 +5874,7 @@ export interface operations {
             query?: {
                 /** @description Include individual run logs */
                 include_runs?: boolean;
+                attempt?: number | null;
             };
             header?: {
                 "X-Project-ID"?: string | null;
@@ -5575,9 +5906,84 @@ export interface operations {
             };
         };
     };
+    get_attempts_api_v1_results__experiment_id__attempts_get: {
+        parameters: {
+            query?: {
+                skip?: number;
+                limit?: number;
+            };
+            header?: {
+                "X-Project-ID"?: string | null;
+            };
+            path: {
+                experiment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BenchmarkAttemptPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    purge_attempt_api_v1_results__experiment_id__attempts__attempt__delete: {
+        parameters: {
+            query?: {
+                exported?: boolean;
+            };
+            header?: {
+                "X-Project-ID"?: string | null;
+            };
+            path: {
+                experiment_id: string;
+                attempt: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     export_results_api_v1_results__experiment_id__export_get: {
         parameters: {
-            query?: never;
+            query?: {
+                format?: string;
+                attempt?: number | null;
+            };
             header?: {
                 "X-Project-ID"?: string | null;
             };
@@ -5649,6 +6055,7 @@ export interface operations {
             query?: {
                 /** @description Force recompute metrics */
                 recompute?: boolean;
+                attempt?: number | null;
             };
             header?: {
                 "X-Project-ID"?: string | null;
@@ -5682,7 +6089,9 @@ export interface operations {
     };
     get_profile_api_v1_results__experiment_id__profile_get: {
         parameters: {
-            query?: never;
+            query?: {
+                attempt?: number | null;
+            };
             header?: {
                 "X-Project-ID"?: string | null;
             };
@@ -5715,7 +6124,9 @@ export interface operations {
     };
     get_regression_report_api_v1_results__experiment_id__regression_get: {
         parameters: {
-            query?: never;
+            query?: {
+                attempt?: number | null;
+            };
             header?: {
                 "X-Project-ID"?: string | null;
             };
@@ -5784,7 +6195,9 @@ export interface operations {
     };
     get_routing_telemetry_api_v1_results__experiment_id__routing_get: {
         parameters: {
-            query?: never;
+            query?: {
+                attempt?: number | null;
+            };
             header?: {
                 "X-Project-ID"?: string | null;
             };
@@ -5820,6 +6233,9 @@ export interface operations {
             query?: {
                 /** @description Return sparse grid summaries (no prompt/output text) */
                 sparse?: boolean;
+                skip?: number;
+                limit?: number;
+                attempt?: number | null;
             };
             header?: {
                 "X-Project-ID"?: string | null;
@@ -5838,6 +6254,79 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_run_page_api_v1_results__experiment_id__runs_page_get: {
+        parameters: {
+            query?: {
+                attempt?: number | null;
+                skip?: number;
+                limit?: number;
+            };
+            header?: {
+                "X-Project-ID"?: string | null;
+            };
+            path: {
+                experiment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_run_detail_api_v1_results__experiment_id__runs__run_id__get: {
+        parameters: {
+            query?: {
+                attempt?: number | null;
+            };
+            header?: {
+                "X-Project-ID"?: string | null;
+            };
+            path: {
+                experiment_id: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunSummary"];
                 };
             };
             /** @description Validation Error */

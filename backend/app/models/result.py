@@ -8,7 +8,7 @@ Stores aggregated metrics for completed experiments.
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import ForeignKey, Float, Integer, DateTime
+from sqlalchemy import ForeignKey, Float, Integer, DateTime, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -45,6 +45,7 @@ class Result(Base):
     """
     
     __tablename__ = "results"
+    __table_args__ = (UniqueConstraint("experiment_id", "attempt", name="uq_results_experiment_attempt"),)
     
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -57,8 +58,9 @@ class Result(Base):
         ForeignKey("experiments.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
-        unique=True,
     )
+    # Zero is an explicitly unbound historical aggregate, never a new run.
+    attempt: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     
     # ----- Quality Metrics -----
     accuracy_exact: Mapped[float] = mapped_column(Float, nullable=True)

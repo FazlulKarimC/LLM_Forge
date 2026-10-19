@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { ScanSearch } from "lucide-react";
 
-import { getRunSummaries, type RunGridSummary } from "@/lib/api";
+import { getRunDetail, type RunGridSummary } from "@/lib/api";
 import { EmptyState, Panel, PanelHeader, SkeletonBlock, StatusPill } from "@/components/ui/primitives";
 
 export function formatDuration(ms?: number) {
@@ -34,7 +34,7 @@ export function LatencyHistogram({ runs }: { runs: RunGridSummary[] }) {
 
   return (
     <Panel>
-      <PanelHeader label="Latency" title="Distribution" description="Response time distribution across all evaluated samples." />
+      <PanelHeader label="Latency" title="Distribution" description="Response time distribution for the displayed page." />
       <div className="panel-body">
         <div className="flex h-48 items-end gap-2">
           {buckets.map((bucket) => (
@@ -55,17 +55,17 @@ export function LatencyHistogram({ runs }: { runs: RunGridSummary[] }) {
   );
 }
 
-export function RunFilmstrip({ runs, experimentId }: { runs: RunGridSummary[]; experimentId: string }) {
+export function RunFilmstrip({ runs, experimentId, attempt }: { runs: RunGridSummary[]; experimentId: string; attempt?: number }) {
   const [selectedRunId, setSelectedRunId] = useState<string | null>(runs[0]?.id ?? null);
 
   const fullRunsQuery = useQuery({
-    queryKey: ["runs-full", experimentId],
-    queryFn: ({ signal }) => getRunSummaries(experimentId, { signal }),
+    queryKey: ["run-detail", experimentId, attempt, selectedRunId],
+    queryFn: ({ signal }) => getRunDetail(experimentId, selectedRunId!, attempt, { signal }),
     enabled: selectedRunId !== null,
     staleTime: Infinity,
   });
 
-  const selectedFullRun = fullRunsQuery.data?.find((run) => run.id === selectedRunId) ?? null;
+  const selectedFullRun = fullRunsQuery.data ?? null;
   const graderEntries = Object.entries(selectedFullRun?.grader_results ?? {});
 
   return (
@@ -98,7 +98,7 @@ export function RunFilmstrip({ runs, experimentId }: { runs: RunGridSummary[]; e
               );
             })}
           </div>
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-4">
             <div className="metric-card">
               <div className="metric-label">Correct</div>
               <div className="metric-value text-2xl">{runs.filter((run) => run.is_correct).length}</div>
@@ -110,7 +110,11 @@ export function RunFilmstrip({ runs, experimentId }: { runs: RunGridSummary[]; e
             <div className="metric-card">
               <div className="metric-label">Failures</div>
               <div className="metric-value text-2xl">{runs.filter((run) => run.failure_mode).length}</div>
+            </div>            <div className="metric-card">
+              <div className="metric-label">Unknown score</div>
+              <div className="metric-value text-2xl">{runs.filter((run) => run.is_correct == null).length}</div>
             </div>
+
           </div>
         </div>
       </Panel>
@@ -128,17 +132,21 @@ export function RunFilmstrip({ runs, experimentId }: { runs: RunGridSummary[]; e
               <SkeletonBlock className="h-[140px]" />
               <SkeletonBlock className="h-[100px]" />
             </div>
+          ) : fullRunsQuery.error ? (
+            <p className="alert alert-danger">Case details unavailable: {fullRunsQuery.error instanceof Error ? fullRunsQuery.error.message : "request failed"}</p>
           ) : selectedFullRun ? (
             <div className="space-y-4">
               <div className="flex flex-wrap gap-2">
                 <StatusPill status={selectedFullRun.failure_mode ? "failed" : selectedFullRun.is_correct ? "completed" : "failed"} />
-                <span className="chip">F1 {(selectedFullRun.score ?? 0).toFixed(3)}</span>
+                <span className="chip">F1 {selectedFullRun.score == null ? "unknown" : selectedFullRun.score.toFixed(3)}</span>
+                {selectedFullRun.run_metadata?.retention_truncated ? <span className="chip">Stored text truncated; original hashes are in the export</span> : null}
                 <span className="chip">Latency {formatDuration(selectedFullRun.latency_ms)}</span>
                 {selectedFullRun.served_provider ? <span className="chip">Provider {selectedFullRun.served_provider}</span> : null}
                 {selectedFullRun.routing_reason ? <span className="chip">Route {selectedFullRun.routing_reason}</span> : null}
                 {selectedFullRun.cost_usd != null ? <span className="chip">Cost ${selectedFullRun.cost_usd.toFixed(6)}</span> : null}
                 {selectedFullRun.failure_mode ? <span className="chip">Failure {selectedFullRun.failure_mode}</span> : null}
               </div>
+              {selectedFullRun.run_metadata ? <details><summary>Scorer, model and usage provenance</summary><pre className="code-panel">{JSON.stringify(selectedFullRun.run_metadata, null, 2)}</pre></details> : <p>Case provenance is unknown for this historical record.</p>}
               <div className="grid gap-4">
                 <div className="rounded-[18px] border border-(--border) bg-(--surface-2) p-4">
                   <div className="section-label">Prompt</div>

@@ -13,6 +13,7 @@ from app.core.background_jobs import create_job, get_job
 from app.core.database import get_db
 from app.core.tenancy import ProjectContext, get_project_context
 from app.models.experiment import Experiment
+from app.core.config import settings
 
 router = APIRouter()
 
@@ -35,6 +36,8 @@ async def generate_synthetic_dataset(
     context: ProjectContext = Depends(get_project_context),
 ):
     """Create a pollable job record and schedule best-effort in-process generation."""
+    if max_chunks > settings.BENCHMARK_MAX_CALLS:
+        raise HTTPException(422, "Requested chunks exceed the hosted call budget")
     job = await create_job(
         "synthetic_generation",
         {
@@ -43,6 +46,7 @@ async def generate_synthetic_dataset(
             "seed": seed,
         },
         project_id=context.project_id,
+        reserve_model_job=True,
     )
     background_tasks.add_task(
         run_synthetic_generation_job,
@@ -63,18 +67,23 @@ async def run_llm_judge(
     context: ProjectContext = Depends(get_project_context),
 ):
     """Create a pollable job record and schedule best-effort in-process judge work."""
+    if sample_size > settings.BENCHMARK_MAX_CALLS:
+        raise HTTPException(422, "Requested judge samples exceed the hosted call budget")
     experiment_query = select(Experiment).where(Experiment.id == experiment_id)
     experiment_result = await db.execute(experiment_query)
-    if experiment_result.scalar_one_or_none() is None:
+    experiment = experiment_result.scalar_one_or_none()
+    if experiment is None:
         raise HTTPException(status_code=404, detail="Experiment not found")
 
     job = await create_job(
         "llm_judge",
         {
             "experiment_id": str(experiment_id),
+            "attempt": experiment.current_attempt,
             "sample_size": sample_size,
         },
         project_id=context.project_id,
+        reserve_model_job=True,
     )
-    background_tasks.add_task(run_llm_judge_job, job["job_id"], experiment_id, sample_size)
+    background_tasks.add_task(run_llm_judge_job, job["job_id"], experiment_id, sample_size, experiment.current_attempt)
     return JSONResponse(status_code=202, content=job)

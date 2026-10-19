@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+import { benchmarkPollDelay } from "@/lib/benchmark-polling";
 import { useQuery } from "@tanstack/react-query";
 import { Download, FileText, ScanSearch, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
@@ -10,7 +12,7 @@ import {
   exportResults,
   getMetrics,
   getProfile,
-  getRunGridSummaries,
+  getRunPage,
   type ProfileData,
 } from "@/lib/api";
 import { formatDuration, LatencyHistogram, RunFilmstrip } from "@/components/experiments/experiment-run-inspection";
@@ -28,24 +30,45 @@ export function ExperimentResultsDashboard({
   experimentId,
   experimentName,
   experimentStatus,
+  attempt,
+  startedAt,
 }: {
   experimentId: string;
   experimentName: string;
   experimentStatus: string;
+  attempt?: number;
+  startedAt?: string;
 }) {
+  const [skip, setSkip] = useState(0);
+  const isActive = ["running", "queued"].includes(experimentStatus);
   const isCompleted = experimentStatus === "completed";
   const immutableStaleTime = isCompleted ? Infinity : 0;
 
   const metricsQuery = useQuery({
-    queryKey: ["metrics", experimentId],
-    queryFn: ({ signal }) => getMetrics(experimentId, { signal }),
+    queryKey: ["metrics", experimentId, attempt],
+    queryFn: ({ signal }) => getMetrics(experimentId, { signal }, attempt),
     staleTime: immutableStaleTime,
+    retry: false,
+    refetchInterval: isActive ? () => benchmarkPollDelay(startedAt) : false,
   });
   const runsQuery = useQuery({
-    queryKey: ["runs-grid", experimentId],
-    queryFn: ({ signal }) => getRunGridSummaries(experimentId, { signal }),
+    queryKey: ["runs-grid", experimentId, attempt, skip],
+    queryFn: ({ signal }) => getRunPage(experimentId, attempt, skip, { signal }),
     staleTime: immutableStaleTime,
+    retry: false,
+    refetchInterval: isActive ? () => benchmarkPollDelay(startedAt) : false,
   });
+
+  const pageRuns = runsQuery.data?.runs ?? [];
+  const caseContent = <div className="space-y-4">
+    {runsQuery.error ? <p className="alert alert-danger">Case page unavailable: {runsQuery.error instanceof Error ? runsQuery.error.message : "request failed"}</p> : null}
+    <div className="flex items-center gap-3">
+      <button className="btn-secondary" disabled={skip === 0} onClick={() => setSkip(Math.max(0, skip - 25))}>Previous cases</button>
+      <span>{skip + (pageRuns.length ? 1 : 0)}–{skip + pageRuns.length} of {runsQuery.data?.total ?? "?"}</span>
+      <button className="btn-secondary" disabled={skip + 25 >= (runsQuery.data?.total ?? 0)} onClick={() => setSkip(skip + 25)}>Next cases</button>
+    </div>
+    {pageRuns.length ? <><RunFilmstrip key={`${attempt}:${skip}`} runs={pageRuns} experimentId={experimentId} attempt={attempt} /><LatencyHistogram runs={pageRuns} /></> : <p>No completed cases in this attempt.</p>}
+  </div>;
 
   if (metricsQuery.isLoading) {
     return (
@@ -62,7 +85,7 @@ export function ExperimentResultsDashboard({
     const error = metricsQuery.error;
     const isMissingResults = error instanceof ApiError && error.statusCode === 404;
     return isMissingResults ? (
-      <EmptyState icon={<ScanSearch className="size-5" />} title="Metrics are not ready yet" description="The latest run has not written aggregate metrics yet. Re-open this page once execution completes." />
+      <><EmptyState icon={<ScanSearch className="size-5" />} title="Metrics are not ready yet" description="Completed cases are shown below. Metrics belong only to the selected attempt." />{caseContent}</>
     ) : (
       <div className="alert alert-danger">
         <TriangleAlert className="mt-0.5 size-4 shrink-0" />
@@ -72,7 +95,7 @@ export function ExperimentResultsDashboard({
   }
 
   const metrics = metricsQuery.data;
-  const runs = runsQuery.data ?? [];
+  const runs = pageRuns;
   const runsError = runsQuery.error;
   const runsMissing = runsError instanceof ApiError && runsError.statusCode === 404;
 
@@ -86,23 +109,23 @@ export function ExperimentResultsDashboard({
     );
   }
 
-  const correctRuns = runs.filter((run) => run.is_correct).length;
   const totalRuns = runs.length;
 
   return (
     <div className="space-y-4">
+      <p className="text-sm text-(--muted-foreground)">Attempt {metrics.attempt ?? "unknown"} · {metrics.coverage?.status ?? "unknown"} · provenance {metrics.coverage?.provenance ?? "unknown"} · scorer {metrics.scoring_versions?.join(", ") ?? "unknown"}. Small demo samples are descriptive.</p>
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <MetricCard
-          label="Exact accuracy"
+          label="Primary accuracy"
           tone={(metrics.quality.accuracy_exact ?? 0) >= 0.7 ? "success" : (metrics.quality.accuracy_exact ?? 0) >= 0.4 ? "warning" : "danger"}
-          value={<AnimatedNumber value={(metrics.quality.accuracy_exact ?? 0) * 100} suffix="%" className="text-4xl" />}
-          detail={`${correctRuns}/${totalRuns} runs marked correct`}
+          value={metrics.quality.primary_accuracy == null ? "Unknown" : <AnimatedNumber value={metrics.quality.primary_accuracy * 100} suffix="%" className="text-4xl" />}
+          detail={`${metrics.coverage?.scored ?? totalRuns} scored / ${metrics.coverage?.selected ?? "unknown"} selected; ${metrics.coverage?.missing ?? "unknown"} missing`}
         />
         <MetricCard
           label="Mean F1"
           tone="accent"
-          value={<AnimatedNumber value={(metrics.quality.accuracy_f1 ?? 0) * 100} suffix="%" className="text-4xl" />}
-          detail="Token-level overlap against expected answers"
+          value={metrics.quality.accuracy_f1 == null ? "Unknown" : <AnimatedNumber value={metrics.quality.accuracy_f1 * 100} suffix="%" className="text-4xl" />}
+          detail="Token overlap for scored responses; unknown scores are excluded"
         />
         <MetricCard
           label="Latency p50"
@@ -127,7 +150,7 @@ export function ExperimentResultsDashboard({
                 type="button"
                 className="btn-secondary"
                 onClick={() => {
-                  void toast.promise(exportResults(experimentId, experimentName), {
+                  void toast.promise(exportResults(experimentId, experimentName, attempt), {
                     loading: "Exporting JSON...",
                     success: "JSON export downloaded",
                     error: (error) => error instanceof Error ? `Export failed: ${error.message}` : "Export failed",
@@ -141,7 +164,7 @@ export function ExperimentResultsDashboard({
                 type="button"
                 className="btn-primary"
                 onClick={() => {
-                  void toast.promise(exportMarkdownReport(experimentId, experimentName, metrics, runs), {
+                  void toast.promise(exportMarkdownReport(experimentId, experimentName, metrics, runs, attempt), {
                     loading: "Building markdown report...",
                     success: "Report downloaded",
                     error: (error) => error instanceof Error ? `Export failed: ${error.message}` : "Export failed",
@@ -293,28 +316,16 @@ export function ExperimentResultsDashboard({
         </div>
       ) : null}
 
-      {runsQuery.isLoading ? (
-        <SkeletonBlock className="h-[420px]" />
-      ) : runs.length ? (
-        <>
-          <RunFilmstrip runs={runs} experimentId={experimentId} />
-          <LatencyHistogram runs={runs} />
-        </>
-      ) : (
-        <EmptyState
-          icon={<ScanSearch className="size-5" />}
-          title={runsMissing ? "No per-run logs" : "Per-run logs unavailable"}
-          description={runsMissing ? "Metrics were saved, but no run summaries were returned for the latest attempt." : "The aggregate metrics loaded, but the latest run logs could not be fetched."}
-        />
-      )}
+      {caseContent}
+
     </div>
   );
 }
 
-export function ExperimentProfileDashboard({ experimentId }: { experimentId: string }) {
+export function ExperimentProfileDashboard({ experimentId, attempt }: { experimentId: string; attempt?: number }) {
   const profileQuery = useQuery({
-    queryKey: ["profile", experimentId],
-    queryFn: ({ signal }) => getProfile(experimentId, { signal }),
+    queryKey: ["profile", experimentId, attempt],
+    queryFn: ({ signal }) => getProfile(experimentId, { signal }, attempt),
   });
 
   if (profileQuery.isLoading) {

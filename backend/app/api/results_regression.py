@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.models.experiment import Experiment
 from app.models.result import Result
+from app.services.attempts import result_at, lock_history_mutation
 from app.schemas.experiment import regression_status_from_verdict
 from app.services.regression_service import RegressionService
 
@@ -19,12 +20,11 @@ router = APIRouter()
 @router.get("/{experiment_id}/regression")
 async def get_regression_report(
     experiment_id: UUID,
+    attempt: int | None = None,
     db: AsyncSession = Depends(get_db),
 ):
     """Get regression report for an experiment."""
-    query = select(Result).where(Result.experiment_id == experiment_id)
-    result = await db.execute(query)
-    db_result = result.scalar_one_or_none()
+    db_result = await result_at(db, experiment_id, attempt)
 
     if not db_result:
         raise HTTPException(status_code=404, detail="No results found for experiment")
@@ -48,11 +48,12 @@ async def rerun_regression(
     from sqlalchemy.orm.attributes import flag_modified
 
     reg_svc = RegressionService(db)
+    await lock_history_mutation(db)
 
     exp_query = select(Experiment).where(
         Experiment.id == experiment_id,
         Experiment.deleted_at.is_(None),
-    )
+    ).with_for_update().execution_options(populate_existing=True)
     exp_result = await db.execute(exp_query)
     experiment = exp_result.scalar_one_or_none()
 
@@ -64,9 +65,7 @@ async def rerun_regression(
 
     experiment.regression_status = "not_checked"
     experiment.regression_passed = None
-    res_query = select(Result).where(Result.experiment_id == experiment_id)
-    res_result = await db.execute(res_query)
-    result_obj = res_result.scalar_one_or_none()
+    result_obj = await result_at(db, experiment_id)
     if result_obj:
         existing_raw = dict(result_obj.raw_metrics or {})
         existing_raw.pop("regression", None)

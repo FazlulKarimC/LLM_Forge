@@ -13,8 +13,7 @@ import {
   CreateExperimentRequest,
   ExperimentConfig,
   getAvailableModels,
-  persistCustomProviderCredentials,
-  resolveRunExperimentCredentials,
+  getBenchmarkProfile,
   runExperiment,
 } from "@/lib/api";
 import {
@@ -76,10 +75,10 @@ const reasoningOptions: readonly ExperimentBuilderOption[] = [
 ] as const;
 
 const providerOptions: readonly ExperimentBuilderOption[] = [
-  { value: "auto", label: "Auto router", description: "Pick the best available provider and fall back automatically" },
-  { value: "hf_api", label: "Hugging Face API", description: "Serverless and free, but often slower" },
-  { value: "openrouter", label: "OpenRouter", description: "Use free-tier models with provider-side routing" },
-  { value: "groq", label: "Groq", description: "Very fast inference with stricter limits" },
+  { value: "auto", label: "Auto router", description: "Pin one configured provider for this attempt; cross-provider fallback is disabled" },
+  { value: "hf_api", label: "Hugging Face API", description: "Remote inference with provider-specific availability and quotas" },
+  { value: "openrouter", label: "OpenRouter", description: "Use an OpenRouter model ID supported by your account" },
+  { value: "groq", label: "Groq", description: "Use a Groq model ID supported by your account" },
   { value: "custom", label: "Custom endpoint (dev only)", description: "Your own OpenAI-compatible endpoint for local or development-only testing" },
 ] as const;
 
@@ -109,13 +108,13 @@ const presetConfigs: ExperimentBuilderPresetConfig[] = [
     },
   },
   {
-    title: "RAG grounding check",
-    description: "Use the knowledge base dataset with hybrid retrieval to inspect grounded answers.",
+    title: "Knowledge recall check",
+    description: "Try grounded diagnostic questions without retrieval; hosted RAG is temporarily unavailable.",
     apply: {
       reasoning_method: "naive" as const,
       dataset_name: "knowledge_base",
       num_samples: 20,
-      retrieval_method: "hybrid" as const,
+      retrieval_method: "none" as const,
     },
   },
   {
@@ -124,7 +123,7 @@ const presetConfigs: ExperimentBuilderPresetConfig[] = [
     apply: {
       reasoning_method: "react" as const,
       dataset_name: "react_bench",
-      num_samples: 15,
+      num_samples: 5,
       retrieval_method: "none" as const,
     },
   },
@@ -133,6 +132,12 @@ const presetConfigs: ExperimentBuilderPresetConfig[] = [
 export default function NewExperimentPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const profileQuery = useQuery({
+    queryKey: ["benchmark-profile"],
+    queryFn: ({ signal }) => getBenchmarkProfile({ signal }),
+    staleTime: 60_000,
+  });
+  const profile = profileQuery.data;
 
   const modelsQuery = useQuery({
     queryKey: ["available-models"],
@@ -156,10 +161,10 @@ export default function NewExperimentPage() {
     num_samples: 10,
     retrieval_method: "none" as "none" | "naive" | "hybrid" | "reranked",
     rag_top_k: 5,
-    agent_max_iterations: 5,
+    agent_max_iterations: 3,
     agent_tools: ["wikipedia_search", "calculator"],
     enable_batching: false,
-    batch_size: 8,
+    batch_size: 1,
     enable_caching: false,
     cache_max_size: 256,
     routing_policy: "fallback_chain" as "fallback_chain" | "cheapest_first" | "fastest_first" | "adaptive",
@@ -181,18 +186,9 @@ export default function NewExperimentPage() {
   const [validationError, setValidationError] = useState<string | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
 
-  const [customBaseUrl, setCustomBaseUrl] = useState(() => {
-    if (typeof window !== "undefined") return sessionStorage.getItem("customBaseUrl") || "http://localhost:8000/v1";
-    return "http://localhost:8000/v1";
-  });
-  const [customApiKey, setCustomApiKey] = useState(() => {
-    if (typeof window !== "undefined") return sessionStorage.getItem("customApiKey") || "";
-    return "";
-  });
-  const [customModelId, setCustomModelId] = useState(() => {
-    if (typeof window !== "undefined") return sessionStorage.getItem("customModelId") || "";
-    return "";
-  });
+  const [customBaseUrl, setCustomBaseUrl] = useState("http://localhost:8000/v1");
+  const [customApiKey, setCustomApiKey] = useState("");
+  const [customModelId, setCustomModelId] = useState("");
 
   const createMutation = useMutation({
     mutationFn: ({ request }: { request: CreateExperimentRequest; shouldRun: boolean }) => createExperiment(request),
@@ -202,8 +198,9 @@ export default function NewExperimentPage() {
 
       if (variables.shouldRun) {
         try {
-          const credentials = resolveRunExperimentCredentials(variables.request.config);
-          await runExperiment(experiment.id, credentials.customBaseUrl, credentials.customApiKey);
+          await runExperiment(experiment.id, variables.request.config.provider === "custom" ? customBaseUrl : undefined, variables.request.config.provider === "custom" ? customApiKey : undefined);
+          setCustomApiKey("");
+          setCustomBaseUrl("");
         } catch (error) {
           const message = error instanceof Error
             ? `Benchmark created but failed to start: ${error.message}`
@@ -219,9 +216,17 @@ export default function NewExperimentPage() {
 
   const selectedModel = availableModels.find((model) => model.value === formData.model_name);
   const selectedDataset = datasetGroups.flatMap((group) => group.options).find((dataset) => dataset.value === formData.dataset_name);
+  const sampleLimit = formData.reasoning_method === "react"
+    ? Math.min(profile?.max_samples ?? 20, profile?.react_max_samples ?? 5)
+    : profile?.max_samples ?? 20;
+  const selectedCount = Math.min(formData.num_samples, profile?.dataset_counts[formData.dataset_name] ?? formData.num_samples);
+  const maxCalls = selectedCount * (formData.reasoning_method === "react" ? formData.agent_max_iterations : 1);
+  const effectiveTokens = formData.reasoning_method === "cot" && formData.max_tokens <= 256 ? 512
+    : formData.reasoning_method === "react" && formData.max_tokens <= 512 ? 1024 : formData.max_tokens;
   const complexityScore = Math.min(100, Math.round((formData.num_samples / 60) * 45 + (formData.max_tokens / 800) * 25 + (formData.retrieval_method !== "none" ? 15 : 0) + (formData.reasoning_method === "react" ? 15 : formData.reasoning_method === "cot" ? 8 : 0)));
 
   function updateField<K extends keyof typeof formData>(key: K, value: (typeof formData)[K]) {
+    if (key === "provider") { setCustomApiKey(""); setCustomBaseUrl(""); }
     setFormData((current) => ({ ...current, [key]: value }));
   }
 
@@ -242,8 +247,20 @@ export default function NewExperimentPage() {
       setValidationError("Benchmark name is required.");
       return;
     }
-    if (formData.num_samples < 1 || formData.num_samples > 500) {
-      setValidationError("Samples must be between 1 and 500.");
+    if (formData.num_samples < 1 || formData.num_samples > sampleLimit) {
+      setValidationError(`Samples must be between 1 and ${sampleLimit} for this hosted mode.`);
+      return;
+    }
+    if (formData.reasoning_method === "react" && formData.agent_max_iterations > (profile?.react_max_iterations ?? 3)) {
+      setValidationError("Reduce the ReAct iteration limit to the hosted maximum.");
+      return;
+    }
+    if (formData.retrieval_method !== "none") {
+      setValidationError("Hosted RAG is temporarily unavailable while retrieval call budgets are added.");
+      return;
+    }
+    if (!formData.routing_strict_comparison || maxCalls > (profile?.max_provider_calls ?? 20)) {
+      setValidationError("Use strict comparison routing and reduce the requested provider calls.");
       return;
     }
     if (formData.enable_batching && (formData.batch_size < 1 || formData.batch_size > 32)) {
@@ -275,7 +292,7 @@ export default function NewExperimentPage() {
     setRunError(null);
 
     if (formData.model_name === "custom_hosted") {
-      persistCustomProviderCredentials(customModelId, customBaseUrl, customApiKey);
+
     }
 
     const config: ExperimentConfig = {
@@ -405,6 +422,15 @@ export default function NewExperimentPage() {
             </button>
           </div>
           <ExperimentBasicsPanel formData={formData} updateField={updateField} />
+          <div className="panel p-4 text-sm" role="status" aria-label="Hosted execution budget">
+            <p className="font-semibold">Hosted execution budget</p>
+            {profile ? <p className="mt-2 text-(--muted-foreground)">
+              {selectedCount} selected cases · at most {maxCalls} provider calls · {effectiveTokens} output tokens per call.
+              {" "}One job and one provider call at a time. New calls stop after {Math.round(profile.max_seconds / 60)} minutes;
+              issued calls use a {profile.call_timeout_seconds}-second HTTP timeout and may finish after Stop.
+              {" "}Optional embedding and judge scoring are off. Completed cases are saved individually.
+            </p> : <p className="mt-2 text-(--muted-foreground)">Server limits are loading. Defaults are 20 cases and 20 provider calls; the server validates every start.</p>}
+          </div>
 
           <ExperimentConfigurationPanel
             availableModels={availableModels}
@@ -423,6 +449,7 @@ export default function NewExperimentPage() {
           />
 
           <ExperimentEvaluationPanel
+            sampleLimit={sampleLimit}
             datasetGroups={datasetGroups}
             formData={formData}
             retrievalOptions={retrievalOptions}
@@ -432,7 +459,7 @@ export default function NewExperimentPage() {
 
           <details className="advanced-section panel p-4"><summary>Generation parameters</summary><div className="pt-3"><ExperimentGenerationPanel formData={formData} updateField={updateField} /></div></details>
 
-          {formData.reasoning_method === "react" ? <ExperimentAgentPanel formData={formData} updateField={updateField} /> : null}
+          {formData.reasoning_method === "react" ? <ExperimentAgentPanel iterationLimit={profile?.react_max_iterations ?? 3} formData={formData} updateField={updateField} /> : null}
 
           <details className="advanced-section panel p-4"><summary>Batching and caching</summary><div className="pt-3"><ExperimentOptimizationPanel formData={formData} updateField={updateField} /></div></details>
           <details className="advanced-section panel p-4"><summary>Regression rules</summary><div className="pt-3"><ExperimentRegressionPanel formData={formData} updateField={updateField} /></div></details>

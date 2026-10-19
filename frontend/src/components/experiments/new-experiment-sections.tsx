@@ -160,28 +160,29 @@ export function ExperimentConfigurationPanel({
             <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
               <div>
                 <label className="field-label" htmlFor="routing-policy">Routing policy</label>
-                <select id="routing-policy" value={formData.routing_policy} onChange={(event) => updateField("routing_policy", event.target.value as ExperimentBuilderFormData["routing_policy"])} className="select-shell">
+                <select id="routing-policy" disabled value={formData.routing_policy} onChange={(event) => updateField("routing_policy", event.target.value as ExperimentBuilderFormData["routing_policy"])} className="select-shell">
                   {routingPolicyOptions.map((option) => (
                     <option key={option.value} value={option.value}>{option.label}</option>
                   ))}
                 </select>
-                <p className="field-help mt-2">{routingPolicyOptions.find((option) => option.value === formData.routing_policy)?.description}</p>
+                <p className="field-help mt-2">Hosted runs pin one provider; adaptive routing and fallback are disabled.</p>
               </div>
               <div>
                 <label className="field-label" htmlFor="routing-epsilon">Adaptive epsilon</label>
-                <input id="routing-epsilon" type="number" step="0.05" min="0" max="1" value={formData.routing_epsilon} onChange={(event) => updateField("routing_epsilon", parseFloat(event.target.value) || 0)} className="input-shell" />
-                <p className="field-help mt-2">Only used by the adaptive policy.</p>
+                <input id="routing-epsilon" disabled type="number" step="0.05" min="0" max="1" value={formData.routing_epsilon} onChange={(event) => updateField("routing_epsilon", parseFloat(event.target.value) || 0)} className="input-shell" />
+                <p className="field-help mt-2">Inactive in hosted strict comparison mode.</p>
               </div>
               <div>
                 <label className="field-label" htmlFor="routing-exploration-window">Exploration window</label>
-                <input id="routing-exploration-window" type="number" min="1" max="50" value={formData.routing_exploration_window} onChange={(event) => updateField("routing_exploration_window", parseInt(event.target.value, 10) || 1)} className="input-shell" />
-                <p className="field-help mt-2">Initial requests to round-robin before exploiting telemetry.</p>
+                <input id="routing-exploration-window" disabled type="number" min="1" max="50" value={formData.routing_exploration_window} onChange={(event) => updateField("routing_exploration_window", parseInt(event.target.value, 10) || 1)} className="input-shell" />
+                <p className="field-help mt-2">No exploration or cross-provider fallback during this attempt.</p>
               </div>
             </div>
             <label className="mt-4 flex items-start gap-3 rounded-(--radius-control) border border-(--border) bg-(--surface-1) p-3 text-sm">
               <input
                 type="checkbox"
                 checked={formData.routing_strict_comparison}
+                disabled
                 onChange={(event) => updateField("routing_strict_comparison", event.target.checked)}
                 className="mt-1"
               />
@@ -221,12 +222,14 @@ export function ExperimentConfigurationPanel({
 }
 
 export function ExperimentEvaluationPanel({
+  sampleLimit = 20,
   datasetGroups,
   formData,
   retrievalOptions,
   selectedDatasetDescription,
   updateField,
 }: {
+  sampleLimit?: number;
   datasetGroups: ExperimentBuilderDatasetGroup[];
   formData: ExperimentBuilderFormData;
   retrievalOptions: readonly ExperimentBuilderOption[];
@@ -252,17 +255,17 @@ export function ExperimentEvaluationPanel({
         </div>
         <div>
           <label className="field-label" htmlFor="samples">Samples</label>
-          <input id="samples" type="number" min="1" max="500" value={formData.num_samples} onChange={(event) => updateField("num_samples", parseInt(event.target.value, 10) || 1)} className="input-shell" />
-          <p className="field-help mt-2">Max 500 samples on the current API.</p>
+          <input id="samples" type="number" min="1" max={sampleLimit} value={formData.num_samples} onChange={(event) => updateField("num_samples", parseInt(event.target.value, 10) || 1)} className="input-shell" />
+          <p className="field-help mt-2">At most {sampleLimit} samples for this hosted mode; small datasets use all available cases.</p>
         </div>
         <div>
           <label className="field-label" htmlFor="retrieval-method">Retrieval method</label>
           <select id="retrieval-method" value={formData.retrieval_method} onChange={(event) => updateField("retrieval_method", event.target.value as ExperimentBuilderFormData["retrieval_method"])} className="select-shell">
             {retrievalOptions.map((option) => (
-              <option key={option.value} value={option.value}>{option.label}</option>
+              <option key={option.value} value={option.value} disabled={option.value !== "none"}>{option.label}</option>
             ))}
           </select>
-          <p className="field-help mt-2">{retrievalOptions.find((option) => option.value === formData.retrieval_method)?.description}</p>
+          <p className="field-help mt-2">Hosted RAG is temporarily unavailable while retrieval call budgets are added. Existing RAG results remain readable.</p>
         </div>
         {formData.retrieval_method !== "none" ? (
           <div>
@@ -277,9 +280,11 @@ export function ExperimentEvaluationPanel({
 }
 
 export function ExperimentAgentPanel({
+  iterationLimit = 3,
   formData,
   updateField,
 }: {
+  iterationLimit?: number;
   formData: ExperimentBuilderFormData;
   updateField: UpdateField;
 }) {
@@ -289,7 +294,7 @@ export function ExperimentAgentPanel({
       <div className="panel-body grid grid-cols-1 gap-4 md:grid-cols-2">
         <div>
           <label className="field-label" htmlFor="agent-max-iterations">Max iterations</label>
-          <input id="agent-max-iterations" type="number" min="1" max="20" value={formData.agent_max_iterations} onChange={(event) => updateField("agent_max_iterations", parseInt(event.target.value, 10) || 1)} className="input-shell" />
+          <input id="agent-max-iterations" type="number" min="1" max={iterationLimit} value={formData.agent_max_iterations} onChange={(event) => updateField("agent_max_iterations", parseInt(event.target.value, 10) || 1)} className="input-shell" />
           <p className="field-help mt-2">Maximum Thought -&gt; Action -&gt; Observation loops.</p>
         </div>
         <div>
@@ -298,7 +303,6 @@ export function ExperimentAgentPanel({
             {[
               { value: "wikipedia_search", label: "Wikipedia search" },
               { value: "calculator", label: "Calculator" },
-              { value: "retrieval", label: "Retrieval" },
             ].map((tool) => (
               <label key={tool.value} className="flex items-center gap-3">
                 <input
@@ -358,14 +362,14 @@ export function ExperimentOptimizationPanel({
 }) {
   return (
     <Panel>
-      <PanelHeader label="Optimization" title="Execution options" description="Enable batching and caching to optimize throughput and reduce costs." />
+      <PanelHeader label="Optimization" title="Execution options" description="Hosted execution issues one provider call at a time and saves each completed response." />
       <div className="panel-body grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-2">
         <div className="rounded-(--radius-panel) border border-(--border) bg-(--surface-2) p-4">
           <label className="flex items-center gap-3 font-medium">
             <input type="checkbox" checked={formData.enable_batching} onChange={(event) => updateField("enable_batching", event.target.checked)} />
             Enable batching
           </label>
-          <p className="field-help mt-3">Parallelize eligible prompts to reduce wall-clock time.</p>
+          <p className="field-help mt-3">Hosted batches use an effective size of one so completed responses are saved before the next call.</p>
           {formData.enable_batching ? (
             <div className="mt-4">
               <label className="field-label" htmlFor="batch-size">Batch size</label>

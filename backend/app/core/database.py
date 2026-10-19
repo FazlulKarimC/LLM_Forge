@@ -22,47 +22,22 @@ class Base(DeclarativeBase):
     pass
 
 
-def _get_async_database_url() -> str:
-    """
-    Convert DATABASE_URL to async-compatible format for asyncpg.
-    
-    NeonDB URLs contain query params (sslmode, channel_binding) that
-    asyncpg doesn't understand, so we strip them.
-    """
-    url = settings.DATABASE_URL
-    
-    if not url:
-        # Fallback for local development
-        return "sqlite+aiosqlite:///./test.db"
-    
-    # Strip query parameters (asyncpg handles SSL automatically for neon.tech)
-    if "?" in url:
-        url = url.split("?")[0]
-    
-    # Convert to async driver
-    url = re.sub(r'^postgresql:', 'postgresql+asyncpg:', url)
-    
-    return url
+from app.core.database_url import async_database_options
 
 
-# Create async engine
-_database_url = _get_async_database_url()
+def _get_async_database_url():
+    return async_database_options(settings.DATABASE_URL, production=settings.ENVIRONMENT != "development")[0]
 
-# SQLite doesn't support pool_size/max_overflow — use StaticPool instead
-if _database_url.startswith("sqlite"):
+
+_database_url, _connect_args = async_database_options(settings.DATABASE_URL, production=settings.ENVIRONMENT != "development")
+if str(_database_url).startswith("sqlite"):
     from sqlalchemy.pool import StaticPool
-    engine = create_async_engine(
-        _database_url,
-        echo=settings.DEBUG,
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
+    engine = create_async_engine(_database_url, echo=False, poolclass=StaticPool)
 else:
     engine = create_async_engine(
-        _database_url,
-        echo=settings.DEBUG,
-        pool_size=settings.DB_POOL_SIZE,
-        max_overflow=settings.DB_MAX_OVERFLOW,
+        _database_url, echo=False, pool_size=settings.DB_POOL_SIZE,
+        max_overflow=settings.DB_MAX_OVERFLOW, pool_timeout=settings.DB_POOL_TIMEOUT,
+        pool_pre_ping=True, connect_args=_connect_args,
     )
 
 async_session_maker = async_sessionmaker(

@@ -22,6 +22,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.experiment import Experiment
 from app.models.run import Run
+from app.models.experiment_attempt import ExperimentAttempt
+from app.services.attempts import lock_history_mutation
 from app.schemas.experiment import ExperimentConfig, RegressionConfig, GradersConfig
 from app.services.experiment_provenance import (
     BASELINE_LINEAGE_CONFIG_KEYS,
@@ -60,8 +62,8 @@ class RegressionVerdict:
             "candidate_attempt": self.candidate_attempt,
             "overlap_ratio": self.overlap_ratio,
             "violations": self.violations,
-            "sample_regressions_count": len(self.sample_regressions),
-            "sample_improvements_count": len(self.sample_improvements),
+            "sample_regressions_count": self.statistical_comparison.get("summary", {}).get("a_only_correct", len(self.sample_regressions)),
+            "sample_improvements_count": self.statistical_comparison.get("summary", {}).get("b_only_correct", len(self.sample_improvements)),
             "sample_regressions": self.sample_regressions[:20],
             "sample_improvements": self.sample_improvements[:20],
             "grader_summary": self.grader_summary,
@@ -136,8 +138,6 @@ class RegressionService:
             Experiment.id != experiment.id,
         ]
 
-        if experiment.dataset_hash:
-            base_conditions.append(Experiment.dataset_hash == experiment.dataset_hash)
         lineage_query = (
             select(Experiment)
             .where(*base_conditions)
@@ -145,8 +145,12 @@ class RegressionService:
         )
         result = await self.db.execute(lineage_query)
         for baseline in result.scalars().all():
-            if self._same_baseline_lineage(baseline, experiment):
-                return baseline
+            snapshot = await self.db.get(ExperimentAttempt, (baseline.id, baseline.pinned_attempt or baseline.current_attempt))
+            if snapshot and snapshot.config:
+                from types import SimpleNamespace
+                frozen = SimpleNamespace(config=snapshot.config, dataset_hash=snapshot.dataset_hash, dataset_name=baseline.dataset_name, model_name=baseline.model_name)
+                if self._same_baseline_lineage(frozen, experiment):
+                    return baseline
         return None
 
     async def run_regression_check(
@@ -161,6 +165,7 @@ class RegressionService:
         current_attempt for candidate). Grades both sides with candidate's
         grader config.
         """
+        await lock_history_mutation(self.db)
         # Load experiments
         candidate_exp = await self._load_experiment(candidate_id)
         baseline_exp = await self._load_experiment(baseline_id)
@@ -181,9 +186,10 @@ class RegressionService:
         if not baseline_runs or not candidate_runs:
             raise ValueError("Both experiments must have runs at their respective attempts")
         
-        # Parse configs
-        candidate_config = ExperimentConfig(**candidate_exp.config)
-        baseline_config = ExperimentConfig(**baseline_exp.config)
+        candidate_snapshot = await self.db.get(ExperimentAttempt, (candidate_id, candidate_attempt))
+        baseline_snapshot = await self.db.get(ExperimentAttempt, (baseline_id, baseline_attempt))
+        candidate_config = ExperimentConfig(**((candidate_snapshot.config if candidate_snapshot else None) or candidate_exp.config))
+        baseline_config = ExperimentConfig(**((baseline_snapshot.config if baseline_snapshot else None) or baseline_exp.config))
         regression_config = candidate_config.regression or RegressionConfig()
         
         # Grade both sides with their own grader config and execution context.
@@ -230,8 +236,14 @@ class RegressionService:
         if baseline_p95 is not None and candidate_p95 is not None:
             stats["latency_p95_delta_ms"] = candidate_p95 - baseline_p95
         
+        complete = candidate_config.dataset_name == baseline_config.dataset_name and all(row and row.status == "completed" and row.provenance_status == "recorded" and set(map(str, row.sample_ids or [])) == {str(run.example_id) for run in runs} for row, runs in [(baseline_snapshot, baseline_runs), (candidate_snapshot, candidate_runs)])
+        if not complete:
+            stats["comparable"] = False
+            stats.setdefault("warnings", []).append("Dataset mismatch, incomplete coverage, or legacy attempt provenance")
+            stats["mcnemar"].update(p_value=None, is_significant=False, test_type="unavailable")
+            stats["paired_accuracy_delta_ci"] = None
         # Check overlap threshold
-        if overlap_ratio < regression_config.min_overlap_ratio:
+        if not stats.get("comparable", False) or overlap_ratio < regression_config.min_overlap_ratio:
             logger.warning(
                 "Overlap ratio %.2f below threshold %.2f — verdict inconclusive",
                 overlap_ratio, regression_config.min_overlap_ratio,
@@ -253,27 +265,28 @@ class RegressionService:
         # Detect per-sample regressions
         regressions, improvements = self._detect_sample_regressions(stats)
         
+        regression_count = stats["summary"]["a_only_correct"]
         # Check sample-level constraints
-        if regression_config.no_sample_regressions and len(regressions) > 0:
+        if regression_config.no_sample_regressions and regression_count > 0:
             violations.append({
                 "rule": "no_sample_regressions",
-                "message": f"{len(regressions)} previously-correct samples now fail",
-                "count": len(regressions),
+                "message": f"{regression_count} previously-correct samples now fail",
+                "count": regression_count,
             })
         
         if regression_config.max_new_failures is not None:
-            if len(regressions) > regression_config.max_new_failures:
+            if regression_count > regression_config.max_new_failures:
                 violations.append({
                     "rule": "max_new_failures",
-                    "message": f"{len(regressions)} new failures exceed max {regression_config.max_new_failures}",
-                    "count": len(regressions),
+                    "message": f"{regression_count} new failures exceed max {regression_config.max_new_failures}",
+                    "count": regression_count,
                     "max": regression_config.max_new_failures,
                 })
         
         # Config diff
         config_diff = self._compute_config_diff(
-            baseline_exp.run_manifest,
-            candidate_exp.run_manifest,
+            baseline_snapshot.run_manifest if baseline_snapshot else None,
+            candidate_snapshot.run_manifest if candidate_snapshot else None,
         )
         
         passed = len(violations) == 0
@@ -303,6 +316,7 @@ class RegressionService:
         3. One baseline per (dataset_name, model_name) — unpins old
         4. Cannot pin an experiment that has baseline_id set
         """
+        await lock_history_mutation(self.db)
         experiment = await self._load_experiment(experiment_id)
         if not experiment:
             raise ValueError("Experiment not found")
@@ -343,6 +357,7 @@ class RegressionService:
 
     async def unpin_baseline(self, experiment_id: UUID) -> Experiment:
         """Remove baseline status. Does NOT invalidate previous regression verdicts."""
+        await lock_history_mutation(self.db)
         experiment = await self._load_experiment(experiment_id)
         if not experiment:
             raise ValueError("Experiment not found")
@@ -358,7 +373,7 @@ class RegressionService:
         query = select(Experiment).where(
             Experiment.id == experiment_id,
             Experiment.deleted_at.is_(None),
-        )
+        ).with_for_update().execution_options(populate_existing=True)
         result = await self.db.execute(query)
         return result.scalar_one_or_none()
 

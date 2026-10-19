@@ -106,8 +106,7 @@ class TestExperimentRunCustomHeaders:
     @patch('app.api.experiments.ExperimentService.get')
     @patch('app.api.experiments.ExperimentService.queue_for_execution')
     @patch('app.core.task_dispatch.dispatch_experiment')
-    @patch('app.api.experiments._active_run_count', new_callable=AsyncMock, return_value=0)
-    def test_run_experiment_with_custom_headers(self, mock_active_count, mock_dispatch, mock_queue, mock_get, client):
+    def test_run_experiment_with_custom_headers(self, mock_dispatch, mock_queue, mock_get, client):
         """Test /run endpoint parses the custom headers correctly."""
         from app.core.task_dispatch import DispatchResult
 
@@ -141,6 +140,10 @@ class TestExperimentRunCustomHeaders:
             config = MockConfig()
 
         mock_exp = MockExperiment()
+        from app.schemas.experiment import ExperimentConfig
+        mock_exp.config = ExperimentConfig(
+            model_name="custom-model", provider="custom", dataset_name="sample", num_samples=2,
+        )
         mock_get.return_value = mock_exp
         mock_queue.return_value = 1
         mock_dispatch.return_value = DispatchResult(backend_used="inline")
@@ -164,8 +167,7 @@ class TestExperimentRunCustomHeaders:
         assert call_kwargs.kwargs.get("expected_attempt") == 1
 
     @patch('app.api.experiments.ExperimentService.get')
-    @patch('app.api.experiments._active_run_count', new_callable=AsyncMock, return_value=0)
-    def test_run_experiment_requires_custom_headers_for_custom_provider(self, mock_active_count, mock_get, client):
+    def test_run_experiment_requires_custom_headers_for_custom_provider(self, mock_get, client):
         """Custom-provider experiments should fail fast instead of falling back silently."""
         class MockHyperParams:
             temperature = 0.1

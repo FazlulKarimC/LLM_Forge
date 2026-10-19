@@ -72,6 +72,7 @@ def build_effective_execution_manifest_entry(
     execution_mode: str,
     rag_enabled: bool,
     optimization: Any,
+    execution_budget: Optional[Mapping[str, Any]] = None,
 ) -> tuple[dict[str, Any], str]:
     """Build a canonical effective-execution manifest entry and content hash."""
     routing_payload = _mapping_or_dump(routing_config)
@@ -111,6 +112,7 @@ def build_effective_execution_manifest_entry(
         "execution_mode": execution_mode,
         "rag_enabled": rag_enabled,
         "optimization": optimization_payload,
+        "execution_budget": dict(execution_budget or {}),
     }
     manifest_hash = hashlib.sha256(
         canonical_json(effective_execution).encode()

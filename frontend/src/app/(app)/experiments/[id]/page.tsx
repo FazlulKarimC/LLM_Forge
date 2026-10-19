@@ -35,6 +35,8 @@ import {
   SkeletonBlock,
   StatusPill,
 } from "@/components/ui/primitives";
+import { benchmarkPollDelay } from "@/lib/benchmark-polling";
+import { AttemptSelector } from "@/components/experiments/attempt-selector";
 import { RegressionPanel } from "@/components/ui/RegressionPanel";
 import { RoutingPanel } from "@/components/ui/RoutingPanel";
 
@@ -68,6 +70,9 @@ function regressionBadge(status?: "not_checked" | "pass" | "fail" | "inconclusiv
 export default function ExperimentDetailPage({ params }: Props) {
   const { id } = use(params);
   const queryClient = useQueryClient();
+  const [selectedAttempt, setSelectedAttempt] = useState<number | undefined>();
+  const [customBaseUrl, setCustomBaseUrl] = useState("");
+  const [customApiKey, setCustomApiKey] = useState("");
   const [interruptRequested, setInterruptRequested] = useState(false);
 
   const experimentQuery = useQuery({
@@ -75,16 +80,19 @@ export default function ExperimentDetailPage({ params }: Props) {
     queryFn: ({ signal }) => getExperiment(id, { signal }),
     refetchInterval: (query) => {
       const status = query.state.data?.status;
-      return status === "running" || status === "queued" ? 3000 : false;
+      return status === "running" || status === "queued" ? benchmarkPollDelay(query.state.data?.started_at) : false;
     },
   });
 
   const runMutation = useMutation({
     mutationFn: () => {
-      const credentials = resolveRunExperimentCredentials(experimentQuery.data?.config);
+      const credentials = resolveRunExperimentCredentials(experimentQuery.data?.config, { customBaseUrl, customApiKey });
       return runExperiment(id, credentials.customBaseUrl, credentials.customApiKey);
     },
     onSuccess: () => {
+      setCustomApiKey("");
+      setCustomBaseUrl("");
+      setSelectedAttempt(undefined);
       queryClient.invalidateQueries({ queryKey: ["experiment", id] });
       queryClient.invalidateQueries({ queryKey: ["experiments"] });
       queryClient.invalidateQueries({ queryKey: ["metrics", id] });
@@ -107,7 +115,10 @@ export default function ExperimentDetailPage({ params }: Props) {
       queryClient.invalidateQueries({ queryKey: ["experiment", id] });
       queryClient.invalidateQueries({ queryKey: ["experiments"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
-      toast.success("Benchmark interrupted; partial results were kept");
+      queryClient.invalidateQueries({ queryKey: ["metrics", id] });
+      queryClient.invalidateQueries({ queryKey: ["runs-grid", id] });
+      queryClient.invalidateQueries({ queryKey: ["attempts", id] });
+      toast.success("Benchmark stopped; saved cases remain available. An issued call may finish.");
     },
     onError: (error: Error) => toast.error(`Could not interrupt benchmark: ${error.message}`),
   });
@@ -153,6 +164,7 @@ export default function ExperimentDetailPage({ params }: Props) {
   }
 
   const experiment = experimentQuery.data;
+  const attempt = selectedAttempt ?? experiment.current_attempt;
   const canRun = experiment.status === "pending" || experiment.status === "failed" || experiment.status === "completed";
   const isActive = experiment.status === "running" || experiment.status === "queued";
 
@@ -176,10 +188,10 @@ export default function ExperimentDetailPage({ params }: Props) {
             </span>
           ) : null}
           {regressionBadge(experiment.regression_status)}
-          {isActive ? <span className="chip">Auto-refresh every 3s</span> : null}
+          {isActive ? <span className="chip">Auto-refresh slows from 3s to 30s</span> : null}
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {experiment.status === "completed" ? <Link href={`/experiments/compare?preselect=${id}`} className="btn-secondary">Compare</Link> : null}
+          {experiment.status === "completed" ? <Link href={`/experiments/compare?preselect=${id}&attempt=${attempt}`} className="btn-secondary">Compare</Link> : null}
           {experiment.status === "completed" ? (
             experiment.is_baseline ? (
               <button
@@ -226,6 +238,12 @@ export default function ExperimentDetailPage({ params }: Props) {
           ) : null}
         </div>
       </PageHeader>
+
+      {experiment.config.provider === "custom" && canRun ? <Panel><div className="panel-body flex flex-wrap gap-3">
+        <input aria-label="Endpoint for this run" className="field-input" placeholder="OpenAI-compatible base URL" value={customBaseUrl} onChange={(event) => setCustomBaseUrl(event.target.value)} autoComplete="off" />
+        <input aria-label="API key for this run" className="field-input" type="password" placeholder="API key (this request only)" value={customApiKey} onChange={(event) => setCustomApiKey(event.target.value)} autoComplete="off" />
+      </div></Panel> : null}
+      <AttemptSelector id={id} current={experiment.current_attempt} selected={attempt} onSelect={setSelectedAttempt} />
 
       {isActive && interruptRequested ? (
         <div className="alert alert-warning flex-wrap">
@@ -281,30 +299,22 @@ export default function ExperimentDetailPage({ params }: Props) {
         </Panel>
       </section>
 
-      {experiment.run_manifest ? (
-        <section>
-          <Panel>
-            <PanelHeader label="Provenance" title="Execution manifest" description="Submitted config plus effective runtime settings captured for reproducibility." />
-            <div className="panel-body">
-              <pre className="code-panel">{JSON.stringify(experiment.run_manifest, null, 2)}</pre>
-            </div>
-          </Panel>
-        </section>
-      ) : null}
-
-      {experiment.status === "completed" ? (
+      {experiment.current_attempt ? (
         <>
           <ExperimentResultsDashboard
+            key={attempt}
+            attempt={attempt}
+            startedAt={experiment.started_at}
             experimentId={id}
             experimentName={experiment.name}
-            experimentStatus={experiment.status}
+            experimentStatus={attempt === experiment.current_attempt ? experiment.status : "completed"}
           />
-          <ExperimentProfileDashboard experimentId={id} />
+          <ExperimentProfileDashboard experimentId={id} attempt={attempt} />
           <section>
-            <RegressionPanel experimentId={id} />
+            <RegressionPanel experimentId={id} attempt={attempt} allowRerun={attempt === experiment.current_attempt} />
           </section>
           <section>
-            <RoutingPanel experimentId={id} />
+            <RoutingPanel experimentId={id} attempt={attempt} />
           </section>
         </>
       ) : (

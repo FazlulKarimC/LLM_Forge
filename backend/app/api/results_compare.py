@@ -11,6 +11,7 @@ from app.api.results_common import result_to_metrics_response
 from app.core.database import get_db
 from app.models.experiment import Experiment
 from app.models.result import Result
+from app.services.attempts import result_at
 from app.schemas.result import ComparisonResponse, ExperimentComparison
 
 router = APIRouter()
@@ -19,13 +20,15 @@ router = APIRouter()
 @router.get("/compare", response_model=ComparisonResponse)
 async def compare_experiments(
     experiment_ids: List[str] = Query(..., description="List of experiment IDs to compare"),
+    attempt_a: int | None = Query(None, ge=0),
+    attempt_b: int | None = Query(None, ge=0),
     db: AsyncSession = Depends(get_db),
 ):
     """Compare metrics across multiple experiments."""
-    if len(experiment_ids) < 2:
+    if len(experiment_ids) != 2 or len(set(experiment_ids)) != 2:
         raise HTTPException(
             status_code=400,
-            detail="At least 2 experiments required for comparison",
+            detail="Exactly 2 distinct experiments required for comparison",
         )
 
     try:
@@ -38,7 +41,7 @@ async def compare_experiments(
     f1_values = []
     latency_p50_values = []
 
-    for exp_id in parsed_ids:
+    for index, exp_id in enumerate(parsed_ids):
         exp_query = select(Experiment).where(Experiment.id == exp_id)
         exp_result = await db.execute(exp_query)
         experiment = exp_result.scalar_one_or_none()
@@ -49,9 +52,7 @@ async def compare_experiments(
                 detail=f"Experiment {exp_id} not found",
             )
 
-        res_query = select(Result).where(Result.experiment_id == exp_id)
-        res_result = await db.execute(res_query)
-        db_result = res_result.scalar_one_or_none()
+        db_result = await result_at(db, exp_id, (attempt_a, attempt_b)[index])
 
         if not db_result:
             raise HTTPException(
@@ -61,20 +62,22 @@ async def compare_experiments(
 
         metrics = result_to_metrics_response(db_result)
 
-        config = experiment.config or {}
+        from app.models.experiment_attempt import ExperimentAttempt
+        snapshot = await db.get(ExperimentAttempt, (exp_id, db_result.attempt))
+        config = (snapshot.config if snapshot else None) or {}
         comparisons.append(
             ExperimentComparison(
                 experiment_id=exp_id,
                 experiment_name=experiment.name,
-                method=experiment.method or config.get("reasoning_method", "unknown"),
-                model=experiment.model_name or config.get("model_name", "unknown"),
+                method=config.get("reasoning_method", "unknown"),
+                model=config.get("model_name", "unknown"),
                 metrics=metrics,
             )
         )
 
-        accuracy_values.append(db_result.accuracy_exact or 0.0)
-        f1_values.append(db_result.accuracy_f1 or 0.0)
-        latency_p50_values.append(db_result.latency_p50 or 0.0)
+        accuracy_values.append(db_result.accuracy_exact)
+        f1_values.append(db_result.accuracy_f1)
+        latency_p50_values.append(db_result.latency_p50)
 
     return ComparisonResponse(
         experiments=comparisons,
@@ -90,6 +93,8 @@ async def compare_experiments(
 async def statistical_comparison(
     experiment_a: str = Query(..., description="First experiment ID"),
     experiment_b: str = Query(..., description="Second experiment ID"),
+    attempt_a: int | None = Query(None, ge=0),
+    attempt_b: int | None = Query(None, ge=0),
     db: AsyncSession = Depends(get_db),
 ):
     """Statistical comparison between two experiments."""
@@ -104,6 +109,6 @@ async def statistical_comparison(
     stat_service = StatisticalService(db)
 
     try:
-        return await stat_service.compare_experiments(parsed_a, parsed_b)
+        return await stat_service.compare_experiments(parsed_a, parsed_b, attempt_a, attempt_b)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))

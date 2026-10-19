@@ -64,7 +64,7 @@ class TestOpenAIEngine:
         
         result = engine.generate("Hello world", config)
         assert result.failure_mode == FailureMode.UNKNOWN
-        assert "API Error" in result.error_message
+        assert result.error_message == "Provider request failed (ValueError)"
 
     @patch('app.services.inference.openai_engine.OpenAIEngine.generate')
     def test_generate_batch(self, mock_generate):

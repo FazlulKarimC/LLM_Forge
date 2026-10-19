@@ -8,7 +8,6 @@ Uses free HF Inference API with a small instruct model.
 Only evaluates a random subset of runs to stay within free-tier limits.
 """
 
-import asyncio
 import json
 import logging
 import random
@@ -18,10 +17,12 @@ from uuid import UUID
 import numpy as np
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import load_only
 
 from app.models.run import Run
 from app.services.inference.base import GenerationConfig
 from app.services.inference.hf_api_engine import HFAPIEngine
+from app.services.benchmark_execution import run_blocking
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +71,7 @@ class LLMJudgeService:
         self,
         experiment_id: UUID,
         attempt: Optional[int] = None,
+        budget=None,
     ) -> Dict[str, Any]:
         """
         Evaluate a sample of runs from an experiment using LLM-as-judge.
@@ -81,23 +83,23 @@ class LLMJudgeService:
         Returns:
             Dictionary with per-dimension scores and metadata
         """
-        query = select(Run).where(Run.experiment_id == experiment_id)
-        result = await self.db.execute(query)
-        all_runs = result.scalars().all()
-        
-        if not all_runs:
+        from app.services.attempts import current_number
+        attempt = await current_number(self.db, experiment_id, attempt)
+        runs = list((await self.db.scalars(select(Run).options(load_only(Run.example_id, Run.prompt, Run.raw_output, Run.expected_output)).where(
+            Run.experiment_id == experiment_id, Run.attempt == attempt
+        ).order_by(Run.id).limit(self.sample_size))).all())
+        if not runs:
             return {"error": "No runs found", "scores": {}}
-        
-        if attempt is None:
-            attempt = max(r.attempt for r in all_runs)
-        runs = [r for r in all_runs if r.attempt == attempt]
-        
+
         if len(runs) > self.sample_size:
             # Deterministic sampling: same experiment always evaluates same runs
-            rng = random.Random(int(experiment_id) if isinstance(experiment_id, int) else hash(str(experiment_id)))
+            rng = random.Random(int(experiment_id))
             runs = rng.sample(runs, self.sample_size)
         
         judge_sample_ids = [r.example_id for r in runs]
+        # The selected snapshots remain available with expire_on_commit=False;
+        # release the read transaction before remote generation starts.
+        await self.db.commit()
         
         logger.info(
             "[LLM-JUDGE] Evaluating %s sampled runs from experiment %s (attempt %s)",
@@ -108,6 +110,8 @@ class LLMJudgeService:
 
         try:
             judge_engine = HFAPIEngine(model_name=self.model_id)
+            if budget:
+                judge_engine = budget(judge_engine)
         except ValueError:
             logger.warning("[LLM-JUDGE] HF_TOKEN not set, skipping judge evaluation")
             return {
@@ -137,7 +141,10 @@ class LLMJudgeService:
                         judgments.append(judgment)
                         evaluated_ids.append(str(run.id))
                 except Exception as e:
-                    logger.warning("[LLM-JUDGE] Failed to judge run %s: %s", run.id, e)
+                    from app.services.benchmark_execution import BenchmarkBudgetExceeded
+                    if isinstance(e, BenchmarkBudgetExceeded):
+                        raise
+                    logger.warning("[LLM-JUDGE] Failed to judge run %s: %s", run.id, type(e).__name__)
                     continue
         finally:
             judge_engine.unload_model()
@@ -196,7 +203,7 @@ class LLMJudgeService:
             response=response[:500],
         )
 
-        generation = await asyncio.to_thread(
+        generation = await run_blocking(
             engine.generate,
             prompt,
             GenerationConfig(

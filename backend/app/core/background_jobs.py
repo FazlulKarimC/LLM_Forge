@@ -26,7 +26,7 @@ async def _cleanup_expired_jobs(session) -> None:
     )
 
 
-async def create_job(kind: str, metadata: Optional[Dict[str, Any]] = None, *, project_id=None) -> Dict[str, Any]:
+async def create_job(kind: str, metadata: Optional[Dict[str, Any]] = None, *, project_id=None, reserve_model_job=False) -> Dict[str, Any]:
     async with async_session_maker() as session:
         await _cleanup_expired_jobs(session)
         job = BackgroundJobRecord(
@@ -38,6 +38,9 @@ async def create_job(kind: str, metadata: Optional[Dict[str, Any]] = None, *, pr
             result=None,
             error=None,
         )
+        if reserve_model_job:
+            from app.services.benchmark_execution import reserve_execution
+            await reserve_execution(session, project_id=project_id, kind=kind, resource_id=job.job_id)
         session.add(job)
         await session.commit()
         await session.refresh(job)

@@ -1,4 +1,5 @@
 "use client";
+import { benchmarkPollDelay } from "@/lib/benchmark-polling";
 
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -28,7 +29,7 @@ export function PagedResults({ detail, comparison, filter, caseIndex, selectCase
     queryFn: ({ signal }) => getEvaluationCases(detail.run.id, {
       offset, limit: PAGE_SIZE, filter, reference_id: comparison?.run.id,
     }, signal),
-    refetchInterval: isActive(detail.run) ? 2500 : false,
+    refetchInterval: isActive(detail.run) ? () => benchmarkPollDelay(detail.run.created_at) : false,
   });
   const selected = caseIndex ?? rows.data?.items[0]?.case_index;
   const candidate = useQuery({

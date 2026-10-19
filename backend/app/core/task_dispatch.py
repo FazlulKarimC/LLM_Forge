@@ -102,6 +102,10 @@ class UpstashRQDispatchBackend:
         custom_api_key: Optional[str] = None,
         expected_attempt: Optional[int] = None,
     ) -> DispatchResult:
+        if custom_base_url or custom_api_key:
+            return await InlineDispatchBackend().dispatch(
+                background_tasks, experiment_id, db, custom_base_url, custom_api_key, expected_attempt
+            )
         from app.core.redis import get_queue
         from app.tasks.experiment_tasks import run_experiment_task
 
@@ -112,6 +116,8 @@ class UpstashRQDispatchBackend:
             custom_base_url=custom_base_url,
             custom_api_key=custom_api_key,
             expected_attempt=expected_attempt,
+            job_timeout=settings.BENCHMARK_MAX_SECONDS + settings.BENCHMARK_CALL_TIMEOUT_SECONDS + 30,
+            ttl=settings.BENCHMARK_MAX_SECONDS,
         )
         return DispatchResult(backend_used="rq")
 
@@ -221,7 +227,7 @@ class AutoDispatchBackend:
             )
             return DispatchResult(
                 backend_used="inline_fallback",
-                fallback_reason=f"Enqueue failed: {str(exc)[:200]}",
+                fallback_reason=f"Enqueue failed ({type(exc).__name__})",
                 circuit_state=upstash_circuit.get_circuit_snapshot()["state"],
                 worker_available=True,
             )
@@ -274,7 +280,8 @@ async def dispatch_experiment(
     Top-level dispatch entry point used by the run_experiment route.
     Delegates to the configured backend.
     """
-    backend = _get_backend()
+    # Request-scoped credentials must never be serialized into Redis jobs.
+    backend = InlineDispatchBackend() if custom_base_url or custom_api_key else _get_backend()
     result = await backend.dispatch(
         background_tasks, experiment_id, db, custom_base_url, custom_api_key, expected_attempt
     )

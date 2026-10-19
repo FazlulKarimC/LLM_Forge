@@ -19,6 +19,7 @@ from uuid import UUID
 import numpy as np
 from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import load_only
 
 from app.models.result import Result
 from app.models.run import Run
@@ -62,6 +63,7 @@ class MetricsService:
         self,
         experiment_id: UUID,
         wall_clock_ms: Optional[float] = None,
+        attempt: Optional[int] = None,
     ) -> Result:
         """
         Compute all metrics for an experiment and save to Result table.
@@ -75,19 +77,15 @@ class MetricsService:
         """
         logger.info(f"Computing metrics for experiment {experiment_id}")
 
-        # Fetch all runs (latest attempt only)
-        query = select(Run).where(Run.experiment_id == experiment_id)
-        result = await self.db.execute(query)
-        all_runs = result.scalars().all()
-
-        if not all_runs:
-            raise ValueError(f"No runs found for experiment {experiment_id}")
-
-        # Use only the latest attempt
-        max_attempt = max(r.attempt for r in all_runs)
-        runs = [r for r in all_runs if r.attempt == max_attempt]
-
-        logger.info(f"Found {len(runs)} runs (attempt {max_attempt}), computing metrics...")
+        from app.services.attempts import current_number
+        from app.models.experiment_attempt import ExperimentAttempt
+        max_attempt = await current_number(self.db, experiment_id, attempt)
+        runs = list((await self.db.scalars(select(Run).options(load_only(Run.example_id, Run.attempt, Run.is_correct, Run.score, Run.is_exact_match, Run.is_substring_match, Run.tokens_input, Run.tokens_output, Run.latency_ms, Run.cost_usd, Run.served_provider, Run.run_metadata, Run.faithfulness_score, Run.semantic_similarity, Run.failure_mode, Run.error_message, Run.grader_results, Run.retrieved_chunks)).where(
+            Run.experiment_id == experiment_id, Run.attempt == max_attempt
+        ))).all())
+        if not runs:
+            raise ValueError("No runs found for the selected attempt")
+        snapshot = await self.db.get(ExperimentAttempt, (experiment_id, max_attempt))
 
         # Fetch experiment to get model_name for pricing
         from app.models.experiment import Experiment
@@ -119,8 +117,12 @@ class MetricsService:
 
         # Generate natural language summary
         dataset_name = experiment.config.get("dataset_name", "unknown") if experiment and experiment.config else "unknown"
+        selected_count = len(snapshot.sample_ids) if snapshot and snapshot.sample_ids is not None else None
+        summary_accuracy = dict(accuracy)
+        if selected_count:
+            summary_accuracy.update(accuracy_any=sum(r.is_correct is True for r in runs) / selected_count, total_evaluated=selected_count)
         summary_text = self._generate_summary(
-            accuracy=accuracy,
+            accuracy=summary_accuracy,
             latency=latency,
             cost=cost,
             faithfulness=faithfulness_metrics,
@@ -131,6 +133,10 @@ class MetricsService:
             total_samples=len(runs),
             completion_quality=completion_quality,
         )
+
+        summary_text = f"Coverage: {len(runs)} committed of {selected_count if selected_count is not None else 'unknown'} selected cases. " + summary_text
+        if not any(run.is_correct is not None for run in runs):
+            summary_text = "Primary scores are unavailable for this attempt. Coverage, failures and usage remain available."
 
         # Keys owned by this service — all other keys in raw_metrics are preserved
         _METRICS_OWNED_KEYS = {
@@ -152,31 +158,11 @@ class MetricsService:
             "retrieval_quality": retrieval_quality,
             "completion_quality": completion_quality,
             "attempt": max_attempt,
-            "per_run": [
-                {
-                    "example_id": run.example_id,
-                    "is_correct": run.is_correct,
-                    "is_exact_match": run.is_exact_match,
-                    "is_substring_match": run.is_substring_match,
-                    "score": run.score,
-                    "semantic_similarity": run.semantic_similarity,
-                    "faithfulness_score": run.faithfulness_score,
-                    "latency_ms": run.latency_ms,
-                    "tokens_input": run.tokens_input,
-                    "tokens_output": run.tokens_output,
-                    "failure_mode": run.failure_mode.value if run.failure_mode else None,
-                    "error_message": run.error_message,
-                    "served_provider": run.served_provider,
-                    "routing_reason": run.routing_reason,
-                    "cost_usd": run.cost_usd,
-                    "grader_results": run.grader_results,
-                }
-                for run in runs
-            ],
+
         }
 
         # Check if result already exists (upsert)
-        existing_query = select(Result).where(Result.experiment_id == experiment_id)
+        existing_query = select(Result).where(Result.experiment_id == experiment_id, Result.attempt == max_attempt)
         existing_result = await self.db.execute(existing_query)
         db_result = existing_result.scalar_one_or_none()
 
@@ -186,6 +172,20 @@ class MetricsService:
                          if k not in _METRICS_OWNED_KEYS}
             raw_metrics.update(preserved)
 
+        selected = len(snapshot.sample_ids) if snapshot and snapshot.sample_ids is not None else None
+        scored = sum(r.is_correct is not None for r in runs)
+        raw_metrics["coverage"] = {
+            "selected": selected, "completed": len(runs), "scored": scored,
+            "missing": max(0, selected - len(runs)) if selected is not None else None,
+            "failed": sum(r.failure_mode is not None for r in runs),
+            "unscored": len(runs) - scored,
+            "status": snapshot.status if snapshot else "unknown",
+            "provenance": snapshot.provenance_status if snapshot else "unknown",
+        }
+        raw_metrics["scoring_versions"] = sorted({(getattr(r, "run_metadata", None) or {}).get("scoring_version", "unknown") for r in runs})
+        # Primary correctness uses dataset scorers; missing/failed cases never inflate it.
+        accuracy["primary_accuracy"] = sum(r.is_correct is True for r in runs) / (selected or len(runs)) if scored else None
+        raw_metrics["accuracy"] = accuracy
         # Common field values
         fields = dict(
             accuracy_exact=accuracy["exact_match"],
@@ -210,7 +210,7 @@ class MetricsService:
             for k, v in fields.items():
                 setattr(db_result, k, v)
         else:
-            db_result = Result(experiment_id=experiment_id, **fields)
+            db_result = Result(experiment_id=experiment_id, attempt=max_attempt, **fields)
             self.db.add(db_result)
 
         await self.db.flush()
@@ -218,7 +218,7 @@ class MetricsService:
 
         logger.info(
             f"Metrics saved: accuracy_exact={accuracy['exact_match']:.3f}, "
-            f"f1={accuracy['f1_mean']:.3f}, p50={latency['p50']:.1f}ms"
+            f"f1={accuracy['f1_mean']}, p50={latency['p50']:.1f}ms"
         )
 
         return db_result
@@ -288,9 +288,9 @@ class MetricsService:
             input_cost = (cost.get("total_tokens_input", 0) / 1_000_000) * 0.15
             output_cost = (cost.get("total_tokens_output", 0) / 1_000_000) * 0.60
             total_cost = input_cost + output_cost
-        cost_label = "Recorded" if cost.get("cost_source") == "observed_per_run" else "Estimated"
+        cost_label = "Recorded" if cost.get("cost_source") == "provider_reported" else "Estimated"
 
-        summary = f"This experiment achieved {acc:.1f}% correctness (95% CI: {ci_lower * 100:.1f}\u2013{ci_upper * 100:.1f}%) across {total} diagnostic samples. "
+        summary = f"This experiment achieved {acc:.1f}% correctness (95% CI: {ci_lower * 100:.1f}\u2013{ci_upper * 100:.1f}%) across {total} diagnostic samples. Small samples are descriptive. "
         summary += f"Dataset: {display_name}. "
 
         if completion_quality == "partial":
@@ -315,7 +315,7 @@ class MetricsService:
         if total_cost > 0:
             summary += f"{cost_label} inference cost for this run was ${total_cost:.4f}. "
         else:
-            summary += "Inference was completed with no measurable API token costs. "
+            summary += "No positive API cost estimate is available; this does not verify provider billing. "
             
         total_failures = failure_modes.get("total_failures", 0)
         if total_failures > 0:
@@ -376,21 +376,21 @@ class MetricsService:
         total = len(runs)
 
         # Accuracy excluding infrastructure failures (model performance only)
-        non_failure_runs = [r for r in runs if r.failure_mode is None]
+        non_failure_runs = [r for r in runs if not r.failure_mode or r.failure_mode.value not in {"api_error", "timeout"}]
         non_failure_total = len(non_failure_runs)
         non_failure_correct = sum(
             1 for r in non_failure_runs
-            if (r.is_exact_match or r.is_substring_match or r.is_correct)
+            if r.is_correct
         )
 
         return {
             "exact_match": exact_matches / total if total > 0 else 0.0,
             "substring": substring_matches / total if total > 0 else 0.0,
-            "accuracy_any": (exact_matches + substring_matches) / total if total > 0 else 0.0,
+            "accuracy_any": sum(r.is_correct is True for r in runs) / total if total > 0 else 0.0,
             "accuracy_excluding_failures": non_failure_correct / non_failure_total if non_failure_total > 0 else 0.0,
             "total_excluding_failures": non_failure_total,
-            "f1_mean": float(np.mean(f1_scores)) if f1_scores else 0.0,
-            "f1_median": float(np.median(f1_scores)) if f1_scores else 0.0,
+            "f1_mean": float(np.mean(f1_scores)) if f1_scores else None if runs else 0.0,
+            "f1_median": float(np.median(f1_scores)) if f1_scores else None if runs else 0.0,
             "total_evaluated": total,
         }
 
@@ -470,7 +470,7 @@ class MetricsService:
         if observed_costs:
             total_cost_usd = round(sum(observed_costs), 8)
             provider = served_providers[0] if len(served_providers) == 1 else "mixed" if served_providers else cost_estimate["provider"]
-            cost_source = "observed_per_run"
+            cost_source = "provider_reported" if all((getattr(r, "run_metadata", None) or {}).get("cost_source") == "provider_reported" for r in runs) else "pricing_table_estimate"
         else:
             total_cost_usd = cost_estimate["total_cost_usd"]
             provider = cost_estimate["provider"]
@@ -489,7 +489,12 @@ class MetricsService:
             "total_tokens_output": total_output,
             "total_tokens": total_input + total_output,
             "total_runs": len(runs),
-            "gpu_time_seconds": total_latency_ms / 1000.0,
+            "gpu_time_seconds": None,
+            "provider_time_seconds": total_latency_ms / 1000.0,
+            "usage_coverage": "committed_responses_only",
+            "cache_hits": sum(bool((getattr(r, "run_metadata", None) or {}).get("cache_hit")) for r in runs),
+            "provider_calls": sum(len(meta["calls"]) if isinstance(meta.get("calls"), list) else 0 if meta.get("cache_hit") else 1 for r in runs for meta in [getattr(r, "run_metadata", None) if isinstance(getattr(r, "run_metadata", None), dict) else {}]),
+            "usage_sources": sorted({str((getattr(r, "run_metadata", None) or {}).get("usage_source", "unknown")) for r in runs}),
             "total_cost_usd": total_cost_usd,
             "cost_per_correct_answer": cost_per_correct,
             "cost_per_sample_usd": round(total_cost_usd / len(runs), 8) if len(runs) > 0 and total_cost_usd else 0,

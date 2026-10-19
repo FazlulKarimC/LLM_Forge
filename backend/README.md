@@ -25,13 +25,15 @@ Prompt versions support text or role-preserving chat content and JSON configurat
 These robust systems handle the complex workflows of systematic evaluation:
 
 ### Adaptive Multi-Provider Engine
-Provides epsilon-greedy auto-routing across `HF Inference API`, `OpenRouter`, `Groq`, and any `OpenAI-compatible endpoints`. The `ProviderStatsTracker` tracks success rates, latency, and costs to continuously refine routing strategies based on chosen policies (e.g., `cheapest_first`, `fastest_first`).
+Provider adapters support `HF Inference API`, `OpenRouter`, `Groq`, and development-only `OpenAI-compatible endpoints`. Hosted benchmarks pin one configured provider for the attempt and disable cross-provider fallback/adaptation. Router policies remain implemented for other callers; their presence does not mean they are active in the hosted comparison profile.
 
 ### Trajectory Regression Gates
 Each candidate run is passed through a comprehensive `GraderEngine` employing deterministic bounds checks such as specific token/latency budgets, explicit tool dependencies, or hard F1-score floors. The system isolates and flags regressions against pinned baseline experiments to ensure deployment safety.
 
 ### Reliability & Error Tracking
-Experiment and job metadata is stored in PostgreSQL. Inline execution is best-effort: a backend restart can leave a benchmark queued or running. Startup does not change a run another process might own. Use **Stop run** on its detail page, or `POST /api/v1/experiments/{id}/interrupt`, to mark it failed and keep partial results, then rerun it. Dispatched jobs include an attempt number so an older queued job cannot take over a rerun; pre-upgrade RQ jobs without an attempt number are ignored and may need **Stop run**. A running worker checks for interruption between examples; an in-flight provider call may finish. Final metrics and completion are committed under the same experiment lock. Evaluation execution instead uses lifecycle-managed ownership leases, durable checkpoints and explicit live recovery; see the [architecture guide](../docs/ARCHITECTURE.md). RAG experiments preflight collections before running.
+Experiment and job metadata is stored in PostgreSQL. Benchmark cases commit individually behind an attempt fence, with no provider I/O inside the write transaction. **Stop run** checks between cases and ReAct generation/tool steps; an issued call may finish and its reservation remains occupied until the thread exits. Inline execution is best-effort: restart can strand work, while committed cases survive. Use **Stop run**, then rerun explicitly; provider calls are not automatically replayed. Dispatched jobs include an attempt number so stale jobs cannot take over reruns. Expired execution reservations fail before generation. Evaluation execution retains its separate ownership/checkpoint recovery; see the [architecture guide](../docs/ARCHITECTURE.md).
+
+The hosted profile defaults to 20 cases, 20 provider generation calls, a 300-second new-call deadline and a 30-second HTTP timeout. ReAct supports at most five cases and three iterations. One globally reserved benchmark, judge or synthetic job executes at a time; effective batch size is one. Optional embedding scoring is off. New RAG starts are temporarily rejected until retrieval call budgets are implemented; existing RAG records remain readable. Apply migrations through `r1s2t3u4v5w6` before deployment; no new service is required. Attempts preserve their own manifests/results, cases are paged, and complete JSONL exports support manual retention cleanup. Core readiness checks PostgreSQL/schema only; the legacy runner sleeps while idle. See [architecture](../docs/ARCHITECTURE.md) and [deployment guidance](../docs/DEVELOPMENT.md#deployment-and-diagnosis).
 
 ---
 
@@ -110,8 +112,9 @@ using a database with existing data: the workspace reset migration
 LlmForge uses a resilient task dispatch system designed for free-tier hosting:
 
 - **Neon/Postgres is required** — all durable state (experiments, results, job metadata) lives here
-- **Upstash Redis + RQ worker is optional** — provides background execution acceleration
-- **`QUEUE_BACKEND_MODE=auto`** is the recommended production setting
+- **Upstash Redis + RQ worker is optional** — requires an actual configured worker; metadata alone does not make execution durable
+- **`QUEUE_BACKEND_MODE=inline`** is the default for the small hosted profile; no worker is required
+- Choose **`auto`** explicitly only when using an existing Redis/RQ integration
 
 ### How `auto` mode works
 

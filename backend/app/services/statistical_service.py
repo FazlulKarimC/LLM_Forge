@@ -16,6 +16,7 @@ from uuid import UUID
 import numpy as np
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import load_only
 
 from app.models.run import Run
 
@@ -240,6 +241,7 @@ class StatisticalService:
         self,
         experiment_a_id: UUID,
         experiment_b_id: UUID,
+        attempt_a=None, attempt_b=None,
     ) -> Dict:
         """
         Full statistical comparison between two experiments.
@@ -256,24 +258,26 @@ class StatisticalService:
         Returns:
             Dict with statistical comparison results
         """
-        # Fetch runs for both experiments
-        query_a = select(Run).where(Run.experiment_id == experiment_a_id)
-        result_a = await self.db.execute(query_a)
-        runs_a = result_a.scalars().all()
-        
-        query_b = select(Run).where(Run.experiment_id == experiment_b_id)
-        result_b = await self.db.execute(query_b)
-        runs_b = result_b.scalars().all()
-        
+        from app.services.attempts import current_number
+        from app.models.experiment_attempt import ExperimentAttempt
+        attempt_a = await current_number(self.db, experiment_a_id, attempt_a, legacy_metrics=True)
+        attempt_b = await current_number(self.db, experiment_b_id, attempt_b, legacy_metrics=True)
+        runs_a = list((await self.db.scalars(select(Run).options(load_only(Run.example_id, Run.is_correct, Run.score, Run.raw_output, Run.expected_output, Run.run_metadata, Run.served_provider, Run.routing_reason, Run.attempt)).where(Run.experiment_id == experiment_a_id, Run.attempt == attempt_a))).all())
+        runs_b = list((await self.db.scalars(select(Run).options(load_only(Run.example_id, Run.is_correct, Run.score, Run.raw_output, Run.expected_output, Run.run_metadata, Run.served_provider, Run.routing_reason, Run.attempt)).where(Run.experiment_id == experiment_b_id, Run.attempt == attempt_b))).all())
         if not runs_a or not runs_b:
-            raise ValueError("Both experiments must have runs to compare")
-
-        latest_attempt_a = max(run.attempt for run in runs_a)
-        latest_attempt_b = max(run.attempt for run in runs_b)
-        runs_a = [run for run in runs_a if run.attempt == latest_attempt_a]
-        runs_b = [run for run in runs_b if run.attempt == latest_attempt_b]
-        
+            raise ValueError("Both selected attempts must have runs to compare")
         result = self.compare_run_sets(runs_a, runs_b)
+        snapshots = [await self.db.get(ExperimentAttempt, (identity, number)) for identity, number in [(experiment_a_id, attempt_a), (experiment_b_id, attempt_b)]]
+        if not all(row and row.status == "completed" and row.provenance_status == "recorded" and set(map(str, row.sample_ids or [])) == {str(run.example_id) for run in runs} for row, runs in zip(snapshots, (runs_a, runs_b))):
+            result["comparable"] = False
+            result["warnings"].append("Incomplete or unknown attempt provenance: inference and regression gates are unavailable.")
+        if all(snapshots) and snapshots[0].config and snapshots[1].config and snapshots[0].config.get("dataset_name") != snapshots[1].config.get("dataset_name"):
+            result["comparable"] = False
+            result["warnings"].append("Dataset names differ")
+        if not result["comparable"]:
+            result["mcnemar"].update(p_value=None, is_significant=False, test_type="unavailable")
+            result["paired_accuracy_delta_ci"] = None
+        result["attempt_a"], result["attempt_b"] = attempt_a, attempt_b
         result["experiment_a_id"] = str(experiment_a_id)
         result["experiment_b_id"] = str(experiment_b_id)
         return result
@@ -377,6 +381,10 @@ class StatisticalService:
         """
         svc = StatisticalService.__new__(StatisticalService)
         
+        for runs in (runs_a, runs_b):
+            ids = [r.example_id for r in runs]
+            if None in ids or len(ids) != len(set(ids)):
+                raise ValueError("Comparison requires unique, non-null case IDs in each attempt")
         # Index runs by example_id for matching
         runs_a_by_example = {r.example_id: r for r in runs_a}
         runs_b_by_example = {r.example_id: r for r in runs_b}
@@ -387,6 +395,22 @@ class StatisticalService:
         if not common_examples:
             raise ValueError("No common examples found between run sets")
         
+        compatibility_reasons = []
+        if set(runs_a_by_example) != set(runs_b_by_example):
+            compatibility_reasons.append("Selected case subsets differ")
+        for key in sorted(common_examples):
+            a, b = runs_a_by_example[key], runs_b_by_example[key]
+            ma, mb = getattr(a, "run_metadata", None) or {}, getattr(b, "run_metadata", None) or {}
+            if not ma.get("case_fingerprint") or ma.get("case_fingerprint") != mb.get("case_fingerprint"):
+                compatibility_reasons.append("Case content/reference fingerprints are different or unknown")
+            if not ma.get("scoring_version") or ma.get("scoring_version") != mb.get("scoring_version"):
+                compatibility_reasons.append("Scoring versions are different or unknown")
+            if a.is_correct is None or b.is_correct is None:
+                compatibility_reasons.append("Some primary scores are unknown")
+            if ma.get("cache_hit") or mb.get("cache_hit"):
+                compatibility_reasons.append("Cached responses cannot support an independent comparison")
+        compatibility_reasons = sorted(set(compatibility_reasons))
+        comparable = not compatibility_reasons
         # Build paired lists
         correct_a = []
         correct_b = []
@@ -398,6 +422,8 @@ class StatisticalService:
             run_a = runs_a_by_example[example_id]
             run_b = runs_b_by_example[example_id]
             
+            if run_a.is_correct is None or run_b.is_correct is None:
+                continue
             ca = bool(run_a.is_correct)
             cb = bool(run_b.is_correct)
             correct_a.append(ca)
@@ -405,8 +431,10 @@ class StatisticalService:
             
             sa = float(run_a.score or 0.0)
             sb = float(run_b.score or 0.0)
-            scores_a.append(sa)
-            scores_b.append(sb)
+            if run_a.score is not None:
+                scores_a.append(float(run_a.score))
+            if run_b.score is not None:
+                scores_b.append(float(run_b.score))
             
             # Track per-example differences
             if ca != cb:
@@ -425,11 +453,13 @@ class StatisticalService:
         mcnemar_result = svc.mcnemar_test(correct_a, correct_b)
         
         # Override is_significant when N < 20 — McNemar has no power
-        if len(common_examples) < 20 and mcnemar_result.get("is_significant"):
+        if len(correct_a) < 20 and mcnemar_result.get("is_significant"):
             mcnemar_result["is_significant"] = False
             mcnemar_result["significance_overridden"] = True
             mcnemar_result["override_reason"] = "Insufficient sample size (N < 20)"
         
+        if not comparable:
+            mcnemar_result.update(p_value=None, is_significant=False, test_type="unavailable")
         # Compute SEPARATE CIs for accuracy (booleans) and F1 (scores)
         accuracy_values_a = [1.0 if c else 0.0 for c in correct_a]
         accuracy_values_b = [1.0 if c else 0.0 for c in correct_b]
@@ -454,20 +484,24 @@ class StatisticalService:
             "routing_reasons_b": StatisticalService._nonempty_attr_values(runs_b, "routing_reason"),
         }
         warnings = StatisticalService._comparison_warnings(
-            num_common_examples=len(common_examples),
+            num_common_examples=len(correct_a),
             overlap_ratio=overlap_ratio,
             mcnemar_result=mcnemar_result,
             routing_summary=routing_summary,
         )
         
         return {
+            "comparable": comparable,
+            "compatibility_reasons": compatibility_reasons,
+            "paired_accuracy_delta_ci": svc.bootstrap_confidence_interval([float(b) - float(a) for a, b in zip(correct_a, correct_b)]) if comparable else None,
             "num_common_examples": len(common_examples),
             "overlap_ratio": overlap_ratio,
             "total_examples_a": total_a,
             "total_examples_b": total_b,
-            "accuracy_a": acc_a,
-            "accuracy_b": acc_b,
-            "accuracy_diff": acc_b - acc_a,
+            "paired_scored_count": len(correct_a),
+            "accuracy_a": acc_a if correct_a else None,
+            "accuracy_b": acc_b if correct_b else None,
+            "accuracy_diff": acc_b - acc_a if correct_a else None,
             "effect_size_cohens_h": round(StatisticalService.cohens_h(acc_a, acc_b), 4),
             "effect_size_label": StatisticalService.effect_size_label(StatisticalService.cohens_h(acc_a, acc_b)),
             "mcnemar": mcnemar_result,
@@ -478,10 +512,10 @@ class StatisticalService:
             # Keep backward-compatible keys
             "bootstrap_ci_a": accuracy_ci_a,
             "bootstrap_ci_b": accuracy_ci_b,
-            "warnings": warnings,
+            "warnings": warnings + compatibility_reasons,
             "routing": routing_summary,
             "methodology_notes": [
-                "Statistical tests are computed only on common example IDs from the latest attempt.",
+                "Inference requires matching case content, scorer versions, and selected subsets; unknown provenance is descriptive only.",
                 "Bootstrap intervals are descriptive uncertainty estimates, not proof that one method generalizes better.",
                 f"Effect size (Cohen's h = {StatisticalService.cohens_h(acc_a, acc_b):.3f}) classifies the difference as '{StatisticalService.effect_size_label(StatisticalService.cohens_h(acc_a, acc_b))}'.",
             ],

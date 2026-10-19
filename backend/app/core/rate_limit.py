@@ -2,9 +2,8 @@
 Rate limiting for free-tier protection.
 
 This module keeps the lightweight per-IP sliding-window limits in memory.
-The global concurrent run cap is enforced from database-backed experiment
-status in the API layer, because process-local counters do not work once
-RQ workers and the API server run separately.
+Hosted execution capacity is reserved transactionally in PostgreSQL separately
+from these process-local per-IP request limits.
 """
 
 import logging
@@ -21,7 +20,6 @@ logger = logging.getLogger(__name__)
 
 CREATE_LIMIT_PER_HOUR = 15
 RUN_LIMIT_PER_HOUR = 15
-MAX_CONCURRENT_RUNS = 3
 WINDOW_SECONDS = 3600  # 1 hour
 
 

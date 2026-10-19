@@ -5,7 +5,6 @@ Generates QA pairs from knowledge base chunks using a free HF instruct model.
 Reduces manual effort for creating evaluation datasets.
 """
 
-import asyncio
 import json
 import logging
 import random
@@ -13,6 +12,7 @@ from typing import List, Dict, Any, Optional
 
 from app.services.inference.base import GenerationConfig
 from app.services.inference.hf_api_engine import HFAPIEngine
+from app.services.benchmark_execution import run_blocking
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +47,7 @@ class SyntheticDatasetService:
         pairs_per_chunk: int = 3,
         max_chunks: Optional[int] = 10,
         seed: Optional[int] = None,
+        budget=None,
     ) -> Dict[str, Any]:
         """
         Generate QA pairs from knowledge base chunks.
@@ -75,6 +76,8 @@ class SyntheticDatasetService:
 
         try:
             engine = HFAPIEngine(model_name=self.model_id)
+            if budget:
+                engine = budget(engine)
         except ValueError:
             return {"error": "HF_TOKEN not set", "pairs": []}
         
@@ -93,6 +96,9 @@ class SyntheticDatasetService:
                         pair["source_text"] = chunk[:200] + "..." if len(chunk) > 200 else chunk
                     all_pairs.extend(pairs)
                 except Exception as e:
+                    from app.services.benchmark_execution import BenchmarkBudgetExceeded
+                    if isinstance(e, BenchmarkBudgetExceeded):
+                        raise
                     logger.warning("[SYNTHETIC] Failed on chunk %s: %s", i, e)
                     errors += 1
         finally:
@@ -122,7 +128,7 @@ class SyntheticDatasetService:
             n=n,
         )
 
-        generation = await asyncio.to_thread(
+        generation = await run_blocking(
             engine.generate,
             prompt,
             GenerationConfig(

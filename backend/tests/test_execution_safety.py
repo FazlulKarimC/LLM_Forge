@@ -8,7 +8,6 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
-from app.api.experiments import _active_run_count
 from app.models.experiment import Experiment
 from app.models.prompt_version import PromptVersion
 from app.schemas.experiment import (
@@ -21,17 +20,6 @@ from app.schemas.experiment import (
 from app.services.inference.prompting import CoTPromptTemplate, NaivePromptTemplate, RAGPromptTemplate
 from app.services.experiment_service import ExperimentService
 from app.services.metrics_service import MetricsService
-
-
-def test_active_run_count_fails_closed_on_stats_error():
-    service = AsyncMock()
-    service.get_stats.side_effect = RuntimeError("db down")
-
-    count = asyncio.run(_active_run_count(service))
-
-    from app.core.rate_limit import MAX_CONCURRENT_RUNS
-
-    assert count == MAX_CONCURRENT_RUNS
 
 
 def test_generation_config_preserves_seed_top_k_and_zero_temperature():
@@ -185,11 +173,14 @@ def test_execute_does_not_clear_results_before_rerun():
     service = ExperimentService(db)
     service.get = AsyncMock(return_value=experiment)
     service.update_status = AsyncMock(return_value=experiment)
+    service._prepare_execution_attempt = AsyncMock(return_value=(1, None))
+    service._fail_active_attempt = AsyncMock(return_value=True)
 
     with patch("app.services.metrics_service.MetricsService.clear_results", new_callable=AsyncMock) as clear_results:
-        with patch("app.services.dataset_service.DatasetService.load", side_effect=RuntimeError("dataset boom")):
-            with pytest.raises(RuntimeError, match="dataset boom"):
-                asyncio.run(service.execute(experiment_id))
+        with patch("app.services.experiment_service.execution_deadline", new_callable=AsyncMock, return_value=now.replace(year=now.year + 1)):
+            with patch("app.services.dataset_service.DatasetService.load", side_effect=RuntimeError("dataset boom")):
+                with pytest.raises(RuntimeError, match="dataset boom"):
+                    asyncio.run(service.execute(experiment_id))
 
     clear_results.assert_not_awaited()
 

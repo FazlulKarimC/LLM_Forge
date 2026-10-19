@@ -111,6 +111,7 @@ async def api(monkeypatch, request):
         app = create_application()
         app.dependency_overrides[get_db] = database
         monkeypatch.setattr("app.core.background_jobs.async_session_maker", sessions)
+        monkeypatch.setattr("app.api.results_export.async_session_maker", sessions)
         monkeypatch.setattr(
             "app.services.evaluation_service.async_session_maker", sessions
         )

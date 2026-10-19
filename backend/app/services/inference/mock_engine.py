@@ -99,6 +99,11 @@ class MockEngine(InferenceEngine):
             tokens_output=tokens_output,
             latency_ms=latency_ms,
             finish_reason="stop",
+            served_provider="mock",
+            served_model=self._model_name,
+            cost_usd=0,
+            usage_source="synthetic",
+            cost_source="synthetic",
             gpu_memory_mb=None,
         )
     
@@ -140,6 +145,11 @@ class MockEngine(InferenceEngine):
                 tokens_output=tokens_output,
                 latency_ms=per_prompt_latency,
                 finish_reason="stop",
+                served_provider="mock",
+                served_model=self._model_name,
+                cost_usd=0,
+                usage_source="synthetic",
+                cost_source="synthetic",
                 gpu_memory_mb=None,
             ))
         

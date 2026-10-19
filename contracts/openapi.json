@@ -5,7 +5,7 @@
         "description": "ReAct agent configuration.\n\nOnly used when reasoning_method == REACT.",
         "properties": {
           "max_iterations": {
-            "default": 5,
+            "default": 3,
             "maximum": 20.0,
             "minimum": 1.0,
             "title": "Max Iterations",
@@ -14,8 +14,7 @@
           "tools": {
             "default": [
               "wikipedia_search",
-              "calculator",
-              "retrieval"
+              "calculator"
             ],
             "description": "Enabled tool names",
             "items": {
@@ -227,6 +226,116 @@
           "updated_at"
         ],
         "title": "AttemptResponse",
+        "type": "object"
+      },
+      "BenchmarkAttemptPage": {
+        "properties": {
+          "attempts": {
+            "items": {
+              "$ref": "#/components/schemas/BenchmarkAttemptSummary"
+            },
+            "title": "Attempts",
+            "type": "array"
+          },
+          "current_attempt": {
+            "title": "Current Attempt",
+            "type": "integer"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "skip": {
+            "title": "Skip",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "current_attempt",
+          "total",
+          "skip",
+          "limit",
+          "attempts"
+        ],
+        "title": "BenchmarkAttemptPage",
+        "type": "object"
+      },
+      "BenchmarkAttemptSummary": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "dataset_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dataset Hash"
+          },
+          "generation_calls": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generation Calls"
+          },
+          "number": {
+            "title": "Number",
+            "type": "integer"
+          },
+          "provenance": {
+            "title": "Provenance",
+            "type": "string"
+          },
+          "run_manifest": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Manifest"
+          },
+          "selected": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selected"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "number",
+          "status",
+          "provenance",
+          "created_at"
+        ],
+        "title": "BenchmarkAttemptSummary",
         "type": "object"
       },
       "CaseImport": {
@@ -518,7 +627,14 @@
           "comparison_metrics": {
             "additionalProperties": {
               "items": {
-                "type": "number"
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
               },
               "type": "array"
             },
@@ -663,6 +779,11 @@
             ],
             "title": "Accuracy Per Dollar"
           },
+          "cache_hits": {
+            "default": 0,
+            "title": "Cache Hits",
+            "type": "integer"
+          },
           "cost_per_correct_answer": {
             "anyOf": [
               {
@@ -718,6 +839,22 @@
             ],
             "title": "Provider"
           },
+          "provider_calls": {
+            "default": 0,
+            "title": "Provider Calls",
+            "type": "integer"
+          },
+          "provider_time_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Time Seconds"
+          },
           "total_cost_usd": {
             "anyOf": [
               {
@@ -743,6 +880,13 @@
             "default": 0,
             "title": "Total Tokens Output",
             "type": "integer"
+          },
+          "usage_sources": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Usage Sources",
+            "type": "array"
           }
         },
         "title": "CostMetrics",
@@ -1007,6 +1151,9 @@
       },
       "EvaluationCapabilities": {
         "properties": {
+          "benchmarks": {
+            "$ref": "#/components/schemas/HostedBenchmarkProfile"
+          },
           "external_submissions": {
             "title": "External Submissions",
             "type": "boolean"
@@ -1040,7 +1187,8 @@
         "required": [
           "generation_providers",
           "judge_providers",
-          "external_submissions"
+          "external_submissions",
+          "benchmarks"
         ],
         "title": "EvaluationCapabilities",
         "type": "object"
@@ -1849,7 +1997,7 @@
             "type": "string"
           },
           "num_samples": {
-            "default": 100,
+            "default": 10,
             "description": "Number of dataset samples to evaluate",
             "maximum": 500.0,
             "minimum": 1.0,
@@ -1968,7 +2116,7 @@
             "type": "string"
           },
           "num_samples": {
-            "default": 100,
+            "default": 10,
             "description": "Number of dataset samples to evaluate",
             "maximum": 500.0,
             "minimum": 1.0,
@@ -2224,7 +2372,6 @@
         "type": "object"
       },
       "ExperimentResponse": {
-        "description": "Response schema for experiment details.",
         "properties": {
           "completed_at": {
             "anyOf": [
@@ -2245,6 +2392,11 @@
             "format": "date-time",
             "title": "Created At",
             "type": "string"
+          },
+          "current_attempt": {
+            "default": 1,
+            "title": "Current Attempt",
+            "type": "integer"
           },
           "description": {
             "anyOf": [
@@ -2287,6 +2439,17 @@
           "name": {
             "title": "Name",
             "type": "string"
+          },
+          "pinned_attempt": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pinned Attempt"
           },
           "regression_passed": {
             "anyOf": [
@@ -2512,6 +2675,112 @@
           }
         },
         "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "HostedBenchmarkProfile": {
+        "properties": {
+          "call_timeout_seconds": {
+            "title": "Call Timeout Seconds",
+            "type": "integer"
+          },
+          "case_page_size": {
+            "default": 25,
+            "title": "Case Page Size",
+            "type": "integer"
+          },
+          "dataset_counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Dataset Counts",
+            "type": "object"
+          },
+          "enrichment_enabled": {
+            "default": false,
+            "title": "Enrichment Enabled",
+            "type": "boolean"
+          },
+          "global_concurrency": {
+            "default": 1,
+            "title": "Global Concurrency",
+            "type": "integer"
+          },
+          "max_attempt_bytes": {
+            "default": 2097152,
+            "title": "Max Attempt Bytes",
+            "type": "integer"
+          },
+          "max_case_bytes": {
+            "default": 65536,
+            "title": "Max Case Bytes",
+            "type": "integer"
+          },
+          "max_input_bytes": {
+            "default": 8192,
+            "title": "Max Input Bytes",
+            "type": "integer"
+          },
+          "max_output_bytes": {
+            "default": 8192,
+            "title": "Max Output Bytes",
+            "type": "integer"
+          },
+          "max_project_attempts": {
+            "default": 100,
+            "title": "Max Project Attempts",
+            "type": "integer"
+          },
+          "max_project_bytes": {
+            "default": 104857600,
+            "title": "Max Project Bytes",
+            "type": "integer"
+          },
+          "max_provider_calls": {
+            "title": "Max Provider Calls",
+            "type": "integer"
+          },
+          "max_samples": {
+            "title": "Max Samples",
+            "type": "integer"
+          },
+          "max_seconds": {
+            "title": "Max Seconds",
+            "type": "integer"
+          },
+          "max_trace_bytes": {
+            "default": 16384,
+            "title": "Max Trace Bytes",
+            "type": "integer"
+          },
+          "provider_concurrency": {
+            "default": 1,
+            "title": "Provider Concurrency",
+            "type": "integer"
+          },
+          "rag_enabled": {
+            "default": false,
+            "title": "Rag Enabled",
+            "type": "boolean"
+          },
+          "react_max_iterations": {
+            "title": "React Max Iterations",
+            "type": "integer"
+          },
+          "react_max_samples": {
+            "title": "React Max Samples",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "max_samples",
+          "max_provider_calls",
+          "max_seconds",
+          "call_timeout_seconds",
+          "react_max_samples",
+          "react_max_iterations",
+          "dataset_counts"
+        ],
+        "title": "HostedBenchmarkProfile",
         "type": "object"
       },
       "HyperParameters": {
@@ -2907,6 +3176,11 @@
       "MetricsResponse": {
         "description": "Complete metrics for an experiment.",
         "properties": {
+          "attempt": {
+            "default": 0,
+            "title": "Attempt",
+            "type": "integer"
+          },
           "computed_at": {
             "format": "date-time",
             "title": "Computed At",
@@ -2914,6 +3188,11 @@
           },
           "cost": {
             "$ref": "#/components/schemas/CostMetrics"
+          },
+          "coverage": {
+            "additionalProperties": true,
+            "title": "Coverage",
+            "type": "object"
           },
           "experiment_id": {
             "format": "uuid",
@@ -2937,6 +3216,13 @@
           },
           "quality": {
             "$ref": "#/components/schemas/QualityMetrics"
+          },
+          "scoring_versions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Scoring Versions",
+            "type": "array"
           },
           "summary_text": {
             "anyOf": [
@@ -2980,7 +3266,7 @@
         "description": "Inference optimization settings (Phase 8).\n\nControls batching, caching, and profiling for experiment execution.",
         "properties": {
           "batch_size": {
-            "default": 8,
+            "default": 1,
             "description": "Number of prompts per batch",
             "maximum": 32.0,
             "minimum": 1.0,
@@ -3850,6 +4136,17 @@
             ],
             "title": "Hallucination Rate"
           },
+          "primary_accuracy": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Primary Accuracy"
+          },
           "retrieval_quality": {
             "anyOf": [
               {
@@ -4315,6 +4612,172 @@
         "title": "RoutingConfig",
         "type": "object"
       },
+      "RunGridSummary": {
+        "description": "Sparse per-run data for filmstrip/grid views.\n\nOmits heavy text fields (prompt, raw_output, expected_output) and\nlarge nested objects (agent_trace, retrieved_chunks) to reduce\npayload size on initial detail page load.",
+        "properties": {
+          "attempt": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attempt"
+          },
+          "cost_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Usd"
+          },
+          "example_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Example Id"
+          },
+          "failure_mode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Mode"
+          },
+          "grader_results": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grader Results"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "is_correct": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Correct"
+          },
+          "latency_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latency Ms"
+          },
+          "routing_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Routing Reason"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          },
+          "served_provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Served Provider"
+          }
+        },
+        "title": "RunGridSummary",
+        "type": "object"
+      },
+      "RunPage": {
+        "properties": {
+          "attempt": {
+            "title": "Attempt",
+            "type": "integer"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "runs": {
+            "items": {
+              "$ref": "#/components/schemas/RunGridSummary"
+            },
+            "title": "Runs",
+            "type": "array"
+          },
+          "skip": {
+            "title": "Skip",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "attempt",
+          "total",
+          "skip",
+          "limit",
+          "runs"
+        ],
+        "title": "RunPage",
+        "type": "object"
+      },
       "RunResponse": {
         "description": "Response schema for a single run.",
         "properties": {
@@ -4647,6 +5110,320 @@
           "created_at"
         ],
         "title": "RunResponse",
+        "type": "object"
+      },
+      "RunSummary": {
+        "description": "Complete retained case data for detail reads and exports.",
+        "properties": {
+          "agent_trace": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Trace"
+          },
+          "attempt": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attempt"
+          },
+          "context_relevance_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Context Relevance Score"
+          },
+          "cost_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Usd"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message"
+          },
+          "example_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Example Id"
+          },
+          "expected_output": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Output"
+          },
+          "failure_mode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Mode"
+          },
+          "faithfulness_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Faithfulness Score"
+          },
+          "grader_results": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grader Results"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "is_correct": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Correct"
+          },
+          "is_exact_match": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Exact Match"
+          },
+          "is_substring_match": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Substring Match"
+          },
+          "latency_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latency Ms"
+          },
+          "match_alias": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Match Alias"
+          },
+          "parsed_answer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parsed Answer"
+          },
+          "prompt": {
+            "default": "",
+            "title": "Prompt",
+            "type": "string"
+          },
+          "raw_output": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Raw Output"
+          },
+          "retrieved_chunks": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retrieved Chunks"
+          },
+          "routing_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Routing Reason"
+          },
+          "run_metadata": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Metadata"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          },
+          "semantic_similarity": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Semantic Similarity"
+          },
+          "served_provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Served Provider"
+          },
+          "tokens_input": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tokens Input"
+          },
+          "tokens_output": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tokens Output"
+          },
+          "tool_calls": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tool Calls"
+          }
+        },
+        "title": "RunSummary",
         "type": "object"
       },
       "SDKSnapshot": {
@@ -7512,8 +8289,8 @@
             "name": "limit",
             "required": false,
             "schema": {
-              "default": 20,
-              "maximum": 100,
+              "default": 25,
+              "maximum": 50,
               "minimum": 1,
               "title": "Limit",
               "type": "integer"
@@ -9513,6 +10290,40 @@
             }
           },
           {
+            "in": "query",
+            "name": "attempt_a",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Attempt A"
+            }
+          },
+          {
+            "in": "query",
+            "name": "attempt_b",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Attempt B"
+            }
+          },
+          {
             "in": "header",
             "name": "X-Project-ID",
             "required": false,
@@ -9588,6 +10399,40 @@
               "description": "Second experiment ID",
               "title": "Experiment B",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "attempt_a",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Attempt A"
+            }
+          },
+          {
+            "in": "query",
+            "name": "attempt_b",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Attempt B"
             }
           },
           {
@@ -9830,6 +10675,23 @@
             }
           },
           {
+            "in": "query",
+            "name": "attempt",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Attempt"
+            }
+          },
+          {
             "in": "header",
             "name": "X-Project-ID",
             "required": false,
@@ -9880,6 +10742,176 @@
         ]
       }
     },
+    "/api/v1/results/{experiment_id}/attempts": {
+      "get": {
+        "operationId": "get_attempts_api_v1_results__experiment_id__attempts_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "experiment_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Experiment Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "skip",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Skip",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Project-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Project-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BenchmarkAttemptPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Attempts",
+        "tags": [
+          "Results"
+        ]
+      }
+    },
+    "/api/v1/results/{experiment_id}/attempts/{attempt}": {
+      "delete": {
+        "operationId": "purge_attempt_api_v1_results__experiment_id__attempts__attempt__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "experiment_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Experiment Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "attempt",
+            "required": true,
+            "schema": {
+              "title": "Attempt",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "exported",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Exported",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Project-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Project-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Purge Attempt",
+        "tags": [
+          "Results"
+        ]
+      }
+    },
     "/api/v1/results/{experiment_id}/export": {
       "get": {
         "description": "Export full results as JSON download.",
@@ -9893,6 +10925,34 @@
               "format": "uuid",
               "title": "Experiment Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "format",
+            "required": false,
+            "schema": {
+              "default": "json",
+              "pattern": "^(json|jsonl)$",
+              "title": "Format",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "attempt",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Attempt"
             }
           },
           {
@@ -10050,6 +11110,23 @@
             }
           },
           {
+            "in": "query",
+            "name": "attempt",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Attempt"
+            }
+          },
+          {
             "in": "header",
             "name": "X-Project-ID",
             "required": false,
@@ -10116,6 +11193,23 @@
             }
           },
           {
+            "in": "query",
+            "name": "attempt",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Attempt"
+            }
+          },
+          {
             "in": "header",
             "name": "X-Project-ID",
             "required": false,
@@ -10177,6 +11271,22 @@
               "format": "uuid",
               "title": "Experiment Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "attempt",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Attempt"
             }
           },
           {
@@ -10327,6 +11437,22 @@
             }
           },
           {
+            "in": "query",
+            "name": "attempt",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Attempt"
+            }
+          },
+          {
             "in": "header",
             "name": "X-Project-ID",
             "required": false,
@@ -10403,6 +11529,46 @@
             }
           },
           {
+            "in": "query",
+            "name": "skip",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Skip",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "attempt",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Attempt"
+            }
+          },
+          {
             "in": "header",
             "name": "X-Project-ID",
             "required": false,
@@ -10446,6 +11612,203 @@
           }
         ],
         "summary": "Get Run Summaries",
+        "tags": [
+          "Results"
+        ]
+      }
+    },
+    "/api/v1/results/{experiment_id}/runs/page": {
+      "get": {
+        "operationId": "get_run_page_api_v1_results__experiment_id__runs_page_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "experiment_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Experiment Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "attempt",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Attempt"
+            }
+          },
+          {
+            "in": "query",
+            "name": "skip",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Skip",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Project-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Project-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Run Page",
+        "tags": [
+          "Results"
+        ]
+      }
+    },
+    "/api/v1/results/{experiment_id}/runs/{run_id}": {
+      "get": {
+        "operationId": "get_run_detail_api_v1_results__experiment_id__runs__run_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "experiment_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Experiment Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "attempt",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Attempt"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Project-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Project-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Run Detail",
         "tags": [
           "Results"
         ]
@@ -11692,7 +13055,7 @@
     },
     "/ready": {
       "get": {
-        "description": "Readiness check for dependencies.\n\nChecks (run concurrently):\n    - Database connection (NeonDB)\n    - Vector database connection (Qdrant Cloud)\n    - Optional server provider configuration (not credential validation)\n    - Task dispatch / Upstash / RQ worker status\n\nReturns:\n    Status of each dependency.",
+        "description": "Check the core database/schema; optional services never gate readiness.",
         "operationId": "readiness_check_ready_get",
         "responses": {
           "200": {
