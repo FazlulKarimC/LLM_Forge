@@ -386,6 +386,32 @@ async def test_invalid_setup_fails_before_dispatch(api, monkeypatch):
     dispatch.assert_not_awaited()
 
 
+@pytest.mark.asyncio
+async def test_run_request_releases_transaction_before_background_execution(api, monkeypatch):
+    app, client, sessions = api
+    _, headers = await bootstrap(app, client, "benchmark-request-connection")
+    identity = await create_benchmark(client, headers)
+    checked = []
+
+    async def dispatch(background_tasks, experiment_id, db, **kwargs):
+        from app.core.task_dispatch import DispatchResult
+
+        async def worker():
+            assert not db.in_transaction(), "Run request held a connection during background execution"
+            async with sessions() as worker_db:
+                experiment = await worker_db.get(Experiment, experiment_id)
+                assert experiment.status == ExperimentStatus.QUEUED
+            checked.append(experiment_id)
+
+        background_tasks.add_task(worker)
+        return DispatchResult(backend_used="inline")
+
+    monkeypatch.setattr("app.core.task_dispatch.dispatch_experiment", dispatch)
+    response = await client.post(f"/api/v1/experiments/{identity}/run", headers=headers)
+    assert response.status_code == 200, response.text
+    assert checked == [identity]
+
+
 @pytest.mark.parametrize(
     "updates",
     [

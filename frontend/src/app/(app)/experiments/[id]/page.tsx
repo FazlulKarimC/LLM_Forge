@@ -243,7 +243,7 @@ export default function ExperimentDetailPage({ params }: Props) {
         <input aria-label="Endpoint for this run" className="field-input" placeholder="OpenAI-compatible base URL" value={customBaseUrl} onChange={(event) => setCustomBaseUrl(event.target.value)} autoComplete="off" />
         <input aria-label="API key for this run" className="field-input" type="password" placeholder="API key (this request only)" value={customApiKey} onChange={(event) => setCustomApiKey(event.target.value)} autoComplete="off" />
       </div></Panel> : null}
-      <AttemptSelector id={id} current={experiment.current_attempt} selected={attempt} onSelect={setSelectedAttempt} />
+      <AttemptSelector id={id} current={experiment.current_attempt} selected={attempt} status={experiment.status} onSelect={setSelectedAttempt} />
 
       {isActive && interruptRequested ? (
         <div className="alert alert-warning flex-wrap">
