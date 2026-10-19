@@ -256,7 +256,11 @@ async def run_experiment(
         )
         raise
     
-    return await service.get(experiment_id)
+    response = await service.get(experiment_id)
+    # FastAPI closes request dependencies after BackgroundTasks finish. Release
+    # the response lookup's transaction before the worker uses its own session.
+    await db.commit()
+    return response
 
 
 @router.post("/{experiment_id}/interrupt", response_model=ExperimentResponse)

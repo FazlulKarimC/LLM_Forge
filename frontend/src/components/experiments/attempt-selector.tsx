@@ -6,11 +6,11 @@ import { toast } from "sonner";
 import { exportResults, getBenchmarkAttempts, purgeBenchmarkAttempt } from "@/lib/api";
 import { Panel } from "@/components/ui/primitives";
 
-export function AttemptSelector({ id, current, selected, onSelect }: { id: string; current: number; selected: number; onSelect: (n: number) => void }) {
+export function AttemptSelector({ id, current, selected, status, onSelect }: { id: string; current: number; selected: number; status: string; onSelect: (n: number) => void }) {
   const [skip, setSkip] = useState(0);
   const [busy, setBusy] = useState(false);
   const client = useQueryClient();
-  const query = useQuery({ queryKey: ["attempts", id, current, skip], queryFn: ({ signal }) => getBenchmarkAttempts(id, skip, { signal }), retry: false });
+  const query = useQuery({ queryKey: ["attempts", id, current, skip, status], queryFn: ({ signal }) => getBenchmarkAttempts(id, skip, { signal }), retry: false });
   const snapshot = query.data?.attempts.find((row) => row.number === selected);
   return <Panel><div className="panel-body space-y-4">
     <div className="flex flex-wrap items-center gap-3">
