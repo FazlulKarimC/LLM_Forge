@@ -164,14 +164,17 @@ Stop `next dev` before building because both use `.next`. These checks validate 
 
 `tests/test_benchmark_execution.py` exercises durable per-case writes, provider-free saved-prompt batches, interruption, cancellation, expiry and shared model-job admission. Set `LLMFORGE_TEST_POSTGRES_URL` to a disposable target to run its real-lock Stop and competing-project tests. CI provides that variable against its existing PostgreSQL service. Without it, those tests skip; SQLite success does not establish lock behavior.
 
-Use a separate shell with a dedicated development database, not the unreachable unit-test URL. From `backend` set `LLMFORGE_TEST_POSTGRES_URL` to that database and run:
+Use a separate shell with disposable localhost PostgreSQL, not the unreachable unit-test URL. From `backend`, set both database variables explicitly so configuration cannot select a hosted `.env` URL:
 
 ```powershell
+$env:ENVIRONMENT = 'development'
+$env:DATABASE_URL = 'postgresql+asyncpg://test:test@127.0.0.1:5432/llmforge_test'
+$env:LLMFORGE_TEST_POSTGRES_URL = $env:DATABASE_URL
 python -m scripts.check_postgres
 python -m scripts.check_migrations
 ```
 
-These checks create uniquely named temporary schemas and qualify ORM tables explicitly for connection poolers. Migration checks run the full chain inside a transaction and roll it back. Explicit invocation can fall back to configured `DATABASE_URL`, so choose the target carefully. SQLite cannot prove locking guarantees.
+Replace the example credentials/database with those of your disposable local instance. These checks create uniquely named temporary schemas. `check_migrations` requires `LLMFORGE_TEST_POSTGRES_URL` on localhost, refuses hosted targets and never falls back to `DATABASE_URL`; it rehearses the migration chain and seeded legacy-history preservation inside a transaction that is rolled back. `check_postgres` can fall back to configured `DATABASE_URL`, so keep the explicit local variables above. SQLite cannot prove locking guarantees. The complete backend suite with `LLMFORGE_TEST_POSTGRES_URL` also exercises benchmark Stop/admission and pin-versus-purge races; `check_postgres` alone runs the legacy evaluation locking checks.
 
 With the local API running, migrated PostgreSQL and the SDK installed, `python -m scripts.smoke_sdk` exercises real HTTP/SDK/CLI, passing/failing gates, external results, scope enforcement and revocation, then removes its disposable workspace. `python -m scripts.smoke_evaluations` checks the evaluation flow in a temporary project. The SDK smoke uses the current local report path; the legacy evaluation smoke requires explicit compatibility authoring. Both are provider-free by default; `--live-groq` on the latter explicitly performs a generation and judge call using its configured key.
 
@@ -209,6 +212,33 @@ Apply additive migrations through `r1s2t3u4v5w6` before deploying benchmark admi
 HF sync stages only `backend/` at the Space root, embeds the upstream source/build identity and uses `backend/Dockerfile.hf`. The root Dockerfile also copies backend contents. A separate configured frontend deployment serves Next.js; backend sync does not deploy it. No workflow here migrates the hosted database. Apply migrations to that intended database before launching the new image, and preserve durable records when rolling back.
 
 Use the direct Neon endpoint in `DATABASE_URL` for the migration command, then restore the application connection URL before starting the API. Runtime defaults to a two-connection pool plus one overflow, pre-ping, and 10-second connect/checkout timeouts. Production requires PostgreSQL and TLS. Prefer `sslmode=verify-full`; the parser preserves other query options instead of stripping them. An unsupported `channel_binding=require` fails explicitly: configure a supported TLS policy rather than assuming the driver honored channel binding. Local disposable PostgreSQL tests can use a development URL without TLS. Never point the test URL at Neon.
+
+### Existing free hosting profile
+
+The personal deployment uses [Vercel](https://llmforge.vercel.app) for Next.js, [Hugging Face Spaces](https://faz-ai-llm-forge.hf.space) for FastAPI and the existing Neon PostgreSQL database. Redis/RQ, Qdrant, an additional worker/server and an object store are not required for the current hosted profile.
+
+| Backend setting | Hosted value / purpose |
+| --- | --- |
+| `ENVIRONMENT` | `production` |
+| `DATABASE_URL` | Existing Neon application/pooler endpoint with `sslmode=verify-full`; keep credentials in Space secrets |
+| `QUEUE_BACKEND_MODE` | `inline` |
+| `DB_POOL_SIZE` | Up to `2` retained connections |
+| `DB_MAX_OVERFLOW` | `3` transient connections; maximum five total, overriding the repository default of one overflow |
+| `DB_POOL_TIMEOUT` | `10` seconds; connect timeout also defaults to 10 seconds |
+
+Use the same Clerk application and exact frontend origin for backend authorized parties/CORS. The Vercel build uses `NEXT_PUBLIC_API_URL=https://faz-ai-llm-forge.hf.space/api/v1`. Keep the direct Neon URL scoped to migration commands, then use the application/pooler URL for runtime. Backend environment changes require a restart; frontend public-variable changes require a rebuild.
+
+Hosted smoke testing exposed a read transaction retained by the Run request while its inline task executed. The route now commits that lookup before returning its response; the worker uses its own session. Do not remove that boundary or hold provider calls inside a transaction. The five-connection cap accommodates initial concurrent detail-page reads without adding infrastructure. If reads time out, inspect pool checkout failures and transaction lifetimes before treating the database as unavailable.
+
+### Rollout verification
+
+For each release, run CI and the disposable PostgreSQL migration/locking checks, drain active hosted work, inspect the current database revision and apply only the intended migration path. A rehearsal is not a data backup: decide how existing data will be protected before migration. Keep additive schemas when rolling back code, and verify historical provenance rather than assigning old aggregates to an inferred attempt.
+
+After deployment, compare frontend `/api/version` and backend `/api/v1/version` against the intended source commit, then check `/health` and `/ready`. With a signed-in test project, use a clearly labeled mock model to check completion, Stop, rerun, historical selection, a baseline pinned to its original attempt, comparisons and complete JSONL export. Confirm that interrupted cases and earlier result/case identities remain unchanged, execution reservations release and logs show no pool/request/execution failures. Remove only the temporary smoke records after checking exports and references. A mock smoke test establishes workflow behavior, not live-provider availability or model quality.
+
+The **19 October 2026 rollout** merged [implementation PR #1](https://github.com/FazlulKarimC/LLM_Forge/pull/1) and [smoke-fix PR #2](https://github.com/FazlulKarimC/LLM_Forge/pull/2). Both hosted services were verified at source commit `75a9c27faa27d8604e47cc24962e29f009fa67fc`, with Neon at migration `r1s2t3u4v5w6`. That release's [CI run](https://github.com/FazlulKarimC/LLM_Forge/actions/runs/39201662925) passed 646 backend tests, six PostgreSQL locking checks, 71 frontend tests and 40 SDK tests on each supported CI Python version, plus contract/lint/type/build and SDK HTTP checks. These are dated verification results, not continuously current counts. The two additive migrations preserved existing records. Signed-in mock smoke checks passed, temporary test records were removed and no hosted infrastructure was added. New hosted RAG execution remains paused, and root dataset deduplication remains deferred.
+
+### Retention and diagnosis
 
 Verify an attempt export before purging it. JSON exports are bounded; use `?attempt=N&format=jsonl` for a complete historical export, including traces, scoring/provider metadata and retention-truncation markers. Active, pinned or referenced attempts are protected. New case storage and project attempt caps are documented in [architecture](ARCHITECTURE.md#benchmarks-and-optional-infrastructure). Idle runner verification and provider-free rerun/export/tenant/gate regressions live in `backend/tests/test_benchmark_attempts.py`. PostgreSQL locking and migration checks require the disposable CI/local PostgreSQL service; SQLite does not prove row locking.
 

@@ -7,8 +7,12 @@ Next.js 16 and React 19 interface for a personal prompt-development and reasonin
 - `/dashboard` shows project activity and backend readiness. New evaluations use local SDK cases and summary uploads.
 - `/prompts` and `/prompts/[id]` manage immutable versions, playground calls, release labels, and project API keys.
 - `/evaluations` provides local SDK instructions, summary history and compatible reference reports. Existing hosted results retain case inspection and recovery. `/datasets` redirects to the SDK guide.
-- `/experiments`, `/experiments/new`, `/experiments/[id]`, and `/experiments/compare` cover reasoning benchmarks,, result inspection, export, and statistical comparison. The detail page has **Stop run** for a stranded queued/running attempt; partial results remain available.
+- `/experiments`, `/experiments/new`, `/experiments/[id]`, and `/experiments/compare` cover bounded reasoning benchmarks, historical attempt inspection, exports and statistical comparison. **Stop run** preserves committed cases; reruns create independent attempts and keep pinned baselines attached to their original attempt.
 - `/settings` manages organizations and projects. `/docs` is a public walkthrough.
+
+The benchmark builder reads limits and bundled case counts from `/api/v1/capabilities`: the default hosted profile allows 20 cases/calls, or five ReAct cases with three iterations. New hosted RAG execution is paused. Attempt selectors refresh as execution status changes, including the first run whose attempt number does not change. Case pages load 25 summaries at a time and fetch one case's full content on selection. Historical comparison accepts explicit attempt numbers; unknown provenance and incomplete coverage do not become passing regression evidence.
+
+**Export complete JSONL** downloads all retained cases for the selected terminal attempt. **Export then purge** downloads before asking to remove an attempt; the API protects active, pinned and referenced history. Active-run polling backs off from 3 to 10 to 30 seconds and pauses in hidden tabs. Custom-provider credentials stay in the current form/request, are cleared on accepted runs/provider changes, and are not saved in browser storage; custom execution remains development-only.
 
 ## Local setup
 
@@ -21,6 +25,8 @@ CLERK_SECRET_KEY=sk_test_REPLACE_ME
 ```
 
 The frontend and backend must use the same Clerk application. Set the backend's `CLERK_ISSUER_URL` and `CLERK_AUTHORIZED_PARTIES` as described in [workspace setup](../docs/DEVELOPMENT.md#authentication). The API URL must include `/api/v1`; without it, a production build's browser requests would fall back to localhost. Configure `NEXT_PUBLIC_SENTRY_DSN` only if you want Sentry reporting.
+
+The existing deployment uses Vercel with `NEXT_PUBLIC_API_URL=https://faz-ai-llm-forge.hf.space/api/v1`. Public environment values are embedded at build time. Frontend `/api/version` and backend `/api/v1/version` report separate source/build identities; see the [deployment guide](../docs/DEVELOPMENT.md#existing-free-hosting-profile) before comparing releases.
 
 ```bash
 npm ci

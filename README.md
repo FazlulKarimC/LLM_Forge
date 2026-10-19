@@ -25,7 +25,7 @@ flowchart LR
 - **Historical results:** saved hosted runs remain readable. Legacy dataset writes and server-side demo dataset creation are disabled by default.
 - **Workspaces and access:** Clerk browser sessions, organization/project isolation, owner-managed hashed project keys with read-only prompt access and explicit optional prompt-write/evaluation scopes.
 - **Python SDK and CI:** fetch/compile prompts, evaluate pinned versions locally, upload summary results and run pass-rate gates. The SDK installs from this repository; external results remain self-reported.
-- **Reasoning benchmarks:** bounded hosted Naive, CoT and small ReAct runs, diagnostic datasets, profiling, exports and baseline comparisons. Hosted RAG starts are temporarily paused while retrieval call budgets are added; existing RAG results remain readable.
+- **Reasoning benchmarks:** bounded hosted Naive, CoT and small ReAct runs, per-case progress, Stop/rerun with independent attempt history, frozen baselines, paged inspection and complete JSONL exports. Comparisons use versioned scoring and report missing/unknown cases explicitly. Hosted RAG starts are temporarily paused while retrieval call budgets are added; existing RAG results remain readable.
 
 ## Try a provider-free evaluation
 
@@ -77,7 +77,7 @@ npm ci
 npm run dev
 ```
 
-Open [localhost:3000](http://localhost:3000), sign in and select a project. `/health` checks API process liveness; `/ready` checks the database, evaluation runner and usable dispatch, reporting optional services separately. Restart processes after environment changes.
+Open [localhost:3000](http://localhost:3000), sign in and select a project. `/health` checks API process liveness; `/ready` requires database connectivity and the required schema/capacity row. An idle runner or unavailable optional Redis/Qdrant/provider integration does not make the core app unready. Restart processes after environment changes.
 
 ## Use a released prompt or gate a candidate
 
@@ -126,6 +126,8 @@ Benchmarks retain their separate bundled diagnostic datasets. The hosted profile
 ## Development and deployment
 
 [Repository CI](.github/workflows/ci.yml) checks backend/SDK tests, SDK wheel installation, PostgreSQL migrations/locking/HTTP smoke flows, generated contracts and frontend lint/types/tests/build. A successful main-push run invokes the repository's Hugging Face **backend** sync. Frontend deployment is separate; hosted database migrations are not performed by that CI workflow.
+
+The personal deployment uses [Vercel](https://llmforge.vercel.app) for the frontend, [Hugging Face Spaces](https://faz-ai-llm-forge.hf.space) for the API and Neon PostgreSQL. No additional server, queue worker or storage service is required. The [hosted configuration and rollout checks](docs/DEVELOPMENT.md#existing-free-hosting-profile) distinguish repository defaults from deployed settings, including the bounded five-connection runtime pool and the additive benchmark migrations through `r1s2t3u4v5w6`.
 
 Run the appropriate [development checks](docs/DEVELOPMENT.md#testing) for a change. Component tests and local fixtures do not establish authenticated hosted behavior. Backend `/api/v1/version` and frontend `/api/version` expose source/build metadata; unknown metadata cannot establish deployment parity. Avoid fixed test counts as claims of current validation.
 

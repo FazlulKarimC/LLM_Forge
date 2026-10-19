@@ -1,8 +1,8 @@
 # LlmForge backend
 
-FastAPI API for authenticated projects, versioned prompts, local SDK evaluation summaries and reasoning benchmarks. Legacy hosted datasets and evaluation history remain readable; dataset writes are disabled by default. Apply migration p9q0r1s2t3u4 before enabling local reporting.
+FastAPI API for authenticated projects, versioned prompts, local SDK evaluation summaries and reasoning benchmarks. Legacy hosted datasets and evaluation history remain readable; dataset writes are disabled by default. Apply migrations through `r1s2t3u4v5w6` before deploying the current benchmark runtime.
 
-The prompt workflow saves immutable versions, runs fixed cases with assertions or an optional judge, and exposes released prompts to the Python SDK. The experiment workflow runs reasoning methods through configured providers and records per-sample results, routing, cost, metrics, and regression checks.
+The prompt workflow saves immutable versions, evaluates locally owned cases through SDK callbacks, uploads summaries and exposes released prompts to the Python SDK. The separate benchmark workflow runs reasoning methods through configured providers and records per-case outputs, attempt provenance, usage, cost, metrics and regression checks.
 
 Prompt versions support text or role-preserving chat content and JSON configuration. Labels include automatic latest plus mutable custom labels; tags and folder paths organize the catalog. Project keys read by default, with optional prompts:write for creation and label movement. See the [prompt contracts](../docs/ARCHITECTURE.md#prompt-lifecycle) for selector behavior, capabilities and scope.
 
@@ -13,7 +13,7 @@ Prompt versions support text or role-preserving chat content and JSON configurat
 - **Framework:** [FastAPI](https://fastapi.tiangolo.com/) (Python 3.12 in CI)
 - **Database:** PostgreSQL via [NeonDB](https://neon.tech/) (Async SQLAlchemy + Alembic)
 - **Validation:** Pydantic v2
-- **Vector DB:** Qdrant Cloud (for RAG and embeddings retrieval)
+- **Vector DB:** optional Qdrant integration for RAG; new hosted RAG starts are paused
 - **Task Execution:** PostgreSQL-backed state, FastAPI `BackgroundTasks` for best-effort inline execution, optional Upstash Redis + RQ worker
 - **Observability:** optional Sentry error reporting and request IDs
 - **Math/Stats:** NumPy, statsmodels (for Bootstrap CIs, McNemar's tests)
@@ -32,6 +32,8 @@ Each candidate run is passed through a comprehensive `GraderEngine` employing de
 
 ### Reliability & Error Tracking
 Experiment and job metadata is stored in PostgreSQL. Benchmark cases commit individually behind an attempt fence, with no provider I/O inside the write transaction. **Stop run** checks between cases and ReAct generation/tool steps; an issued call may finish and its reservation remains occupied until the thread exits. Inline execution is best-effort: restart can strand work, while committed cases survive. Use **Stop run**, then rerun explicitly; provider calls are not automatically replayed. Dispatched jobs include an attempt number so stale jobs cannot take over reruns. Expired execution reservations fail before generation. Evaluation execution retains its separate ownership/checkpoint recovery; see the [architecture guide](../docs/ARCHITECTURE.md).
+
+The Run endpoint commits its response lookup before inline background execution starts. FastAPI keeps request dependencies alive until background tasks finish, so leaving that read transaction open would retain a connection for the whole benchmark. Repository pool defaults are two persistent connections plus one overflow; the existing hosted Space overrides overflow to three, for a maximum of five connections during concurrent page reads. See the [hosted profile](../docs/DEVELOPMENT.md#existing-free-hosting-profile).
 
 The hosted profile defaults to 20 cases, 20 provider generation calls, a 300-second new-call deadline and a 30-second HTTP timeout. ReAct supports at most five cases and three iterations. One globally reserved benchmark, judge or synthetic job executes at a time; effective batch size is one. Optional embedding scoring is off. New RAG starts are temporarily rejected until retrieval call budgets are implemented; existing RAG records remain readable. Apply migrations through `r1s2t3u4v5w6` before deployment; no new service is required. Attempts preserve their own manifests/results, cases are paged, and complete JSONL exports support manual retention cleanup. Core readiness checks PostgreSQL/schema only; the legacy runner sleeps while idle. See [architecture](../docs/ARCHITECTURE.md) and [deployment guidance](../docs/DEVELOPMENT.md#deployment-and-diagnosis).
 
@@ -89,7 +91,7 @@ alembic upgrade head
 uvicorn app.main:app --reload --port 8000
 ```
 
-`GET /health` reports process liveness. `GET /ready` checks the database and task dispatch, with optional provider, vector-store, Redis, and worker status shown separately. The dashboard surfaces the readiness result. Sign in through the frontend and select a project before calling project-scoped API routes; they require a Clerk bearer token and `X-Project-ID`.
+`GET /health` reports process liveness. `GET /ready` requires database connectivity and the required schema/capacity row; it also reports runner state and configuration without calling optional services. Idle execution and unavailable optional Redis/Qdrant/providers do not gate core readiness. The dashboard surfaces the readiness result. Sign in through the frontend and select a project before calling project-scoped API routes; they require a Clerk bearer token and `X-Project-ID`.
 
 Public `GET /api/v1/capabilities` advertises the evaluation generation/judge
 provider contract without database or provider calls. `GET /api/v1/version`
