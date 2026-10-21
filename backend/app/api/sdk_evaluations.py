@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.request_limits import LocalReportRoute
 from app.core.project_keys import get_evaluation_project, get_sdk_key
 from app.models.prompt import ProjectAPIKey
 from app.models.evaluation import Dataset, DatasetRevision
@@ -33,6 +34,7 @@ from app.schemas.contracts import (
 )
 
 router = APIRouter(tags=["SDK evaluations"])
+local_reports_router = APIRouter(route_class=LocalReportRoute)
 
 
 @router.get("/evaluators", response_model=EvaluatorPage)
@@ -214,7 +216,10 @@ async def resume_run(
     )
 
 
-@router.post("/local-reports", status_code=201, response_model=EvaluationRunResponse)
+@local_reports_router.post(
+    "/local-reports", status_code=201, response_model=EvaluationRunResponse,
+    responses={413: {"description": "Original request body exceeds 64,000 bytes"}},
+)
 async def submit_local_report(
     data: LocalEvaluationSubmission,
     idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
@@ -224,3 +229,6 @@ async def submit_local_report(
 ):
     from app.services.local_evaluations import submit_local
     return await submit_local(data, db, (str(key.id), "local-report", idempotency_key) if idempotency_key is not None else None)
+
+
+router.include_router(local_reports_router)

@@ -82,6 +82,42 @@ async def test_failed_rerun_never_reuses_metrics_or_manifest(api, monkeypatch, c
         assert baseline.id == identity  # Match frozen config, not the rerun's config.
         verdict = await RegressionService(db).run_regression_check(candidate, identity)
         assert verdict.baseline_attempt == 1 and verdict.passed is True
+    unpinned = await client.delete(f"/api/v1/experiments/{identity}/set-baseline", headers=headers)
+    assert unpinned.status_code == 200, unpinned.text
+    assert unpinned.json()["status"] == "failed"
+    assert unpinned.json()["is_baseline"] is False and unpinned.json()["pinned_attempt"] is None
+    historical = await client.get(f"/api/v1/results/{identity}/metrics?attempt=1", headers=headers)
+    assert historical.status_code == 200 and historical.json()["attempt"] == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("method", ["naive", "react"])
+async def test_mock_latency_provenance_survives_json_and_jsonl_exports(api, monkeypatch, method):
+    import json
+    from app.services.inference.mock_engine import MockEngine
+
+    app, client, sessions = api
+    _, headers = await bootstrap(app, client, "mock-latency-export")
+    options = {"agent": {"max_iterations": 1, "tools": ["calculator"]}} if method == "react" else {}
+    identity = await create_benchmark(client, headers, reasoning_method=method, num_samples=1, **options)
+    monkeypatch.setattr("app.core.database.async_session_maker", sessions)
+    engine = MockEngine(simulate_latency_ms=0)
+    engine.load_model("mock-export")
+    await execute(sessions, identity, engine)
+    exported = await client.get(f"/api/v1/results/{identity}/export?attempt=1", headers=headers)
+    assert exported.status_code == 200, exported.text
+    row = exported.json()["runs"][0]
+    metadata = row["run_metadata"]
+    if method == "naive":
+        assert metadata["latency_kind"] == "synthetic_delay"
+        assert metadata["usage_source"] == metadata["cost_source"] == "synthetic"
+    else:
+        assert metadata["latency_kind"] == "agent_wall_time"
+        assert metadata["calls"][0]["latency_kind"] == "synthetic_delay"
+    stream = await client.get(f"/api/v1/results/{identity}/export?attempt=1&format=jsonl", headers=headers)
+    assert stream.status_code == 200, stream.text
+    cases = [json.loads(line) for line in stream.text.splitlines() if json.loads(line)["type"] == "case"]
+    assert len(cases) == 1 and cases[0]["run_metadata"] == metadata
 
 
 @pytest.mark.asyncio
@@ -205,6 +241,7 @@ def test_cached_usage_and_retention_do_not_invent_provider_work():
     cached = cached_usage(result)
     assert cached.tokens_input == cached.tokens_output == cached.latency_ms == cached.cost_usd == 0
     assert result.tokens_input == 100
+    assert cached.latency_kind == "cache_reuse" and result.latency_kind == "unknown"
     record, size = bounded_record({"prompt": "q", "raw_output": "x" * 50000, "agent_trace": {"steps": ["x" * 50000]}})
     assert len(record["raw_output"].encode()) == 8192
     assert size < 65536 and record["run_metadata"]["retention_truncated"]["raw_output"]["original_bytes"] == 50000

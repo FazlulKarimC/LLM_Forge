@@ -12,6 +12,8 @@ Next.js 16 and React 19 interface for a personal prompt-development and reasonin
 
 The benchmark builder reads limits and bundled case counts from `/api/v1/capabilities`: the default hosted profile allows 20 cases/calls, or five ReAct cases with three iterations. New hosted RAG execution is paused. Attempt selectors refresh as execution status changes, including the first run whose attempt number does not change. Case pages load 25 summaries at a time and fetch one case's full content on selection. Historical comparison accepts explicit attempt numbers; unknown provenance and incomplete coverage do not become passing regression evidence.
 
+**Unpin baseline** stays available for an existing baseline after failed/interrupted reruns and while a new attempt is queued/running. **Pin as baseline** is offered only for completed non-baselines. Unpinning preserves historical results.
+
 **Export complete JSONL** downloads all retained cases for the selected terminal attempt. **Export then purge** downloads before asking to remove an attempt; the API protects active, pinned and referenced history. Active-run polling backs off from 3 to 10 to 30 seconds and pauses in hidden tabs. Custom-provider credentials stay in the current form/request, are cleared on accepted runs/provider changes, and are not saved in browser storage; custom execution remains development-only.
 
 ## Local setup

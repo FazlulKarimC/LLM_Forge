@@ -164,6 +164,8 @@ Stop `next dev` before building because both use `.next`. These checks validate 
 
 `tests/test_benchmark_execution.py` exercises durable per-case writes, provider-free saved-prompt batches, interruption, cancellation, expiry and shared model-job admission. Set `LLMFORGE_TEST_POSTGRES_URL` to a disposable target to run its real-lock Stop and competing-project tests. CI provides that variable against its existing PostgreSQL service. Without it, those tests skip; SQLite success does not establish lock behavior.
 
+`tests/test_local_evaluation_reports.py` covers the exact 64,000-byte wire limit, UTF-8/whitespace, streamed requests, untrusted length headers, pre-JSON rejection, absence of rejected writes and stable idempotency intent. `tests/test_benchmark_attempts.py` checks mock/agent latency kinds through JSON/JSONL exports and unpinning after a failed rerun. Frontend detail-page tests cover existing-baseline Unpin availability across terminal/active statuses and preserve the completed-only rule for new pins. These regression checks use disposable local fixtures, not hosted records or paid providers.
+
 Use a separate shell with disposable localhost PostgreSQL, not the unreachable unit-test URL. From `backend`, set both database variables explicitly so configuration cannot select a hosted `.env` URL:
 
 ```powershell

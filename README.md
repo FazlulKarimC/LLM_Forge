@@ -117,7 +117,7 @@ flowchart TB
     Bench --> RAG["Optional Qdrant / RAG"]
 ```
 
-Current evaluation execution runs in your application or CI. LLMForge stores at most a 64 KB summary per submission with validated counts (up to 1,000,000 local cases) and at most 20 finite named metrics. No inputs, reference answers, outputs or provider keys are accepted by the local-report endpoint. History still accumulates; no automatic retention policy has been introduced.
+Current evaluation execution runs in your application or CI. Local-report requests and normalized summaries are each limited to **64,000 bytes**, with validated counts (up to 1,000,000 local cases) and at most 20 finite named metrics. Oversized request bodies return HTTP 413 before JSON parsing, including streamed requests without `Content-Length`. No inputs, reference answers, outputs or provider keys are accepted by the local-report endpoint. History still accumulates; no automatic retention policy has been introduced.
 
 Existing hosted evaluation records/checkpoints are preserved for compatibility. `LEGACY_DATASET_WRITES=false` is the default: dataset create/import/edit/archive and old demo setup return 410. An explicit compatibility switch exists for older integrations/tests; it does not bypass authentication or change the default product. Dataset tables have not been dropped.
 
