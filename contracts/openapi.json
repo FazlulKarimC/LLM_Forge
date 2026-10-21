@@ -11981,6 +11981,9 @@
             },
             "description": "Successful Response"
           },
+          "413": {
+            "description": "Original request body exceeds 64,000 bytes"
+          },
           "422": {
             "content": {
               "application/json": {

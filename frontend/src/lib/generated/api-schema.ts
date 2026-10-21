@@ -6429,6 +6429,13 @@ export interface operations {
                     "application/json": components["schemas"]["EvaluationRunResponse"];
                 };
             };
+            /** @description Original request body exceeds 64,000 bytes */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {

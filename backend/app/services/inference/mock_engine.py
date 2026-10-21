@@ -104,6 +104,7 @@ class MockEngine(InferenceEngine):
             cost_usd=0,
             usage_source="synthetic",
             cost_source="synthetic",
+            latency_kind="synthetic_delay",
             gpu_memory_mb=None,
         )
     
@@ -150,6 +151,7 @@ class MockEngine(InferenceEngine):
                 cost_usd=0,
                 usage_source="synthetic",
                 cost_source="synthetic",
+                latency_kind="synthetic_delay",
                 gpu_memory_mb=None,
             ))
         

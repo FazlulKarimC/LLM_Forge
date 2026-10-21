@@ -41,6 +41,7 @@ class TestOpenAIEngine:
         assert result.tokens_input == 5
         assert result.tokens_output == 6
         assert result.finish_reason == "stop"
+        assert result.latency_kind == "http_wall_time"
         
         # Verify OpenAI called correctly
         mock_client.chat.completions.create.assert_called_once_with(
@@ -64,6 +65,7 @@ class TestOpenAIEngine:
         
         result = engine.generate("Hello world", config)
         assert result.failure_mode == FailureMode.UNKNOWN
+        assert result.latency_kind == "http_wall_time"
         assert result.error_message == "Provider request failed (ValueError)"
 
     @patch('app.services.inference.openai_engine.OpenAIEngine.generate')

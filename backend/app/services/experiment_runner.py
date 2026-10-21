@@ -30,13 +30,13 @@ def generation_metadata(item, result, config, *, cache_hit=False):
             "requested_provider": config.provider.value, "requested_model": config.model_name,
             "served_model": result.served_model, "usage_source": result.usage_source,
             "backend_provider": result.backend_provider,
-            "cost_source": result.cost_source, "latency_kind": "http_wall_time"}
+            "cost_source": result.cost_source, "latency_kind": result.latency_kind}
 
 
 def cached_usage(result):
     # A cached response is evidence of a previous call, not a new billable call.
     from dataclasses import replace
-    return replace(result, tokens_input=0, tokens_output=0, latency_ms=0, cost_usd=0)
+    return replace(result, tokens_input=0, tokens_output=0, latency_ms=0, cost_usd=0, latency_kind="cache_reuse")
 
 
 class ExperimentRunExecutor:

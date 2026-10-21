@@ -6,6 +6,7 @@ from uuid import UUID
 from pydantic import Field, SecretStr, field_validator, model_validator
 
 from app.schemas.prompt import CompileRequest, PromptCreate, StrictModel
+from app.core.request_limits import LOCAL_REPORT_MAX_BYTES
 
 EvaluationProvider = Literal["mock", "groq", "openrouter", "openai"]
 JudgeProvider = Literal["groq", "openrouter", "openai"]
@@ -233,6 +234,6 @@ class LocalEvaluationSubmission(StrictModel):
         if any(not name.strip() or len(name) > 100 or not math.isfinite(value)
                for name, value in self.metrics.items()):
             raise ValueError("Metrics require bounded names and finite values")
-        if len(self.model_dump_json().encode()) > 64_000:
-            raise ValueError("Local reports are limited to 64 KB")
+        if len(self.model_dump_json().encode()) > LOCAL_REPORT_MAX_BYTES:
+            raise ValueError("Normalized local reports are limited to 64,000 bytes")
         return self

@@ -15,7 +15,7 @@ Supported Engines:
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Optional, List
+from typing import Optional, List, Literal
 
 from app.models.run import FailureMode
 
@@ -57,6 +57,7 @@ class GenerationResult:
     backend_provider: Optional[str] = None
     usage_source: str = "unknown"
     cost_source: str = "unknown"
+    latency_kind: Literal["unknown", "http_wall_time", "synthetic_delay", "cache_reuse"] = "unknown"
 
 
 class InferenceEngine(ABC):

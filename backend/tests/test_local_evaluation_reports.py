@@ -1,7 +1,8 @@
 """Current local reporting requires no hosted cases and remains tenant scoped."""
 import pytest
 from sqlalchemy import select, func
-from app.models.evaluation import Dataset, DatasetRevision, EvaluationResult
+from app.models.evaluation import Dataset, DatasetRevision, EvaluationResult, EvaluationRun
+from app.core.request_limits import LOCAL_REPORT_MAX_BYTES
 from tests.support import bootstrap
 
 async def setup(api):
@@ -63,6 +64,63 @@ async def test_invalid_local_reports_rejected(api, changes):
     import json
     response = await client.post("/api/v1/sdk/evaluations/local-reports", headers={**key, "Content-Type": "application/json"}, content=json.dumps({**payload, **changes}))
     assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("size", [63_999, 64_000, 64_001, 65_537])
+@pytest.mark.parametrize("streamed", [False, True])
+@pytest.mark.parametrize("escaped", [False, True])
+async def test_raw_summary_body_bound_and_idempotency(api, size, streamed, escaped):
+    import json
+
+    client, sessions, _, key, payload = await setup(api)
+    # The wire representation differs from the normalized model. Count UTF-8
+    # bytes, including valid trailing whitespace, rather than parsed characters.
+    raw = json.dumps({**payload, "dataset_name": "Synthetic café"}, ensure_ascii=escaped).encode()
+    body = raw + b" " * (size - len(raw))
+
+    async def chunks():
+        for offset in range(0, len(body), 2048):
+            yield body[offset:offset + 2048]
+
+    headers = {**key, "Content-Type": "application/json", "Idempotency-Key": "body-bound"}
+    request = client.build_request("POST", "/api/v1/sdk/evaluations/local-reports", headers=headers,
+                                   content=chunks() if streamed else body)
+    assert ("content-length" in request.headers) is not streamed
+    response = await client.send(request)
+    assert response.status_code == (201 if size <= LOCAL_REPORT_MAX_BYTES else 413), response.text
+    async with sessions() as db:
+        assert await db.scalar(select(func.count()).select_from(EvaluationRun)) == int(size <= LOCAL_REPORT_MAX_BYTES)
+    # A rejection must not reserve the idempotency key. A successful padded body
+    # and its compact equivalent must replay the same logical submission.
+    compact = await client.post("/api/v1/sdk/evaluations/local-reports", headers=headers, content=raw)
+    assert compact.status_code == 201, compact.text
+    if response.status_code == 201:
+        assert compact.json()["id"] == response.json()["id"]
+    async with sessions() as db:
+        assert await db.scalar(select(func.count()).select_from(EvaluationRun)) == 1
+
+
+@pytest.mark.asyncio
+async def test_oversized_body_stops_before_json_parsing_even_with_false_length(api, monkeypatch):
+    from unittest.mock import AsyncMock
+
+    client, sessions, _, key, _ = await setup(api)
+    json_parser = AsyncMock(side_effect=AssertionError("Oversized input reached JSON parsing"))
+    monkeypatch.setattr("starlette.requests.Request.json", json_parser)
+
+    async def chunks():
+        yield b" " * (LOCAL_REPORT_MAX_BYTES + 1)
+        raise AssertionError("Oversized request was unnecessarily drained")
+
+    response = await client.post("/api/v1/sdk/evaluations/local-reports", headers={
+        **key, "Content-Type": "application/json", "Content-Length": "1",
+    }, content=chunks())
+    assert response.status_code == 413, response.text
+    assert response.headers.get("X-Request-ID")
+    json_parser.assert_not_awaited()
+    async with sessions() as db:
+        assert await db.scalar(select(func.count()).select_from(EvaluationRun)) == 0
 
 @pytest.mark.asyncio
 async def test_reference_filter_requires_matching_data_and_scoring(api):

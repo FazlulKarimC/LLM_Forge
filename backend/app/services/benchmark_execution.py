@@ -195,6 +195,7 @@ class BudgetedEngine:
                 "cost_source": result.cost_source,
                 "tokens_input": result.tokens_input, "tokens_output": result.tokens_output,
                 "cost_usd": result.cost_usd, "latency_ms": result.latency_ms,
+                "latency_kind": result.latency_kind,
             })
             return result
 

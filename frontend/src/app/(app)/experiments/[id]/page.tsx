@@ -192,8 +192,7 @@ export default function ExperimentDetailPage({ params }: Props) {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {experiment.status === "completed" ? <Link href={`/experiments/compare?preselect=${id}&attempt=${attempt}`} className="btn-secondary">Compare</Link> : null}
-          {experiment.status === "completed" ? (
-            experiment.is_baseline ? (
+          {experiment.is_baseline ? (
               <button
                 type="button"
                 className="btn-danger"
@@ -208,7 +207,7 @@ export default function ExperimentDetailPage({ params }: Props) {
                 <PinOff className="size-4" />
                 Unpin baseline
               </button>
-            ) : (
+            ) : experiment.status === "completed" ? (
               <button
                 type="button"
                 className="btn-secondary"
@@ -223,8 +222,7 @@ export default function ExperimentDetailPage({ params }: Props) {
                 <Pin className="size-4" />
                 Pin as baseline
               </button>
-            )
-          ) : null}
+            ) : null}
           {canRun ? (
             <button type="button" className="btn-primary" onClick={() => runMutation.mutate()} disabled={runMutation.isPending}>
               {runMutation.isPending ? <LoaderCircle className="size-4 animate-spin" /> : <Play className="size-4" />}
